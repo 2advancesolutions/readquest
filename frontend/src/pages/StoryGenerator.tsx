@@ -134,17 +134,26 @@ export default function StoryGenerator() {
       </div>
 
       {step !== 'generating' && step !== 'preview' && (
-        <div className="gen-stepper">
-          {[1, 2, 3, 4].map(n => (
-            <div key={n} className={`gen-step-dot ${n <= currentNum ? 'active' : ''}`}>
-              {n < currentNum ? '✓' : n}
-            </div>
-          ))}
-          <div className="gen-step-label">
-            {step === 'character' && 'Choose Character'}
-            {step === 'scene' && (charLoading ? 'Finding Character...' : 'Set the Scene')}
-            {step === 'language' && 'Language'}
-            {step === 'artStyle' && 'Art Style'}
+        <div className="gen-progress-header">
+          <div className="gen-stepper">
+            {[
+              { num: 1, key: 'character', label: 'Character' },
+              { num: 2, key: 'scene', label: 'Scene' },
+              { num: 3, key: 'language', label: 'Language' },
+              { num: 4, key: 'artStyle', label: 'Style' }
+            ].map((s, i, arr) => (
+              <div key={s.num} style={{ display: 'flex', alignItems: 'center' }}>
+                <div className={`stepper-item ${s.num <= currentNum ? 'active' : ''}`}>
+                  <div className="stepper-circle">
+                    {s.num < currentNum ? '✓' : s.num}
+                  </div>
+                  <div className="stepper-label">{s.label}</div>
+                  {i < arr.length - 1 && (
+                    <div className="stepper-line" />
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
