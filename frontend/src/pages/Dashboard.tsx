@@ -64,54 +64,81 @@ export default function Dashboard() {
 
   return (
     <div className="dash-root">
-      {/* Header */}
-      <header className="dash-header">
-        <div className="dash-logo">
-          <span className="dash-logo-owl">🦉</span>
-          <span className="dash-logo-text">ReadQuest</span>
+      {/* Sidebar */}
+      <aside className="dash-sidebar">
+        <div className="dash-logo">ReadQuest</div>
+
+        <nav className="dash-nav">
+          <button className="dash-nav-link active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+            Dashboard
+          </button>
+          <button className="dash-nav-link" onClick={() => navigate('/rewards')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+            Progress & Metrics
+          </button>
+        </nav>
+
+        <div className="dash-sidebar-bottom">
+          <button className="dash-logout-btn" onClick={handleLogout}>Log out</button>
         </div>
-        <div className="dash-header-right">
-          <button className="dash-nav-btn" onClick={() => navigate('/rewards')}>🏆 Rewards</button>
-          <button className="dash-nav-btn ghost" onClick={handleLogout}>Log out</button>
-        </div>
-      </header>
+      </aside>
 
       <main className="dash-main">
-        {/* Greeting + XP Row */}
-        <div className="dash-top-row">
-          <motion.div className="dash-greeting-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="dash-avatar">🦉</div>
-            <div>
-              <p className="dash-greeting-sub">{greeting}, <strong>{name}</strong>! 👋</p>
-              <p className="dash-grade-label">{GRADE_LABELS[grade]}</p>
-              <div className="dash-streak">
-                <span>🔥</span>
-                <span>{rewards.current_streak}-day streak!</span>
-              </div>
-            </div>
-          </motion.div>
+        {/* Header */}
+        <header className="dash-top-header">
+          <div>
+            <h1 className="dash-greeting">{greeting}, {name}</h1>
+            <p className="dash-date">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} • {GRADE_LABELS[grade]}</p>
+          </div>
+          <motion.button className="dash-create-btn" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => navigate('/generate')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Generate Content
+          </motion.button>
+        </header>
 
-          <motion.div className="dash-level-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-            <div className="dash-level-title">Level {rewards.level}</div>
-            <div className="dash-level-name">{rewards.level_name || LEVEL_NAMES[rewards.level]}</div>
+        {/* Metrics Row */}
+        <div className="dash-metrics-row">
+          <motion.div className="dash-metric-card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <div className="metric-header">
+              <span className="metric-title">Level Progression</span>
+              <span className="metric-icon" style={{ color: 'var(--rq-purple)' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              </span>
+            </div>
+            <div className="metric-value">Level {rewards.level}</div>
+            <div className="metric-sub">{rewards.level_name || LEVEL_NAMES[rewards.level]}</div>
             <div className="xp-bar-container">
               <div className="xp-bar-track">
                 <motion.div
                   className="xp-bar-fill"
                   initial={{ width: 0 }}
                   animate={{ width: `${rewards.xp_progress_pct}%` }}
-                  transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
+                  transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
                 />
               </div>
               <div className="xp-bar-label">
-                <span>⭐ {rewards.total_xp} XP</span>
-                <span>{rewards.xp_to_next_level} to next level</span>
+                <span>{rewards.total_xp} XP Total</span>
+                <span>{rewards.xp_to_next_level} XP left</span>
               </div>
             </div>
           </motion.div>
 
-          <motion.div className="dash-xp-chart" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-            <p className="dash-section-label">This week</p>
+          <motion.div className="dash-metric-card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }}>
+            <div className="metric-header">
+              <span className="metric-title">Reading Streak</span>
+              <span className="metric-icon" style={{ color: 'var(--rq-coral)' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg>
+              </span>
+            </div>
+            <div className="metric-value">{rewards.current_streak} <span className="metric-unit">days</span></div>
+            <p className="metric-desc">Keep reading to maintain your momentum.</p>
+          </motion.div>
+
+          <motion.div className="dash-metric-card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
+            <div className="metric-header">
+              <span className="metric-title">Weekly Activity</span>
+            </div>
             <div className="bar-chart">
               {xpHistory.map((d, i) => (
                 <div key={i} className="bar-col">
@@ -122,62 +149,27 @@ export default function Dashboard() {
                     transition={{ delay: 0.1 * i + 0.3, duration: 0.6, ease: 'easeOut' }}
                     title={`${d.amount} XP`}
                   />
-                  <span className="bar-label">{d.date}</span>
+                  <span className="bar-label">{d.date.charAt(0)}</span>
                 </div>
               ))}
             </div>
           </motion.div>
         </div>
 
-        {/* CTA Cards */}
-        <div className="dash-cta-row">
-          <motion.button
-            className="dash-cta-card primary"
-            whileHover={{ scale: 1.03, y: -4 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => navigate('/generate')}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <span className="cta-icon">✨</span>
-            <div>
-              <div className="cta-title">Create New Story</div>
-              <div className="cta-sub">AI-powered just for you!</div>
-            </div>
-          </motion.button>
-
-          {stories.length > 0 && (
-            <motion.button
-              className="dash-cta-card secondary"
-              whileHover={{ scale: 1.03, y: -4 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => navigate(`/read/${stories[0].id}`)}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <span className="cta-icon">📖</span>
-              <div>
-                <div className="cta-title">Continue Reading</div>
-                <div className="cta-sub">{stories[0].title}</div>
-              </div>
-            </motion.button>
-          )}
-        </div>
-
-        {/* Recent Stories */}
+        {/* Stories Section */}
         <div className="dash-section">
-          <h2 className="dash-section-title">📚 Your Stories</h2>
+          <div className="dash-section-header">
+            <h2 className="dash-section-title">Recent Content</h2>
+          </div>
+
           <div className="story-grid">
             {stories.map((s, i) => (
               <motion.div
                 key={s.id}
                 className="story-card"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * i + 0.5 }}
-                whileHover={{ y: -6, boxShadow: '0 16px 40px rgba(124,58,237,0.2)' }}
+                transition={{ duration: 0.3, delay: 0.1 * i + 0.3 }}
                 onClick={() => navigate(`/read/${s.id}`)}
               >
                 <div className="story-cover">
@@ -185,80 +177,19 @@ export default function Dashboard() {
                     <img src={s.cover_image_url} alt={s.title} />
                   ) : (
                     <div className="story-cover-placeholder">
-                      {THEME_EMOJIS[s.theme || 'animals'] || '📚'}
+                      {THEME_EMOJIS[s.theme || 'animals'] || <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>}
                     </div>
                   )}
                 </div>
                 <div className="story-info">
                   <p className="story-title">{s.title}</p>
-                  <p className="story-meta">Grade {s.grade_level} · {s.theme}</p>
+                  <p className="story-meta">Grade {s.grade_level} • <span style={{textTransform:'capitalize'}}>{s.theme}</span></p>
                 </div>
               </motion.div>
             ))}
-
-            {/* "New Story" card */}
-            <motion.div
-              className="story-card new-story-card"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 * stories.length + 0.5 }}
-              whileHover={{ y: -6 }}
-              onClick={() => navigate('/generate')}
-            >
-              <div className="story-cover new-cover">
-                <span>+</span>
-              </div>
-              <div className="story-info">
-                <p className="story-title">New Story</p>
-                <p className="story-meta">Generate with AI ✨</p>
-              </div>
-            </motion.div>
           </div>
         </div>
 
-        {/* Badges preview */}
-        <div className="dash-section">
-          <div className="dash-section-header">
-            <h2 className="dash-section-title">🏆 My Badges</h2>
-            <button className="view-all-btn" onClick={() => navigate('/rewards')}>View all →</button>
-          </div>
-          <div className="badge-row">
-            {(rewards.badges ?? []).map((b, i) => (
-              <motion.div
-                key={b.id}
-                className={`badge-chip ${b.earned ? 'earned' : 'locked'}`}
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 * i + 0.6, type: 'spring', stiffness: 250 }}
-                title={b.description}
-              >
-                <span className="badge-icon">{b.earned ? b.icon : '🔒'}</span>
-                <span className="badge-name">{b.name}</span>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick theme browse */}
-        <div className="dash-section">
-          <h2 className="dash-section-title">🎨 Explore Themes</h2>
-          <div className="theme-row">
-            {THEMES.map((t, i) => (
-              <motion.button
-                key={i}
-                className="theme-pill"
-                whileHover={{ scale: 1.06, y: -2 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => navigate('/generate')}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * i + 0.7 }}
-              >
-                {t}
-              </motion.button>
-            ))}
-          </div>
-        </div>
       </main>
     </div>
   )

@@ -59,85 +59,88 @@ export default function LandingPage() {
 
   return (
     <div className="landing-root">
-      {/* Animated background blobs */}
-      <div className="landing-blob blob-1" />
-      <div className="landing-blob blob-2" />
-      <div className="landing-blob blob-3" />
+      <div className="landing-bg-pattern" />
 
-      {/* Floating decorations */}
-      <div className="floating-decor">
-        {['📚','⭐','✏️','🎨','🌈','🎯','💡','🦋'].map((em, i) => (
-          <span key={i} className="deco-item" style={{ '--delay': `${i * 0.4}s`, '--x': `${10 + i * 11}%`, '--y': `${8 + (i % 3) * 25}%` } as React.CSSProperties}>{em}</span>
-        ))}
+      <div className="landing-nav">
+        <div className="landing-logo">ReadQuest</div>
       </div>
 
       <div className="landing-center">
         <AnimatePresence mode="wait">
           {step === 'welcome' && (
-            <motion.div key="welcome" className="landing-card" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -30 }} transition={{ type: 'spring', stiffness: 200, damping: 20 }}>
-              <div className="landing-mascot animate-float">🦉</div>
-              <h1 className="landing-title">ReadQuest</h1>
-              <p className="landing-subtitle">Your magical reading adventure awaits! ✨</p>
-              <p className="landing-desc">AI-powered stories, epic quests, and awesome rewards — crafted just for you!</p>
-              <motion.button className="landing-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }} onClick={() => setStep('name')}>
-                🚀 Start My Adventure!
+            <motion.div key="welcome" className="landing-card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
+              <div className="landing-icon-wrap">
+                <svg className="landing-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <h1 className="landing-title">Empower Your Reading Journey</h1>
+              <p className="landing-subtitle">AI-driven reading platform designed for growth.</p>
+              <p className="landing-desc">Personalized stories, measurable progress, and interactive comprehension tools built for modern education.</p>
+              <motion.button className="landing-btn" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setStep('name')}>
+                Get Started
               </motion.button>
             </motion.div>
           )}
 
           {step === 'name' && (
-            <motion.div key="name" className="landing-card" initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -60 }} transition={{ type: 'spring', stiffness: 200, damping: 20 }}>
-              <div className="landing-mascot animate-float" style={{ fontSize: '4rem' }}>🦉</div>
-              <h2 className="landing-subtitle" style={{ fontSize: '1.8rem', marginBottom: 8 }}>Hi there, friend! 👋</h2>
-              <p className="landing-desc">What's your name?</p>
-              <input
-                className={`landing-input ${nameError ? 'error' : ''}`}
-                type="text"
-                placeholder="My name is..."
-                value={name}
-                onChange={e => setName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleNameNext()}
-                autoFocus
-                maxLength={30}
-              />
-              {nameError && <p className="landing-error">{nameError}</p>}
+            <motion.div key="name" className="landing-card" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.3 }}>
+              <h2 className="landing-subtitle" style={{ marginBottom: 8, color: 'var(--rq-text)' }}>Create Your Profile</h2>
+              <p className="landing-desc">Enter your name to personalize your workspace.</p>
+
+              <div className="input-group">
+                <label className="input-label">Full Name</label>
+                <input
+                  className={`landing-input ${nameError ? 'error' : ''}`}
+                  type="text"
+                  placeholder="e.g. Jane Doe"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleNameNext()}
+                  autoFocus
+                  maxLength={30}
+                />
+                {nameError && <p className="landing-error">{nameError}</p>}
+              </div>
+
               <div className="landing-btn-row">
-                <button className="landing-btn-ghost" onClick={() => setStep('welcome')}>← Back</button>
-                <motion.button className="landing-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }} onClick={handleNameNext}>
-                  Next →
+                <button className="landing-btn-ghost" onClick={() => setStep('welcome')}>Back</button>
+                <motion.button className="landing-btn" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleNameNext}>
+                  Continue
                 </motion.button>
               </div>
             </motion.div>
           )}
 
           {step === 'grade' && (
-            <motion.div key="grade" className="landing-card grade-card" initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -60 }} transition={{ type: 'spring', stiffness: 200, damping: 20 }}>
-              <h2 className="landing-subtitle" style={{ fontSize: '1.6rem' }}>
-                Welcome, <span style={{ color: 'var(--rq-purple)' }}>{name}!</span> 🎉
+            <motion.div key="grade" className="landing-card grade-card" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.3 }}>
+              <h2 className="landing-subtitle" style={{ marginBottom: 8, color: 'var(--rq-text)' }}>
+                Welcome, {name}
               </h2>
-              <p className="landing-desc">What grade are you in?</p>
+              <p className="landing-desc">Select your current grade level to calibrate your reading material.</p>
               <div className="grade-grid">
                 {GRADE_DATA.map((g, i) => (
                   <motion.button
                     key={i}
                     className={`grade-btn ${selectedGrade === i ? 'selected' : ''}`}
-                    style={{ '--grade-color': g.color } as React.CSSProperties}
-                    whileHover={{ scale: 1.08, y: -4 }}
-                    whileTap={{ scale: 0.96 }}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => handleGradeSelect(i)}
                     disabled={loading}
                   >
-                    <span className="grade-emoji">{g.emoji}</span>
                     <span className="grade-label">{g.label}</span>
+                    <span className="grade-full">{g.full}</span>
                   </motion.button>
                 ))}
               </div>
               {loading && (
                 <motion.div className="loading-msg" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <span className="spinner" /> Getting your adventure ready...
+                  <span className="spinner" /> Provisioning workspace...
                 </motion.div>
               )}
-              <button className="landing-btn-ghost" style={{ marginTop: 12 }} onClick={() => setStep('name')}>← Back</button>
+              <div className="landing-btn-row" style={{ marginTop: 24, justifyContent: 'flex-start' }}>
+                <button className="landing-btn-ghost" onClick={() => setStep('name')}>Back</button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

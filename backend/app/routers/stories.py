@@ -178,6 +178,8 @@ async def generate_story(
             grade=req.grade,
             theme=req.theme,
             character_name=req.character_name,
+            language=req.language,
+            art_style=req.art_style,
         )
     except Exception as e:
         raise HTTPException(500, detail=f"Story generation failed: {str(e)}")

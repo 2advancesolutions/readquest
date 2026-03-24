@@ -22,6 +22,8 @@ class ContentState(TypedDict):
     grade: int
     theme: str
     character_name: str
+    language: str
+    art_style: str
     grade_vocab_desc: str
     story_raw: str
     story_parsed: dict
@@ -90,7 +92,9 @@ Grade Level Writing Guide: {state['grade_vocab_desc']}
 Theme / Setting: {state['theme']}
 Main Character: {state['character_name']}
 
-Write a complete, engaging children's story with EXACTLY 5 pages. Each page should have about 50-70 words.
+Language: {state.get('language', 'english')}
+
+Write a complete, engaging children's story in {state.get('language', 'english')} with EXACTLY 5 pages. Each page should have about 50-70 words.
 
 Output ONLY valid JSON in this exact format:
 {{
@@ -157,7 +161,7 @@ async def _generate_image_openrouter(prompt: str) -> Optional[str]:
                 "role": "user",
                 "content": (
                     f"Create a beautiful children's book illustration for this scene. "
-                    f"Pixar-style 3D cartoon, bright vibrant colors, wholesome and cheerful, "
+                    f"Bright vibrant colors, wholesome and cheerful, "
                     f"safe for kids, no text overlaid on the image. "
                     f"Scene: {prompt}"
                 ),
@@ -225,6 +229,7 @@ async def image_prompt_node(state: ContentState) -> ContentState:
         prompt = (
             f"{page['content'][:200]}. "
             f"Theme: {state['theme']}. Character: {state['character_name']}. "
+            f"Style: {state.get('art_style', 'cartoon')}. "
             f"Grade {state['grade']} children's story illustration."
         )
         prompts.append(prompt)
@@ -333,12 +338,14 @@ def build_content_graph():
 content_graph = build_content_graph()
 
 
-async def run_content_agent(grade: int, theme: str, character_name: str) -> dict:
+async def run_content_agent(grade: int, theme: str, character_name: str, language: str = "english", art_style: str = "cartoon") -> dict:
     """Entry point — run the content generation graph."""
     initial_state: ContentState = {
         "grade": grade,
         "theme": theme,
         "character_name": character_name,
+        "language": language,
+        "art_style": art_style,
         "grade_vocab_desc": "",
         "story_raw": "",
         "story_parsed": {},
