@@ -152,184 +152,163 @@ export default function StoryGenerator() {
       <div className="gen-center">
         <AnimatePresence mode="wait">
 
-          {/* ── Step 1: Character input ── */}
+          {/* ── Step 1: Character ── */}
           {step === 'character' && (
             <motion.div key="character" className="gen-card"
-              initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <div className="gen-mascot" style={{ fontSize: '3.5rem' }}>🦸</div>
-              <h2 className="gen-title">Who's your favorite character?</h2>
-              <p className="gen-sub">
-                Type a character name — like <em>Spider-Man</em>, <em>Mickey Mouse</em>, or <em>Moana</em>!
-              </p>
-              <div className="gen-name-area">
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+              <div className="gen-card-header">
+                <h2 className="gen-title">Character Configuration</h2>
+                <p className="gen-sub">Define the protagonist for your generated content.</p>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Character Prompt</label>
                 <input
-                  className="gen-input big-input"
-                  type="text"
-                  placeholder="e.g. Spider-Man, Mickey Mouse..."
+                  className="gen-input"
+                  placeholder="e.g. Spider-Man, Mario, my dog Buster..."
                   value={characterInput}
-                  onChange={e => { setCharacterInput(e.target.value); setAnalyzeError('') }}
+                  onChange={e => setCharacterInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAnalyzeCharacter()}
                   autoFocus
                 />
                 {analyzeError && <p className="gen-error">{analyzeError}</p>}
               </div>
-              <motion.button
-                className="gen-btn"
-                disabled={!characterInput.trim()}
-                whileHover={characterInput.trim() ? { scale: 1.04 } : {}}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleAnalyzeCharacter}>
-                🔍 Find My Character →
-              </motion.button>
-              {/* Quick-pick chips */}
-              <div className="char-suggestions">
-                {['Mickey Mouse', 'Spider-Man', 'Moana', 'Batman', 'Elsa', 'Sonic'].map(c => (
+
+              <div className="char-chips">
+                {['Sonic', 'Elsa', 'Pikachu', 'Batman'].map(c => (
                   <motion.button key={c} className="char-chip"
-                    whileHover={{ scale: 1.06, y: -2 }}
+                    whileHover={{ y: -1 }}
                     onClick={() => { setCharacterInput(c); setAnalyzeError('') }}>
                     {c}
                   </motion.button>
                 ))}
               </div>
+
+              <div className="gen-btn-row" style={{ marginTop: 32 }}>
+                <motion.button className="gen-btn"
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleAnalyzeCharacter}>
+                  Generate Profile
+                </motion.button>
+              </div>
             </motion.div>
           )}
 
-          {/* ── Step 2: Loading → Character reveal + scene textarea ── */}
+          {/* ── Step 2: Scene ── */}
           {step === 'scene' && (
-            <motion.div key="scene" className="gen-card"
-              initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
+            <motion.div key="scene" className="gen-card wide-card"
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
 
-              {/* Loading animation */}
-              {charLoading && (
-                <motion.div className="char-loading-area" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <div className="char-loading-spinner">
-                    {['🦁', '🦸', '🧙', '🦄', '⭐'].map((e, i) => (
-                      <motion.span key={i} className="char-load-emoji"
-                        animate={{ rotate: [0, 360], scale: [1, 1.3, 1] }}
-                        transition={{ repeat: Infinity, duration: 1.8, delay: i * 0.2, ease: 'easeInOut' }}>
-                        {e}
-                      </motion.span>
-                    ))}
-                  </div>
-                  <AnimatePresence mode="wait">
-                    <motion.p key={charLoadingMsg} className="char-loading-msg"
-                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.35 }}>
-                      {charLoadingMsg}
-                    </motion.p>
-                  </AnimatePresence>
-                  <div className="char-loading-bar">
-                    <motion.div className="char-loading-fill"
-                      animate={{ width: ['15%', '88%'] }}
-                      transition={{ duration: 7, ease: 'easeInOut' }} />
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Character revealed + scene input */}
-              {!charLoading && characterData && (
-                <motion.div className="scene-step-content"
-                  initial={{ opacity: 0, scale: 0.92, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{ type: 'spring', stiffness: 200, damping: 22 }}>
-
-                  {/* Character portrait card */}
-                  <div className="char-portrait-card">
-                    <div className="char-portrait-bg" />
-                    {characterData.character_image_url ? (
+              <div className="scene-split">
+                {/* Left: Character preview */}
+                <div className="scene-char-side">
+                  <div className="scene-portrait-wrap">
+                    {charLoading ? (
+                      <div className="scene-portrait-placeholder pulse">
+                        <svg className="loader-ring" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                      </div>
+                    ) : characterData?.character_image_url ? (
                       <motion.img
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                         src={`http://localhost:8000${characterData.character_image_url}`}
                         alt={characterData.character_name}
-                        className="char-portrait-img"
-                        initial={{ opacity: 0, scale: 0.85, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        transition={{ type: 'spring', stiffness: 180, damping: 20, delay: 0.1 }}
+                        className="scene-portrait-img"
                       />
                     ) : (
-                      <motion.div className="char-big-emoji"
-                        animate={{ y: [0, -10, 0] }}
-                        transition={{ repeat: Infinity, duration: 3.2, ease: 'easeInOut' }}>
-                        🦸
-                      </motion.div>
+                      <div className="scene-portrait-placeholder">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                      </div>
                     )}
-                    <div className="char-portrait-info">
-                      <div className="char-universe-badge">{characterData.universe}</div>
-                      <h2 className="char-card-name">{characterData.character_name}</h2>
-                      <p className="char-card-desc">{characterData.description}</p>
-                    </div>
                   </div>
 
-                  {/* Scene description textarea */}
-                  <div className="scene-input-section">
-                    <label className="scene-input-label">🌍 Where should the story take place?</label>
-                    <p className="scene-input-hint">Describe the setting in your own words — get creative!</p>
+                  {charLoading ? (
+                    <>
+                      <h3 className="scene-char-name loading-text">Synthesizing...</h3>
+                      <AnimatePresence mode="wait">
+                        <motion.p className="scene-char-desc loading-sub"
+                          initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                          Retrieving data...
+                        </motion.p>
+                      </AnimatePresence>
+                    </>
+                  ) : characterData ? (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                      <h3 className="scene-char-name">{characterData.character_name}</h3>
+                      <p className="scene-char-desc">{characterData.description}</p>
+                    </motion.div>
+                  ) : (
+                    <p className="scene-char-desc">Failed to load profile.</p>
+                  )}
+                </div>
+
+                {/* Right: Scene input */}
+                <div className="scene-input-side">
+                  <div className="input-group">
+                    <label className="input-label">Setting Prompt</label>
                     <textarea
-                      className="scene-textarea"
-                      placeholder={`e.g. "A rainy night in New York City where ${characterData.character_name} discovers a hidden door in Central Park..."`}
+                      className="gen-textarea"
+                      placeholder="e.g. Exploring a spooky haunted house, discovering a secret base on Mars..."
                       value={sceneDescription}
                       onChange={e => setSceneDescription(e.target.value)}
-                      rows={4}
+                      rows={5}
                       autoFocus
                     />
-                    {/* Quick setting chips */}
-                    <div className="scene-chips-row">
-                      {[
-                        'In outer space 🚀',
-                        'Deep underwater 🌊',
-                        'A magical forest 🌲',
-                        'A big city 🏙️',
-                        'A haunted castle 👻',
-                      ].map(s => (
-                        <motion.button key={s} className="char-chip"
-                          whileHover={{ scale: 1.05 }}
-                          onClick={() => setSceneDescription(s)}>
-                          {s}
-                        </motion.button>
-                      ))}
-                    </div>
+                  </div>
+
+                  <div className="scene-chips-row">
+                    {['A magical forest', 'Outer space', 'Under the ocean', 'A futuristic city'].map(s => (
+                      <motion.button key={s} className="char-chip"
+                        whileHover={{ y: -1 }}
+                        onClick={() => setSceneDescription(s)}>
+                        {s}
+                      </motion.button>
+                    ))}
                   </div>
 
                   <div className="gen-btn-row">
-                    <button className="landing-btn-ghost" onClick={() => setStep('character')}>← Back</button>
+                    <button className="gen-btn-ghost" onClick={() => setStep('character')}>Back</button>
                     <motion.button className="gen-btn" style={{ flex: 1 }}
-                      disabled={!sceneDescription.trim()}
-                      whileHover={sceneDescription.trim() ? { scale: 1.04 } : {}}
-                      whileTap={{ scale: 0.97 }}
+                      disabled={!sceneDescription.trim() || charLoading}
+                      whileHover={sceneDescription.trim() && !charLoading ? { scale: 1.02 } : {}}
                       onClick={() => setStep('language')}>
-                      Next: Language →
+                      Continue
                     </motion.button>
                   </div>
-                </motion.div>
-              )}
+                </div>
+              </div>
             </motion.div>
           )}
 
           {/* ── Step 3: Language ── */}
           {step === 'language' && (
             <motion.div key="language" className="gen-card"
-              initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
-              <div className="gen-mascot">🌍</div>
-              <h2 className="gen-title">What language?</h2>
-              <p className="gen-sub">Pick the language for your story text.</p>
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+              <div className="gen-card-header">
+                <h2 className="gen-title">Localization</h2>
+                <p className="gen-sub">Select the output language for the generated text.</p>
+              </div>
               <div className="lang-grid">
                 {LANGUAGES.map(l => (
                   <motion.button key={l.id}
                     className={`lang-card ${selectedLanguage === l.id ? 'selected' : ''}`}
-                    whileHover={{ scale: 1.05, y: -3 }} whileTap={{ scale: 0.97 }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
                     onClick={() => setSelectedLanguage(l.id)}>
-                    <span className="lang-flag">{l.emoji}</span>
-                    <span className="lang-label">{l.label}</span>
+                    <div className="lang-header">
+                      <span className="lang-label">{l.label}</span>
+                      {selectedLanguage === l.id && (
+                        <span className="lang-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></span>
+                      )}
+                    </div>
                     <span className="lang-desc">{l.desc}</span>
-                    {selectedLanguage === l.id && <div className="scene-check">✓</div>}
                   </motion.button>
                 ))}
               </div>
-              <div className="gen-btn-row">
-                <button className="landing-btn-ghost" onClick={() => setStep('scene')}>← Back</button>
+              <div className="gen-btn-row" style={{ marginTop: 32 }}>
+                <button className="gen-btn-ghost" onClick={() => setStep('scene')}>Back</button>
                 <motion.button className="gen-btn" style={{ flex: 1 }}
-                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={() => setStep('artStyle')}>
-                  Next: Art Style →
+                  Continue
                 </motion.button>
               </div>
             </motion.div>
@@ -338,34 +317,37 @@ export default function StoryGenerator() {
           {/* ── Step 4: Art Style ── */}
           {step === 'artStyle' && (
             <motion.div key="artStyle" className="gen-card wide-card"
-              initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}>
-              <div className="gen-mascot">🎨</div>
-              <h2 className="gen-title">Pick an art style!</h2>
-              <p className="gen-sub">How should your illustrations look?</p>
-              {/* Art style grid */}
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+              <div className="gen-card-header">
+                <h2 className="gen-title">Aesthetic Selection</h2>
+                <p className="gen-sub">Choose a visual style for the generated illustrations.</p>
+              </div>
               <div className="art-grid">
                 {ART_STYLES.map(a => (
                   <motion.button key={a.id}
                     className={`art-card ${selectedArtStyle === a.id ? 'selected' : ''}`}
-                    style={{ '--ac': a.color, '--ab': a.bg } as React.CSSProperties}
-                    whileHover={{ scale: 1.06, y: -4 }} whileTap={{ scale: 0.97 }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
                     onClick={() => { setSelectedArtStyle(a.id); setGenerateError('') }}>
-                    <div className="art-emoji">{a.emoji}</div>
-                    <div className="art-label">{a.label}</div>
+                    <div className="art-header">
+                      <div className="art-label">{a.label}</div>
+                      {selectedArtStyle === a.id && (
+                        <span className="art-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></span>
+                      )}
+                    </div>
                     <div className="art-desc">{a.desc}</div>
-                    {selectedArtStyle === a.id && <div className="scene-check">✓</div>}
                   </motion.button>
                 ))}
               </div>
               {generateError && (
-                <p className="gen-error" style={{ textAlign: 'center' }}>⚠️ {generateError}</p>
+                <p className="gen-error" style={{ textAlign: 'center', marginTop: 16 }}>{generateError}</p>
               )}
-              <div className="gen-btn-row">
-                <button className="landing-btn-ghost" onClick={() => setStep('language')}>← Back</button>
+              <div className="gen-btn-row" style={{ marginTop: 32 }}>
+                <button className="gen-btn-ghost" onClick={() => setStep('language')}>Back</button>
                 <motion.button className="gen-btn" style={{ flex: 1 }} disabled={!selectedArtStyle}
-                  whileHover={selectedArtStyle ? { scale: 1.04 } : {}} whileTap={{ scale: 0.97 }}
+                  whileHover={selectedArtStyle ? { scale: 1.02 } : {}} whileTap={{ scale: 0.98 }}
                   onClick={handleGenerate}>
-                  ✨ Create My Story!
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ width: 18, height: 18, marginRight: 8 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Execute Generation
                 </motion.button>
               </div>
             </motion.div>
@@ -374,27 +356,38 @@ export default function StoryGenerator() {
           {/* ── Generating ── */}
           {step === 'generating' && (
             <motion.div key="generating" className="gen-card generating-card"
-              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-              <div className="gen-writing-owl">
-                <div className="owl-body">🦉</div>
-                <div className="quill-pen">✒️</div>
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+              <div className="generating-loader">
+                <svg className="loader-ring" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </div>
-              <h2 className="gen-title">Creating your story...</h2>
-              <div className="gen-summary-chips">
-                <span className="summary-chip">🦸 {characterData?.character_name}</span>
-                <span className="summary-chip">🌍 {sceneDescription.slice(0, 28)}{sceneDescription.length > 28 ? '…' : ''}</span>
-                <span className="summary-chip">{selectedLanguage === 'spanish' ? '🇪🇸' : '🇺🇸'} {selectedLanguage}</span>
-                <span className="summary-chip">🎨 {ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>
+              <h2 className="gen-title">Processing Content...</h2>
+              <div className="gen-summary-list">
+                <div className="summary-item">
+                  <span className="summary-key">Subject</span>
+                  <span className="summary-val">{characterInput}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="summary-key">Setting</span>
+                  <span className="summary-val">{sceneDescription.slice(0, 30)}...</span>
+                </div>
+                <div className="summary-item">
+                  <span className="summary-key">Locale</span>
+                  <span className="summary-val">{selectedLanguage}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="summary-key">Style</span>
+                  <span className="summary-val">{ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>
+                </div>
               </div>
               <AnimatePresence mode="wait">
-                <motion.p key={tipIndex} className="gen-tip"
+                <motion.p className="gen-tip"
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
-                  {WRITING_TIPS[tipIndex]}
+                  Writing your story...
                 </motion.p>
               </AnimatePresence>
-              <div className="generating-dots">
-                {[0, 1, 2].map(i => <div key={i} className="gen-dot" style={{ animationDelay: `${i * 0.2}s` }} />)}
+              <div className="generating-bar-wrap">
+                <div className="generating-bar" />
               </div>
             </motion.div>
           )}
@@ -402,51 +395,29 @@ export default function StoryGenerator() {
           {/* ── Preview ── */}
           {step === 'preview' && generatedStory && (
             <motion.div key="preview" className="gen-card preview-card"
-              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 200 }}>
-              <motion.div className="preview-confetti" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ delay: 2, duration: 1 }}>
-                {['🎉', '⭐', '✨', '🎊', '🌟'].map((e, i) => (
-                  <span key={i} className="confetti-piece" style={{ '--ci': i } as React.CSSProperties}>{e}</span>
-                ))}
-              </motion.div>
-              <div className="preview-badge">📚 Your Story is Ready!</div>
-              <div className="preview-cover">
-                <div className="preview-cover-inner">
-                  {characterData?.character_image_url ? (
-                    <img
-                      src={`http://localhost:8000${characterData.character_image_url}`}
-                      alt={characterData.character_name}
-                      className="preview-portrait-img"
-                    />
-                  ) : (
-                    <div className="preview-emoji">🦸</div>
-                  )}
-                  <h3 className="preview-title">{generatedStory.title}</h3>
-                  <div className="preview-tags">
-                    <span className="preview-tag">Grade {grade}</span>
-                    <span className="preview-tag">{selectedLanguage === 'spanish' ? '🇪🇸 Español' : '🇺🇸 English'}</span>
-                    <span className="preview-tag">
-                      {ART_STYLES.find(a => a.id === selectedArtStyle)?.emoji} {ART_STYLES.find(a => a.id === selectedArtStyle)?.label}
-                    </span>
-                  </div>
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}>
+              <div className="preview-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Generation Complete
+              </div>
+
+              <div className="preview-cover-large">
+                <h3 className="preview-title">{generatedStory.title}</h3>
+                <div className="preview-tags">
+                  <span className="preview-tag">Grade {grade}</span>
+                  <span className="preview-tag">{selectedLanguage}</span>
+                  <span className="preview-tag">{ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>
                 </div>
               </div>
-              <div className="preview-xp-badge">+50 XP for completing! ⭐</div>
+
               <div className="gen-btn-row">
-                <motion.button className="gen-btn" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                <motion.button className="gen-btn" style={{ flex: 1, padding: '16px' }}
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={() => navigate(`/read/${generatedStory.id}`)}>
-                  📖 Start Reading!
+                  View Content
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ width: 16, height: 16, marginLeft: 8 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </motion.button>
-                <button className="landing-btn-ghost"
-                  onClick={() => {
-                    setStep('character')
-                    setCharacterInput('')
-                    setCharacterData(null)
-                    setSceneDescription('')
-                    setSelectedArtStyle(null)
-                  }}>
-                  Create Another
-                </button>
               </div>
             </motion.div>
           )}
