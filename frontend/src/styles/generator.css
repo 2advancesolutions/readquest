@@ -7,25 +7,49 @@
 }
 
 .gen-header {
-  padding: 24px 32px;
+  padding: 16px 32px;
   background: var(--rq-card);
   border-bottom: 1px solid rgba(15, 23, 42, 0.05);
-}
-
-.gen-back-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  position: relative;
+}
+
+.gen-header-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--rq-text);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.gen-back-btn,
+.reader-back-btn,
+.gen-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
-  border: none;
+  border: 1px solid var(--rq-text-light);
   color: var(--rq-text-muted);
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
+  padding: 7px 14px;
+  border-radius: var(--rq-radius-sm);
   cursor: pointer;
-  transition: color 0.2s;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
-.gen-back-btn svg { width: 18px; height: 18px; }
-.gen-back-btn:hover { color: var(--rq-text); }
+.gen-back-btn:hover,
+.reader-back-btn:hover,
+.gen-back:hover {
+  background: var(--rq-bg-alt);
+  color: var(--rq-text);
+  border-color: var(--rq-text-muted);
+}
 
 .gen-container {
   flex: 1;
