@@ -93,6 +93,21 @@
   transform-style: preserve-3d;
   position: relative;
 }
+
+/* Loading overlay — covers spread while illustration loads  */
+.page-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(30, 27, 75, 0.88);
+  border-radius: 4px 24px 24px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  backdrop-filter: blur(4px);
+}
 /* Spine effect */
 .reader-spread::before {
   content: '';
@@ -579,6 +594,38 @@
 .comp-header h2 { font-family: var(--font-heading); font-size: 1.9rem; color: var(--rq-purple); margin: 0 0 8px; }
 .comp-sub { color: var(--rq-text-muted); margin: 0; }
 
+/* Score pill strip — shows reading / quiz / overall before comprehension Q&A */
+.comp-score-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #F5F3FF;
+  border-radius: 20px;
+  padding: 14px 20px;
+}
+.comp-score-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: white;
+  border-radius: 14px;
+  padding: 10px 16px;
+  min-width: 70px;
+  box-shadow: 0 2px 8px rgba(124,58,237,0.08);
+}
+.comp-score-pill.featured {
+  background: linear-gradient(135deg, #7C3AED, #5B21B6);
+}
+.comp-score-pill.featured .pill-icon,
+.comp-score-pill.featured .pill-val,
+.comp-score-pill.featured .pill-label { color: white !important; }
+.pill-icon { font-size: 1.2rem; }
+.pill-val { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 800; color: var(--rq-purple); }
+.pill-label { font-size: 0.7rem; color: var(--rq-text-muted); }
+
+/* keep old comp-score-row styles for any legacy usage */
 .comp-score-row {
   display: flex;
   align-items: center;
@@ -640,7 +687,7 @@
 /* ── Results ── */
 .comp-results {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 12px;
 }
 .result-card {
@@ -653,9 +700,90 @@
   gap: 6px;
   text-align: center;
 }
+.result-card.featured {
+  background: linear-gradient(135deg, #7C3AED, #5B21B6);
+}
+.result-card.featured .result-icon,
+.result-card.featured .result-val,
+.result-card.featured .result-label { color: white !important; }
 .result-icon { font-size: 1.8rem; }
 .result-val { font-family: var(--font-heading); font-size: 1.6rem; font-weight: 800; color: var(--rq-purple); }
 .result-label { font-size: 0.78rem; color: var(--rq-text-muted); }
+
+/* ── Review Words Grid ── */
+.review-words-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin: 16px 0;
+}
+.review-word-card {
+  background: #FEE2E2;
+  border: 2px solid #FECACA;
+  border-radius: 14px;
+  padding: 10px 18px;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #DC2626;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+}
+.review-word-card.active {
+  background: #FEF3C7;
+  border-color: #FCD34D;
+  color: #B45309;
+  box-shadow: 0 0 12px rgba(252,211,77,0.4);
+  transform: scale(1.08);
+}
+.review-word-card.correct {
+  background: #D1FAE5;
+  border-color: #6EE7B7;
+  color: #059669;
+}
+.review-check { font-size: 1rem; }
+.review-controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+.review-listening-indicator {
+  text-align: center;
+  background: linear-gradient(135deg, #EDE9FE, #F5F3FF);
+  border: 2px solid #C4B5FD;
+  border-radius: 16px;
+  padding: 14px 20px;
+  font-size: 1.1rem;
+  color: #6D28D9;
+  margin-top: 16px;
+  font-weight: 600;
+}
+.review-start-btn {
+  font-size: 1.2rem;
+  padding: 14px 40px;
+  background: linear-gradient(135deg, #7C3AED, #6D28D9);
+  box-shadow: 0 4px 20px rgba(124,58,237,0.35);
+}
+
+/* ── AI Comprehension Feedback ── */
+.comp-ai-feedback {
+  background: linear-gradient(135deg, #EDE9FE, #F5F3FF);
+  border: 1px solid #C4B5FD;
+  border-radius: 16px;
+  padding: 16px 20px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--rq-text);
+  line-height: 1.5;
+  margin: 8px 0;
+}
+.comp-ai-feedback strong {
+  color: var(--rq-purple);
+}
 
 /* ── Stars ── */
 .star-rating {
@@ -800,19 +928,69 @@
 
 /* ── Live score bar ── */
 .live-score-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #F8F8FF;
-  border: 1.5px solid #E5E7EB;
+  position: relative;
+  height: 6px;
+  background: #E5E7EB;
   border-radius: 50px;
-  padding: 6px 18px;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
+  overflow: hidden;
+}
+.live-score-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ADE80, #22D3EE);
+  border-radius: 50px;
+  transition: width 0.4s ease;
+}
+.live-score-text {
+  position: absolute;
+  right: 0;
+  top: -20px;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  color: var(--rq-text-muted);
+}
+
+/* ── Video shimmer placeholder ── */
+.video-shimmer {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  background: linear-gradient(135deg, #F5F3FF, #EEF2FF);
+  border-radius: 16px;
+  border: 2px dashed rgba(124,58,237,0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+}
+
+.shimmer-bar {
+  width: 70%;
+  height: 10px;
+  border-radius: 50px;
+  background: linear-gradient(90deg, #E0E7FF 25%, #C7D2FE 50%, #E0E7FF 75%);
+  background-size: 200% 100%;
+  animation: shimmer-sweep 1.6s infinite linear;
+}
+.shimmer-bar.short { width: 45%; height: 8px; }
+
+@keyframes shimmer-sweep {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.shimmer-icon {
+  font-size: 2.8rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+.shimmer-label {
   font-family: var(--font-heading);
   font-size: 0.82rem;
+  color: #7C3AED;
+  opacity: 0.7;
+  margin: 0;
+  text-align: center;
 }
-.live-score-correct { color: #166534; font-weight: 700; }
-.live-score-wrong   { color: #991B1B; font-weight: 700; }
-.live-score-pct     { color: var(--rq-purple); font-weight: 800; font-size: 0.95rem; }
-
-
