@@ -461,37 +461,42 @@ export default function BookReader() {
 
       {/* Top bar */}
       <div className="reader-topbar">
-        <button className="reader-back-btn" onClick={()=>{tts.stop();mic.stopListening();navigate('/dashboard')}}>← Dashboard</button>
+        <button className="reader-back-btn" onClick={()=>{tts.stop();mic.stopListening();navigate('/dashboard')}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          Exit
+        </button>
         <h1 className="reader-title">{story.title}</h1>
         <div className="reader-topbar-right">
-          <span className="reader-page-counter">{currentPage+1} / {story.pages.length}</span>
+          <span className="reader-page-counter">Page {currentPage+1} of {story.pages.length}</span>
           {pageScores.length > 0 && (
             <span className="reader-acc-badge">
-              📊 {Math.round(pageScores.reduce((a,s)=>a+s.correctWords,0)/Math.max(pageScores.reduce((a,s)=>a+s.totalWords,0),1)*100)}%
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              {Math.round(pageScores.reduce((a,s)=>a+s.correctWords,0)/Math.max(pageScores.reduce((a,s)=>a+s.totalWords,0),1)*100)}% Accuracy
             </span>
           )}
         </div>
       </div>
 
       {/* Status banner */}
-      {mic.isListening && (
-        <motion.div className="phase-banner reading active" initial={{opacity:0}} animate={{opacity:1}}>
-          <span className="banner-icon">🎙️</span>
-          <span>I'm listening — read the words out loud!</span>
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {mic.isListening && (
+          <motion.div className="phase-banner reading active" initial={{opacity:0, y:-10}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-10}}>
+            <span className="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
+            <span>Listening... Please read aloud.</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Book */}
       <div className="reader-book-container">
         <AnimatePresence mode="wait" custom={direction}>
           {phase === 'quiz' ? (
             <motion.div key="quiz" className="quiz-panel"
-              initial={{scale:0.8,opacity:0,y:30}} animate={{scale:1,opacity:1,y:0}}
-              exit={{scale:0.8,opacity:0}} transition={{type:'spring',stiffness:220,damping:22}}>
+              initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
+              exit={{opacity:0}} transition={{duration:0.3}}>
               <div className="quiz-header">
-                <span className="quiz-icon">🧠</span>
-                <h3>Quick Quiz!</h3>
-                <p className="quiz-sub">Let's see what you remember!</p>
+                <h3>Comprehension Check</h3>
+                <p className="quiz-sub">Select the best answer to continue.</p>
               </div>
               <p className="quiz-question">{quizQ?.question}</p>
               <div className="quiz-choices">
@@ -504,7 +509,7 @@ export default function BookReader() {
                   }
                   return (
                     <motion.button key={i} className={cls}
-                      whileHover={!selectedAnswer?{scale:1.03}:{}} whileTap={!selectedAnswer?{scale:0.98}:{}}
+                      whileHover={!selectedAnswer?{x:4}:{}}
                       onClick={()=>handleAnswerSelect(c)}>
                       <span className="choice-letter">{String.fromCharCode(65+i)}</span>{c}
                     </motion.button>
@@ -514,81 +519,71 @@ export default function BookReader() {
               {answerResult && (
                 <motion.div className={`quiz-feedback ${answerResult}`} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}>
                   {answerResult==='correct'
-                    ?<><span>🎉</span><div><strong>Correct!</strong><p>{quizQ?.explanation}</p></div></>
-                    :<><span>💡</span><div><strong>Good try!</strong><p>The answer is: <em>{quizQ?.correct_answer}</em>. {quizQ?.explanation}</p></div></>}
+                    ?<><span className="feedback-icon">✓</span><div><strong>Correct</strong><p>{quizQ?.explanation}</p></div></>
+                    :<><span className="feedback-icon">✗</span><div><strong>Incorrect</strong><p>The correct answer is: {quizQ?.correct_answer}. {quizQ?.explanation}</p></div></>}
                 </motion.div>
               )}
               {selectedAnswer && (
-                <motion.button className="quiz-continue-btn" onClick={handleQuizContinue}
-                  initial={{opacity:0}} animate={{opacity:1}} whileHover={{scale:1.04}}>
-                  {currentPage>=(story?.pages.length??0)-1?'🎉 Finish the Book!':'Keep Reading →'}
-                </motion.button>
+                <div style={{display:'flex', justifyContent:'flex-end', marginTop: 24}}>
+                  <motion.button className="quiz-continue-btn" onClick={handleQuizContinue}
+                    initial={{opacity:0}} animate={{opacity:1}} whileHover={{scale:1.02}} whileTap={{scale:0.98}}>
+                    {currentPage>=(story?.pages.length??0)-1?'Complete Reading':'Continue Reading'}
+                  </motion.button>
+                </div>
               )}
             </motion.div>
           ) : (
             <motion.div key={`page-${currentPage}`} className="reader-spread"
               custom={direction}
               variants={{
-                enter:(d:number)=>({x:d*60,opacity:0,rotateY:d>0?-8:8}),
-                center:{x:0,opacity:1,rotateY:0},
-                exit:(d:number)=>({x:d*-60,opacity:0,rotateY:d>0?8:-8}),
+                enter:(d:number)=>({x:d*20,opacity:0}),
+                center:{x:0,opacity:1},
+                exit:(d:number)=>({x:d*-20,opacity:0}),
               }}
               initial="enter" animate="center" exit="exit"
-              transition={{type:'spring',stiffness:220,damping:26}}>
+              transition={{duration:0.3, ease:'easeInOut'}}>
 
-              {/* Left — Animated Illustration */}
+              {/* Top/Left — Image (for mobile, flows to top. For desktop, could be left) */}
               <div className="book-page book-left">
-                {page?.image_url ? (
+                {page?.media_url ? (
                   <div className="book-image-wrap">
-                    <motion.img
-                      src={page.image_url}
-                      alt={`Page ${currentPage+1}`}
-                      className="book-illustration animated-img"
-                      initial={{scale:1}}
-                      animate={{
-                        scale:[1,1.03,1],
-                        y:[0,-4,0],
-                      }}
-                      transition={{repeat:Infinity,duration:5,ease:'easeInOut'}}
-                    />
-                    {/* Floating particles overlay */}
-                    <div className="img-particles">
-                      {[...Array(5)].map((_,i)=>(
-                        <motion.div key={i} className="img-particle"
-                          style={{left:`${15+i*17}%`}}
-                          animate={{y:[-8,8,-8],opacity:[0.5,1,0.5],scale:[0.8,1.2,0.8]}}
-                          transition={{repeat:Infinity,duration:2+i*0.4,delay:i*0.3,ease:'easeInOut'}}>
-                          {['✨','⭐','🌟','💫','🌸'][i]}
-                        </motion.div>
-                      ))}
-                    </div>
+                    {page.media_url.endsWith('.mp4') || page.media_url.endsWith('.webm') ? (
+                      <video
+                        src={page.media_url}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="book-illustration animated-img"
+                        style={{objectFit: 'cover'}}
+                      />
+                    ) : (
+                      <img
+                        src={page.media_url}
+                        alt={`Page ${currentPage+1}`}
+                        className="book-illustration"
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="book-illustration-placeholder">
-                    <motion.div className="placeholder-emoji"
-                      animate={{y:[0,-10,0],rotate:[0,3,-3,0]}}
-                      transition={{repeat:Infinity,duration:3,ease:'easeInOut'}}>
-                      📖
-                    </motion.div>
-                    <p className="placeholder-caption">Page {currentPage+1}</p>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2-2v12a2 2 0 002 2z" /></svg>
                   </div>
                 )}
-                <div className="page-number left-page-num">{currentPage+1}</div>
               </div>
 
-              {/* Right — Word text + controls */}
+              {/* Bottom/Right — Text content */}
               <div className="book-page book-right">
+
                 {/* Live score counter */}
                 {wordStatuses.some(s => s !== 'idle') && (() => {
                   const correctCount = wordStatuses.filter(s => s === 'correct').length
-                  const wrongCount = wordStatuses.filter(s => s === 'wrong').length
                   const total = pageWordsRef.current.length
                   const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0
                   return (
                     <div className="live-score-bar">
-                      <span className="live-score-correct">✅ {correctCount} correct</span>
-                      <span className="live-score-pct">{pct}%</span>
-                      <span className="live-score-wrong">❌ {wrongCount} missed</span>
+                      <div className="live-score-fill" style={{width: `${pct}%`}} />
+                      <span className="live-score-text">{pct}% Read</span>
                     </div>
                   )
                 })()}
@@ -596,50 +591,34 @@ export default function BookReader() {
                 <div className="book-text-content">
                   <p className="book-text">
                     {pageWordsRef.current.map((word,i)=>(
-                      <motion.span key={i} id={`word-${i}`}
+                      <span key={i} id={`word-${i}`}
                         className={`word word-${wordStatuses[i]||'idle'}`}
-                        animate={wordStatuses[i]==='correct'?{scale:[1,1.15,1]}:wordStatuses[i]==='wrong'?{x:[0,-3,3,-3,0]}:{}}
-                        transition={{duration:0.3}}>
+                        style={{transition: 'color 0.2s'}}>
                         {word}{' '}
-                      </motion.span>
+                      </span>
                     ))}
                   </p>
                 </div>
 
                 {/* Controls row */}
                 <div className="controls-row">
-                  {/* Mic button */}
                   {mic.isSupported && (
-                    <div className="mic-area">
-                      <motion.button className={`mic-btn ${mic.isListening?'mic-active':''}`}
-                        whileHover={{scale:1.08}} whileTap={{scale:0.93}} onClick={toggleMic}>
-                        {mic.isListening?(<><div className="pulse-ring"/><div className="pulse-ring delay"/>🎙️</>):(<>🎤</>)}
-                      </motion.button>
-                      <span className="mic-label">{mic.isListening?'Tap to stop':'Read aloud'}</span>
-                    </div>
+                    <button className={`control-btn ${mic.isListening?'active':''}`} onClick={toggleMic}>
+                      {mic.isListening ? <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} /><rect x="9" y="9" width="6" height="6" fill="currentColor" /></svg> Stop</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg> Read Aloud</>}
+                    </button>
                   )}
-
-                  {/* Read paragraph button */}
-                  <div className="mic-area">
-                    <motion.button className={`read-para-btn ${tts.isSpeaking?'speaking':''}`}
-                      whileHover={{scale:1.06}} whileTap={{scale:0.94}} onClick={handleReadParagraph}>
-                      {tts.isSpeaking?'⏹ Stop':'🔊'}
-                    </motion.button>
-                    <span className="mic-label">{tts.isSpeaking?'Stop reading':'Read to me'}</span>
-                  </div>
+                  <button className={`control-btn ${tts.isSpeaking?'active':''}`} onClick={handleReadParagraph}>
+                    {tts.isSpeaking ? <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} /><rect x="9" y="9" width="6" height="6" fill="currentColor" /></svg> Stop</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg> Listen</>}
+                  </button>
                 </div>
 
                 {/* Navigation */}
                 <div className="book-nav">
-                  <button className="book-nav-btn" onClick={handlePrevPage} disabled={currentPage===0}>‹ Prev</button>
-                  <div className="book-dots">
-                    {story.pages.map((_,i)=><div key={i} className={`dot ${i===currentPage?'active':i<currentPage?'done':''}`}/>)}
-                  </div>
+                  <button className="book-nav-btn" onClick={handlePrevPage} disabled={currentPage===0}>Previous</button>
                   <button className="book-nav-btn primary" onClick={handleNextPage}>
-                    {currentPage>=story.pages.length-1?'🎉 Finish!':'Next ›'}
+                    {currentPage>=story.pages.length-1?'Finish':'Next Page'}
                   </button>
                 </div>
-                <div className="page-number right-page-num">{currentPage+2}</div>
               </div>
             </motion.div>
           )}
@@ -650,8 +629,8 @@ export default function BookReader() {
       <AnimatePresence>
         {xpToast&&(
           <motion.div key={xpToast.id} className="xp-toast"
-            initial={{opacity:1,y:0,x:'-50%'}} animate={{opacity:0,y:-60}} transition={{duration:1.8}}>
-            ⭐ +{xpToast.amount} XP!
+            initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}} transition={{duration:0.3}}>
+            +{xpToast.amount} XP
           </motion.div>
         )}
       </AnimatePresence>

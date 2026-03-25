@@ -38,7 +38,7 @@ export interface StoryPage {
   story_id: string;
   page_number: number;
   content: string;
-  image_url?: string;
+  media_url?: string;
   word_count: number;
 }
 
@@ -57,7 +57,7 @@ export interface Story {
   title: string;
   grade_level: number;
   theme: string;
-  cover_image_url?: string;
+  cover_media_url?: string;
   pages: StoryPage[];
   quiz_questions: QuizQuestion[];
   created_at: string;
