@@ -545,13 +545,25 @@ export default function BookReader() {
 
               {/* Top/Left — Image (for mobile, flows to top. For desktop, could be left) */}
               <div className="book-page book-left">
-                {page?.image_url ? (
+                {page?.media_url ? (
                   <div className="book-image-wrap">
-                    <img
-                      src={page.image_url}
-                      alt={`Page ${currentPage+1}`}
-                      className="book-illustration"
-                    />
+                    {page.media_url.endsWith('.mp4') || page.media_url.endsWith('.webm') ? (
+                      <video
+                        src={page.media_url}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="book-illustration animated-img"
+                        style={{objectFit: 'cover'}}
+                      />
+                    ) : (
+                      <img
+                        src={page.media_url}
+                        alt={`Page ${currentPage+1}`}
+                        className="book-illustration"
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="book-illustration-placeholder">

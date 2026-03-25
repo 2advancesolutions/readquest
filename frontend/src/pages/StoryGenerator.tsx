@@ -36,7 +36,7 @@ interface CharacterData {
   character_name: string
   universe: string
   description: string
-  character_image_url: string | null
+  character_media_url: string | null
   scenes: { id: string; label: string; emoji: string; description: string; color: string }[]
 }
 
@@ -87,7 +87,7 @@ export default function StoryGenerator() {
         character_name: characterInput.trim(),
         universe: 'Original Story',
         description: `The amazing ${characterInput.trim()} — ready for a great adventure!`,
-        character_image_url: null,
+        character_media_url: null,
         scenes: [],
       })
     } finally {
@@ -216,13 +216,25 @@ export default function StoryGenerator() {
                       <div className="scene-portrait-placeholder pulse">
                         <svg className="loader-ring" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                       </div>
-                    ) : characterData?.character_image_url ? (
-                      <motion.img
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                        src={`http://localhost:8000${characterData.character_image_url}`}
-                        alt={characterData.character_name}
-                        className="scene-portrait-img"
-                      />
+                    ) : characterData?.character_media_url ? (
+                      characterData.character_media_url.endsWith('.mp4') || characterData.character_media_url.endsWith('.webm') ? (
+                        <video
+                          src={characterData.character_media_url.startsWith('http') ? characterData.character_media_url : `http://localhost:8000${characterData.character_media_url}`}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="scene-portrait-img"
+                          style={{objectFit: 'cover'}}
+                        />
+                      ) : (
+                        <motion.img
+                          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                          src={characterData.character_media_url.startsWith('http') ? characterData.character_media_url : `http://localhost:8000${characterData.character_media_url}`}
+                          alt={characterData.character_name}
+                          className="scene-portrait-img"
+                        />
+                      )
                     ) : (
                       <div className="scene-portrait-placeholder">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>

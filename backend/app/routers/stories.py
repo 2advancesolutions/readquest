@@ -30,7 +30,7 @@ class PageResponse(BaseModel):
     story_id: str
     page_number: int
     content: str
-    image_url: Optional[str] = None
+    media_url: Optional[str] = None
     word_count: int
 
 
@@ -49,7 +49,7 @@ class StoryResponse(BaseModel):
     title: str
     grade_level: int
     theme: str
-    cover_image_url: Optional[str] = None
+    cover_media_url: Optional[str] = None
     pages: list[PageResponse] = []
     quiz_questions: list[QuizResponse] = []
     created_at: str
@@ -190,7 +190,7 @@ async def generate_story(
         title=story_data["title"],
         grade_level=req.grade,
         theme=req.theme,
-        cover_image_url=story_data.get("cover_image_url"),
+        cover_media_url=story_data.get("cover_image_url"),
     )
     db.add(story)
     await db.flush()
@@ -201,7 +201,7 @@ async def generate_story(
             story_id=story.id,
             page_number=p["page_number"],
             content=p["content"],
-            image_url=p.get("image_url"),
+            media_url=p.get("image_url"),
             word_count=len(p["content"].split()),
         )
         db.add(page)
@@ -230,8 +230,8 @@ async def generate_story(
         "title": story.title,
         "grade_level": story.grade_level,
         "theme": story.theme,
-        "cover_image_url": story.cover_image_url,
-        "pages": [{"id": p.id, "story_id": p.story_id, "page_number": p.page_number, "content": p.content, "image_url": p.image_url, "word_count": p.word_count} for p in pages],
+        "cover_media_url": story.cover_media_url,
+        "pages": [{"id": p.id, "story_id": p.story_id, "page_number": p.page_number, "content": p.content, "media_url": p.media_url, "word_count": p.word_count} for p in pages],
         "quiz_questions": [{"id": q.id, "story_page_id": q.story_page_id, "question": q.question, "choices": q.choices, "correct_answer": q.correct_answer, "explanation": q.explanation} for q in quiz_questions],
         "created_at": str(story.created_at),
     }
@@ -241,7 +241,7 @@ async def generate_story(
 async def list_stories(x_student_id: str = Header(...), db: AsyncSession = Depends(get_session)):
     result = await db.execute(select(Story).where(Story.student_id == x_student_id))
     stories = result.scalars().all()
-    return [{"id": s.id, "title": s.title, "theme": s.theme, "grade_level": s.grade_level, "cover_image_url": s.cover_image_url, "created_at": str(s.created_at)} for s in stories]
+    return [{"id": s.id, "title": s.title, "theme": s.theme, "grade_level": s.grade_level, "cover_media_url": s.cover_media_url, "created_at": str(s.created_at)} for s in stories]
 
 
 @router.get("/{story_id}")
@@ -264,8 +264,8 @@ async def get_story(story_id: str, db: AsyncSession = Depends(get_session)):
         "title": story.title,
         "grade_level": story.grade_level,
         "theme": story.theme,
-        "cover_image_url": story.cover_image_url,
-        "pages": [{"id": p.id, "story_id": p.story_id, "page_number": p.page_number, "content": p.content, "image_url": p.image_url, "word_count": p.word_count} for p in sorted(pages, key=lambda x: x.page_number)],
+        "cover_media_url": story.cover_media_url,
+        "pages": [{"id": p.id, "story_id": p.story_id, "page_number": p.page_number, "content": p.content, "media_url": p.media_url, "word_count": p.word_count} for p in sorted(pages, key=lambda x: x.page_number)],
         "quiz_questions": [{"id": q.id, "story_page_id": q.story_page_id, "question": q.question, "choices": q.choices, "correct_answer": q.correct_answer, "explanation": q.explanation} for q in quiz_questions],
         "created_at": str(story.created_at),
     }
