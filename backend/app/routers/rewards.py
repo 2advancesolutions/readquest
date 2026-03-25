@@ -24,11 +24,14 @@ def compute_level(total_xp: int) -> Tuple[int, str, int, float]:
 
 @router.get("/xp")
 async def get_xp(x_student_id: str = Header(...), db: AsyncSession = Depends(get_session)):
+    from app.models.gamification import ReadingProgress
+
+    # ── Total XP & level ───────────────────────────────────────────────────
     total_result = await db.execute(select(func.sum(XPLedger.amount)).where(XPLedger.student_id == x_student_id))
     total_xp = total_result.scalar() or 0
     level, level_name, xp_to_next, pct = compute_level(total_xp)
 
-    # Current streak
+    # ── Current streak ─────────────────────────────────────────────────────
     streak_result = await db.execute(
         select(Streak.active_date).where(Streak.student_id == x_student_id).order_by(desc(Streak.active_date))
     )
@@ -42,6 +45,52 @@ async def get_xp(x_student_id: str = Header(...), db: AsyncSession = Depends(get
         else:
             break
 
+    # ── XP history — last 7 days ───────────────────────────────────────────
+    xp_history = []
+    for i in range(6, -1, -1):
+        day = date.today() - timedelta(days=i)
+        result = await db.execute(
+            select(func.sum(XPLedger.amount)).where(
+                XPLedger.student_id == x_student_id,
+                func.date(XPLedger.earned_at) == day,
+            )
+        )
+        xp_history.append({"date": day.strftime("%a"), "amount": result.scalar() or 0})
+
+    # ── Weekly activity — did the student read on each of the last 7 days? ─
+    weekly_activity = []
+    for i in range(6, -1, -1):
+        day = date.today() - timedelta(days=i)
+        read_result = await db.execute(
+            select(func.count()).where(
+                Streak.student_id == x_student_id,
+                Streak.active_date == day,
+            )
+        )
+        weekly_activity.append({"date": day.strftime("%a"), "active": (read_result.scalar() or 0) > 0})
+
+    # ── Badges ─────────────────────────────────────────────────────────────
+    all_badges = (await db.execute(select(Badge))).scalars().all()
+    earned_ids = set(
+        r[0] for r in (await db.execute(
+            select(StudentBadge.badge_id).where(StudentBadge.student_id == x_student_id)
+        )).fetchall()
+    )
+    badges = [
+        {"id": b.id, "slug": b.slug, "name": b.name, "icon": b.icon,
+         "description": b.description, "earned": b.id in earned_ids}
+        for b in all_badges
+    ]
+
+    # ── Stories read count ─────────────────────────────────────────────────
+    stories_result = await db.execute(
+        select(func.count()).where(
+            ReadingProgress.student_id == x_student_id,
+            ReadingProgress.completed == True,
+        )
+    )
+    stories_read = stories_result.scalar() or 0
+
     return {
         "total_xp": total_xp,
         "level": level,
@@ -49,7 +98,12 @@ async def get_xp(x_student_id: str = Header(...), db: AsyncSession = Depends(get
         "xp_to_next_level": xp_to_next,
         "xp_progress_pct": round(pct, 1),
         "current_streak": current_streak,
+        "xp_history": xp_history,
+        "weekly_activity": weekly_activity,
+        "badges": badges,
+        "stories_read": stories_read,
     }
+
 
 
 @router.get("/xp/history")
@@ -91,7 +145,66 @@ async def get_streaks(x_student_id: str = Header(...), db: AsyncSession = Depend
     return {"active_dates": dates}
 
 
+
+@router.post("/record-activity")
+async def record_activity(
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Record that the student read today — updates streak and weekly activity.
+    Call this whenever a page is completed or a story is finished.
+    """
+    from app.models.gamification import ReadingProgress
+    today = date.today()
+
+    # Only insert one streak row per day per student
+    existing = await db.execute(
+        select(Streak).where(
+            Streak.student_id == x_student_id,
+            Streak.active_date == today,
+        )
+    )
+    if not existing.scalar_one_or_none():
+        db.add(Streak(student_id=x_student_id, active_date=today))
+        await db.commit()
+
+    return {"recorded": True, "date": str(today)}
+
+
+@router.post("/complete-story")
+async def complete_story(
+    story_id: str,
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+):
+    """Mark a story as completed and record reading progress."""
+    from app.models.gamification import ReadingProgress
+    from datetime import datetime
+
+    existing = await db.execute(
+        select(ReadingProgress).where(
+            ReadingProgress.student_id == x_student_id,
+            ReadingProgress.story_id == story_id,
+        )
+    )
+    prog = existing.scalar_one_or_none()
+    if prog:
+        prog.completed = True
+        prog.completed_at = datetime.utcnow()
+    else:
+        db.add(ReadingProgress(
+            student_id=x_student_id,
+            story_id=story_id,
+            completed=True,
+            completed_at=datetime.utcnow(),
+        ))
+    await db.commit()
+    return {"completed": True}
+
+
 @router.get("/leaderboard")
+
 async def get_leaderboard(db: AsyncSession = Depends(get_session)):
     result = await db.execute(
         select(XPLedger.student_id, func.sum(XPLedger.amount).label("total_xp"))

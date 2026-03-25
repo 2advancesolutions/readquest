@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from app.routers import students, stories, quizzes, rewards
+from app.routers import students, stories, quizzes, rewards, tts
 import app.database as db
 
 app = FastAPI(
@@ -26,8 +26,9 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     await db.create_tables()
-    # Ensure static images dir exists
+    # Ensure static dirs exist
     Path("static/images").mkdir(parents=True, exist_ok=True)
+    Path("static/videos").mkdir(parents=True, exist_ok=True)
 
 
 # Serve generated images
@@ -44,3 +45,4 @@ app.include_router(students.router, prefix="/api/students", tags=["students"])
 app.include_router(stories.router, prefix="/api/stories", tags=["stories"])
 app.include_router(quizzes.router, prefix="/api/quizzes", tags=["quizzes"])
 app.include_router(rewards.router, prefix="/api/rewards", tags=["rewards"])
+app.include_router(tts.router, prefix="/api/tts", tags=["tts"])
