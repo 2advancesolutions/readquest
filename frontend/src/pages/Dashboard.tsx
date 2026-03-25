@@ -14,18 +14,18 @@ const LEVEL_NAMES: Record<number, string> = {
 
 // Mock data for demo mode (no backend)
 const MOCK_REWARDS: StudentRewards = {
-  total_xp: 340, level: 2, level_name: 'Story Explorer', xp_to_next_level: 60, xp_progress_pct: 70,
-  current_streak: 5,
-  badges: [
-    { id: '1', slug: 'first_book', name: 'First Book!', icon: '📖', description: 'Read your first book', earned: true, earned_at: '2024-01-01' },
-    { id: '2', slug: 'streak_3', name: '3-Day Streak', icon: '🔥', description: 'Read 3 days in a row', earned: true, earned_at: '2024-01-03' },
-    { id: '3', slug: 'quiz_master', name: 'Quiz Master', icon: '🧠', description: 'Get 5 quiz questions right', earned: false },
-    { id: '4', slug: 'speed_reader', name: 'Speed Reader', icon: '⚡', description: 'Read a book in under 10 min', earned: false },
-  ],
+  total_xp: 0, level: 1, level_name: 'Bookworm', xp_to_next_level: 200, xp_progress_pct: 0,
+  current_streak: 0,
+  badges: [],
   xp_history: [
-    { date: 'Mon', amount: 35 }, { date: 'Tue', amount: 80 }, { date: 'Wed', amount: 45 },
-    { date: 'Thu', amount: 0 },  { date: 'Fri', amount: 90 }, { date: 'Sat', amount: 50 }, { date: 'Sun', amount: 40 },
+    { date: 'Mon', amount: 0 }, { date: 'Tue', amount: 0 }, { date: 'Wed', amount: 0 },
+    { date: 'Thu', amount: 0 }, { date: 'Fri', amount: 0 }, { date: 'Sat', amount: 0 }, { date: 'Sun', amount: 0 },
   ],
+  weekly_activity: [
+    { date: 'Mon', active: false }, { date: 'Tue', active: false }, { date: 'Wed', active: false },
+    { date: 'Thu', active: false }, { date: 'Fri', active: false }, { date: 'Sat', active: false }, { date: 'Sun', active: false },
+  ],
+  stories_read: 0,
 }
 
 const MOCK_STORIES: Partial<Story>[] = [
@@ -58,6 +58,24 @@ export default function Dashboard() {
     localStorage.clear()
     navigate('/')
   }, [navigate])
+
+  const handleDelete = useCallback(async (e: React.MouseEvent, storyId: string) => {
+    e.stopPropagation()  // don't navigate to the story
+    if (!window.confirm('Delete this story? This cannot be undone.')) return
+    try {
+      await storiesApi.delete(storyId)
+      setStories(prev => prev.filter(s => s.id !== storyId))
+    } catch {
+      alert('Failed to delete story.')
+    }
+  }, [])
+
+  const resolveCoverUrl = (url?: string) => {
+    if (!url) return null
+    if (url.startsWith('/static')) return `http://localhost:8000${url}`
+    if (url.startsWith('http')) return url
+    return null
+  }
 
   const xpHistory = rewards.xp_history ?? []
   const maxXP = Math.max(...xpHistory.map(d => d.amount), 1)
@@ -132,7 +150,15 @@ export default function Dashboard() {
               </span>
             </div>
             <div className="metric-value">{rewards.current_streak} <span className="metric-unit">days</span></div>
-            <p className="metric-desc">Keep reading to maintain your momentum.</p>
+            <p className="metric-desc">
+              {rewards.current_streak === 0
+                ? 'Read today to start your streak! 🚀'
+                : rewards.current_streak >= 7
+                ? 'Incredible! A whole week of reading! 🔥🏆'
+                : rewards.current_streak >= 3
+                ? `${rewards.current_streak} days strong — keep it up! 🔥`
+                : 'Great start! Keep reading every day! ⭐'}
+            </p>
           </motion.div>
 
           <motion.div className="dash-metric-card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
@@ -140,14 +166,14 @@ export default function Dashboard() {
               <span className="metric-title">Weekly Activity</span>
             </div>
             <div className="bar-chart">
-              {xpHistory.map((d, i) => (
+              {(rewards.weekly_activity ?? xpHistory.map(d => ({ date: d.date, active: d.amount > 0 }))).map((d: { date: string; active: boolean }, i: number) => (
                 <div key={i} className="bar-col">
                   <motion.div
-                    className="bar-fill"
-                    initial={{ height: 0 }}
-                    animate={{ height: `${(d.amount / maxXP) * 100}%` }}
-                    transition={{ delay: 0.1 * i + 0.3, duration: 0.6, ease: 'easeOut' }}
-                    title={`${d.amount} XP`}
+                    className={`activity-dot ${d.active ? 'active' : ''}`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.1 * i + 0.3, duration: 0.4, ease: 'easeOut' }}
+                    title={d.active ? `Read on ${d.date}!` : `No reading on ${d.date}`}
                   />
                   <span className="bar-label">{d.date.charAt(0)}</span>
                 </div>
@@ -163,34 +189,46 @@ export default function Dashboard() {
           </div>
 
           <div className="story-grid">
-            {stories.map((s, i) => (
-              <motion.div
-                key={s.id}
-                className="story-card"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 * i + 0.3 }}
-                onClick={() => navigate(`/read/${s.id}`)}
-              >
-                <div className="story-cover">
-                  {s.cover_media_url ? (
-                    s.cover_media_url.endsWith('.mp4') || s.cover_media_url.endsWith('.webm') ? (
-                      <video src={s.cover_media_url} autoPlay loop muted playsInline style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+            {stories.map((s, i) => {
+              const coverUrl = resolveCoverUrl(s.cover_media_url as string | undefined)
+              return (
+                <motion.div
+                  key={s.id}
+                  className="story-card"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 * i + 0.3 }}
+                  onClick={() => navigate(`/read/${s.id}`)}
+                >
+                  {/* Delete button on hover */}
+                  <button
+                    className="story-delete-btn"
+                    title="Delete story"
+                    onClick={(e) => handleDelete(e, s.id!)}
+                  >✕</button>
+
+                  <div className="story-cover">
+                    {coverUrl ? (
+                      <img
+                        src={coverUrl}
+                        alt={s.title}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
                     ) : (
-                      <img src={s.cover_media_url} alt={s.title} />
-                    )
-                  ) : (
-                    <div className="story-cover-placeholder">
-                      {THEME_EMOJIS[s.theme || 'animals'] || <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>}
-                    </div>
-                  )}
-                </div>
-                <div className="story-info">
-                  <p className="story-title">{s.title}</p>
-                  <p className="story-meta">Grade {s.grade_level} • <span style={{textTransform:'capitalize'}}>{s.theme}</span></p>
-                </div>
-              </motion.div>
-            ))}
+                      <div className="story-cover-placeholder">
+                        <span style={{fontSize:'2.5rem'}}>
+                          {THEME_EMOJIS[s.theme || 'animals'] || '📖'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="story-info">
+                    <p className="story-title">{s.title}</p>
+                    <p className="story-meta">Grade {s.grade_level} • <span style={{textTransform:'capitalize'}}>{s.theme}</span></p>
+                  </div>
+                </motion.div>
+              )
+            })}
           </div>
         </div>
 

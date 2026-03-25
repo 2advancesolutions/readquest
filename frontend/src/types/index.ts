@@ -17,7 +17,11 @@ export interface ReadingSession {
   scores: PageScore[];
   totalCorrect: number;
   totalWords: number;
-  accuracyPct: number;
+  accuracyPct: number;    // overall score (70% reading + 30% quiz)
+  readingPct?: number;    // reading accuracy only
+  quizPct?: number;       // quiz accuracy only
+  quizCorrect?: number;
+  quizTotal?: number;
 }
 
 export interface ComprehensionAnswer {
@@ -89,6 +93,8 @@ export interface StudentRewards {
   current_streak: number;
   badges: Badge[];
   xp_history: { date: string; amount: number }[];
+  weekly_activity?: { date: string; active: boolean }[];
+  stories_read?: number;
 }
 
 export interface GenerateStoryRequest {

@@ -3,7 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
+  timeout: 180000, // 3 min for normal API calls
 });
 
 // Request interceptor — attach student_id from localStorage
@@ -23,9 +23,13 @@ export const storiesApi = {
   analyzeCharacter: (character: string) =>
     api.post('/stories/analyze-character', { character }),
   generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon') =>
-    api.post('/stories/generate', { grade, theme, character_name, language, art_style: artStyle }),
+    api.post('/stories/generate',
+      { grade, theme, character_name, language, art_style: artStyle },
+      { timeout: 300000 }, // 5 min — story text + 5 images
+    ),
   list: () => api.get('/stories'),
   get: (id: string) => api.get(`/stories/${id}`),
+  delete: (id: string) => api.delete(`/stories/${id}`),
 };
 
 export const quizzesApi = {
@@ -39,7 +43,12 @@ export const rewardsApi = {
   getBadges: () => api.get('/rewards/badges'),
   getStreaks: () => api.get('/rewards/streaks'),
   getLeaderboard: () => api.get('/rewards/leaderboard'),
+  /** Record that the student read today — updates streak + weekly activity */
+  recordActivity: () => api.post('/rewards/record-activity'),
+  /** Mark a story fully completed */
+  completeStory: (storyId: string) => api.post(`/rewards/complete-story?story_id=${storyId}`),
 };
+
 
 export const progressApi = {
   markPageRead: (storyId: string, pageNumber: number) =>
