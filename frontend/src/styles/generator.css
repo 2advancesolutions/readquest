@@ -217,6 +217,23 @@
   margin-top: 6px;
 }
 
+/* Prohibited content error */
+.gen-input.input-error, .gen-textarea.input-error {
+  border-color: #EF4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+.input-error-msg {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 10px;
+  color: #DC2626;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 /* ── Chips ── */
 .char-chips, .scene-chips-row {
   display: flex;
@@ -322,12 +339,80 @@
   object-fit: cover;
 }
 
+/* Wraps the shimmer+img together inside scene-portrait-wrap */
+.portrait-img-wrap {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Shimmer overlay shown while image is loading */
+.portrait-img-shimmer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #F5F3FF, #EDE9FE, #F5F3FF);
+  background-size: 200% 200%;
+  animation: shimmerBg 1.8s ease infinite;
+  border-radius: inherit;
+  z-index: 1;
+}
+
+@keyframes shimmerBg {
+  0% { background-position: 0% 50% }
+  50% { background-position: 100% 50% }
+  100% { background-position: 0% 50% }
+}
+
+/* Spinner ring + emoji */
+.portrait-spinner {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portrait-spinner-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid #C4B5FD;
+  border-top-color: #7C3AED;
+  animation: spin 0.9s linear infinite;
+}
+.portrait-spinner-emoji {
+  font-size: 2rem;
+  line-height: 1;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.shimmer-label {
+  font-size: 0.85rem;
+  color: #6D28D9;
+  font-weight: 600;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
 .scene-portrait-placeholder {
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #F5F3FF, #EDE9FE);
   color: var(--rq-text-light);
 }
 

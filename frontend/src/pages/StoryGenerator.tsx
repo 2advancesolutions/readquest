@@ -44,6 +44,51 @@ const STEP_NUMS: Record<Step, number> = {
   character: 1, scene: 2, language: 3, artStyle: 4, generating: 5, preview: 5,
 }
 
+// Words/phrases that trigger Gemini safety filters and should be blocked upfront
+const PROHIBITED_WORDS = [
+  'kill', 'murder', 'dead', 'death', 'blood', 'gore', 'gun', 'shoot', 'shot',
+  'bomb', 'explode', 'explosion', 'attack', 'fight', 'war', 'weapon', 'knife',
+  'stab', 'punch', 'violent', 'violence', 'hate', 'terror', 'terrorist',
+  'drug', 'alcohol', 'naked', 'sex', 'adult', 'porn', 'suicide', 'abuse',
+  'villain', 'evil', 'devil', 'demon', 'hell', 'racist',
+]
+
+function validateContent(text: string): string | null {
+  const lower = text.toLowerCase()
+  for (const word of PROHIBITED_WORDS) {
+    const regex = new RegExp(`\\b${word}\\b`, 'i')
+    if (regex.test(lower)) {
+      return `⚠️ Please keep the story kid-friendly! The word "${word}" isn't allowed. Try something fun like "going on an adventure" or "finding a hidden treasure"! 🌟`
+    }
+  }
+  return null
+}
+
+/** Shows a shimmer loader until the image finishes loading, then fades in */
+function PortraitImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false)
+  return (
+    <div className="portrait-img-wrap">
+      {!loaded && (
+        <div className="portrait-img-shimmer">
+          <div className="shimmer-spinner">
+            <div className="portrait-spinner-ring" />
+            <span className="portrait-spinner-emoji">🖼️</span>
+          </div>
+          <p className="shimmer-label">Loading your character… ✨</p>
+        </div>
+      )}
+      <motion.img
+        src={src}
+        alt={alt}
+        className="scene-portrait-img"
+        style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.5s ease' }}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  )
+}
+
 export default function StoryGenerator() {
   const navigate = useNavigate()
   const grade = Number(localStorage.getItem('readquest_grade') || 2)
@@ -56,6 +101,7 @@ export default function StoryGenerator() {
   const [charLoading, setCharLoading] = useState(false)
 
   const [sceneDescription, setSceneDescription] = useState('')
+  const [sceneError, setSceneError] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState('english')
   const [selectedArtStyle, setSelectedArtStyle] = useState<string | null>(null)
   const [tipIndex, setTipIndex] = useState(0)
@@ -64,9 +110,11 @@ export default function StoryGenerator() {
 
   const charMsgIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Step 1 submit: start LLM, transition to step 2 immediately ────────────
+  // ── Step 1 submit: validate then start LLM ────────────────────────────────
   const handleAnalyzeCharacter = async () => {
     if (!characterInput.trim()) { setAnalyzeError('Tell us your favorite character! 😊'); return }
+    const blocked = validateContent(characterInput)
+    if (blocked) { setAnalyzeError(blocked); return }
     setAnalyzeError('')
     setCharLoading(true)
     setCharacterData(null)
@@ -81,7 +129,15 @@ export default function StoryGenerator() {
 
     try {
       const res = await storiesApi.analyzeCharacter(characterInput.trim())
-      setCharacterData(res.data)
+      const d = res.data
+      // Backend key is `character_image_url`; our interface uses `character_media_url`
+      setCharacterData({
+        character_name: d.character_name ?? characterInput.trim(),
+        universe: d.universe ?? 'Original Story',
+        description: d.description ?? `The amazing ${characterInput.trim()}!`,
+        character_media_url: d.character_image_url ?? d.character_media_url ?? null,
+        scenes: d.scenes ?? [],
+      })
     } catch {
       setCharacterData({
         character_name: characterInput.trim(),
@@ -99,6 +155,13 @@ export default function StoryGenerator() {
   useEffect(() => () => { if (charMsgIntervalRef.current) clearInterval(charMsgIntervalRef.current) }, [])
 
   // ── Generate story ────────────────────────────────────────────────────────
+  const handleSceneContinue = () => {
+    const blocked = validateContent(sceneDescription)
+    if (blocked) { setSceneError(blocked); return }
+    setSceneError('')
+    setStep('language')
+  }
+
   const handleGenerate = async () => {
     setStep('generating')
     setGenerateError('')
@@ -166,28 +229,33 @@ export default function StoryGenerator() {
             <motion.div key="character" className="gen-card"
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
               <div className="gen-card-header">
-                <h2 className="gen-title">Character Configuration</h2>
-                <p className="gen-sub">Define the protagonist for your generated content.</p>
+                <h2 className="gen-title">🦸 Who's the Hero?</h2>
+                <p className="gen-sub">Pick a character for your story! It can be anyone — a kid, an animal, a robot, or even yourself! 🌟</p>
               </div>
 
               <div className="input-group">
-                <label className="input-label">Character Prompt</label>
+                <label className="input-label">⭐ Your Main Character</label>
                 <input
                   className="gen-input"
-                  placeholder="e.g. Spider-Man, Mario, my dog Buster..."
+                  placeholder="e.g. Luna the brave explorer, Max the clever dog, Zara the young inventor..."
                   value={characterInput}
-                  onChange={e => setCharacterInput(e.target.value)}
+                  onChange={e => { setCharacterInput(e.target.value); if (analyzeError) setAnalyzeError('') }}
                   onKeyDown={e => e.key === 'Enter' && handleAnalyzeCharacter()}
                   autoFocus
                 />
-                {analyzeError && <p className="gen-error">{analyzeError}</p>}
+                {analyzeError && (
+                  <motion.p className="input-error-msg"
+                    initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}}>
+                    {analyzeError}
+                  </motion.p>
+                )}
               </div>
 
               <div className="char-chips">
-                {['Sonic', 'Elsa', 'Pikachu', 'Batman'].map(c => (
+                {['Luna 🌙', 'Max 🐕', 'Zara ⚡', 'Leo 🦁'].map(c => (
                   <motion.button key={c} className="char-chip"
                     whileHover={{ y: -1 }}
-                    onClick={() => { setCharacterInput(c); setAnalyzeError('') }}>
+                    onClick={() => { setCharacterInput(c.split(' ')[0]); setAnalyzeError('') }}>
                     {c}
                   </motion.button>
                 ))}
@@ -197,7 +265,7 @@ export default function StoryGenerator() {
                 <motion.button className="gen-btn"
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={handleAnalyzeCharacter}>
-                  Generate Profile
+                  🚀 Let's Go!
                 </motion.button>
               </div>
             </motion.div>
@@ -213,44 +281,33 @@ export default function StoryGenerator() {
                 <div className="scene-char-side">
                   <div className="scene-portrait-wrap">
                     {charLoading ? (
+                      /* ── Generating spinner ── */
                       <div className="scene-portrait-placeholder pulse">
-                        <svg className="loader-ring" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        <div className="portrait-spinner">
+                          <div className="portrait-spinner-ring" />
+                          <span className="portrait-spinner-emoji">🎨</span>
+                        </div>
                       </div>
                     ) : characterData?.character_media_url ? (
-                      characterData.character_media_url.endsWith('.mp4') || characterData.character_media_url.endsWith('.webm') ? (
-                        <video
-                          src={characterData.character_media_url.startsWith('http') ? characterData.character_media_url : `http://localhost:8000${characterData.character_media_url}`}
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          className="scene-portrait-img"
-                          style={{objectFit: 'cover'}}
-                        />
-                      ) : (
-                        <motion.img
-                          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                          src={characterData.character_media_url.startsWith('http') ? characterData.character_media_url : `http://localhost:8000${characterData.character_media_url}`}
-                          alt={characterData.character_name}
-                          className="scene-portrait-img"
-                        />
-                      )
+                      /* ── Image ready ── */
+                      <PortraitImage
+                        src={characterData.character_media_url.startsWith('http')
+                          ? characterData.character_media_url
+                          : `http://localhost:8000${characterData.character_media_url}`}
+                        alt={characterData.character_name}
+                      />
                     ) : (
+                      /* ── No image generated ── */
                       <div className="scene-portrait-placeholder">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                        <span style={{fontSize:'4rem'}}>🦸</span>
                       </div>
                     )}
                   </div>
 
                   {charLoading ? (
                     <>
-                      <h3 className="scene-char-name loading-text">Synthesizing...</h3>
-                      <AnimatePresence mode="wait">
-                        <motion.p className="scene-char-desc loading-sub"
-                          initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                          Retrieving data...
-                        </motion.p>
-                      </AnimatePresence>
+                      <h3 className="scene-char-name loading-text">🎨 Drawing your character…</h3>
+                      <p className="scene-char-desc loading-sub">{charLoadingMsg}</p>
                     </>
                   ) : characterData ? (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -258,29 +315,35 @@ export default function StoryGenerator() {
                       <p className="scene-char-desc">{characterData.description}</p>
                     </motion.div>
                   ) : (
-                    <p className="scene-char-desc">Failed to load profile.</p>
+                    <p className="scene-char-desc">Couldn't load the character — try again! 😊</p>
                   )}
                 </div>
 
                 {/* Right: Scene input */}
                 <div className="scene-input-side">
                   <div className="input-group">
-                    <label className="input-label">Setting Prompt</label>
+                    <label className="input-label">🗺️ Where does the adventure happen?</label>
                     <textarea
-                      className="gen-textarea"
-                      placeholder="e.g. Exploring a spooky haunted house, discovering a secret base on Mars..."
+                      className={`gen-textarea ${sceneError ? 'input-error' : ''}`}
+                      placeholder="e.g. Flying through the clouds, exploring a magical rainbow forest, swimming with friendly dolphins, going on a treasure hunt..."
                       value={sceneDescription}
-                      onChange={e => setSceneDescription(e.target.value)}
+                      onChange={e => { setSceneDescription(e.target.value); if (sceneError) setSceneError('') }}
                       rows={5}
                       autoFocus
                     />
+                    {sceneError && (
+                      <motion.p className="input-error-msg"
+                        initial={{opacity:0,y:-4}} animate={{opacity:1,y:0}}>
+                        {sceneError}
+                      </motion.p>
+                    )}
                   </div>
 
                   <div className="scene-chips-row">
-                    {['A magical forest', 'Outer space', 'Under the ocean', 'A futuristic city'].map(s => (
+                    {['A magical rainbow forest', 'Outer space adventure', 'Under the ocean', 'A friendly dinosaur park'].map(s => (
                       <motion.button key={s} className="char-chip"
                         whileHover={{ y: -1 }}
-                        onClick={() => setSceneDescription(s)}>
+                        onClick={() => { setSceneDescription(s); setSceneError('') }}>
                         {s}
                       </motion.button>
                     ))}
@@ -291,7 +354,7 @@ export default function StoryGenerator() {
                     <motion.button className="gen-btn" style={{ flex: 1 }}
                       disabled={!sceneDescription.trim() || charLoading}
                       whileHover={sceneDescription.trim() && !charLoading ? { scale: 1.02 } : {}}
-                      onClick={() => setStep('language')}>
+                      onClick={handleSceneContinue}>
                       Continue
                     </motion.button>
                   </div>
@@ -305,8 +368,8 @@ export default function StoryGenerator() {
             <motion.div key="language" className="gen-card"
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
               <div className="gen-card-header">
-                <h2 className="gen-title">Localization</h2>
-                <p className="gen-sub">Select the output language for the generated text.</p>
+                <h2 className="gen-title">🌍 What language?</h2>
+                <p className="gen-sub">Which language should the story be written in?</p>
               </div>
               <div className="lang-grid">
                 {LANGUAGES.map(l => (
@@ -340,8 +403,8 @@ export default function StoryGenerator() {
             <motion.div key="artStyle" className="gen-card wide-card"
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
               <div className="gen-card-header">
-                <h2 className="gen-title">Aesthetic Selection</h2>
-                <p className="gen-sub">Choose a visual style for the generated illustrations.</p>
+                <h2 className="gen-title">🎨 Pick an Art Style!</h2>
+                <p className="gen-sub">How should the pictures in your story look?</p>
               </div>
               <div className="art-grid">
                 {ART_STYLES.map(a => (
@@ -381,7 +444,7 @@ export default function StoryGenerator() {
               <div className="generating-loader">
                 <svg className="loader-ring" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </div>
-              <h2 className="gen-title">Processing Content...</h2>
+              <h2 className="gen-title">✨ Creating Your Story...</h2>
               <div className="gen-summary-list">
                 <div className="summary-item">
                   <span className="summary-key">Subject</span>
