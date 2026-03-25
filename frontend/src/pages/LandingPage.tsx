@@ -27,7 +27,7 @@ export default function LandingPage() {
   // If student already exists, go to dashboard
   useEffect(() => {
     const stored = localStorage.getItem('readquest_student_id')
-    if (stored) navigate('/dashboard')
+    if (stored) navigate('/signup')
   }, [navigate])
 
   const handleNameNext = () => {
@@ -47,13 +47,13 @@ export default function LandingPage() {
       localStorage.setItem('readquest_student_id', res.data.id)
       localStorage.setItem('readquest_student_name', name.trim())
       localStorage.setItem('readquest_grade', String(gradeIndex))
-      setTimeout(() => navigate('/dashboard'), 800)
+      setTimeout(() => navigate('/signup'), 800)
     } catch {
       // For demo without backend — use mock data
       localStorage.setItem('readquest_student_id', 'demo-student-1')
       localStorage.setItem('readquest_student_name', name.trim())
       localStorage.setItem('readquest_grade', String(gradeIndex))
-      setTimeout(() => navigate('/dashboard'), 800)
+      setTimeout(() => navigate('/signup'), 800)
     }
   }
 

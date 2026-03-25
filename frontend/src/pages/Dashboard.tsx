@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { LogoutButton } from '../components/LogoutButton'
 import { motion } from 'framer-motion'
 import { storiesApi, rewardsApi } from '../services/api'
 import type { Story, StudentRewards } from '../types'
@@ -56,6 +57,7 @@ export default function Dashboard() {
 
   const handleLogout = useCallback(() => {
     localStorage.clear()
+    import('../lib/supabase').then(m => m.supabase.auth.signOut())
     navigate('/')
   }, [navigate])
 

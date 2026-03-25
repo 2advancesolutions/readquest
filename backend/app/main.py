@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from app.routers import students, stories, quizzes, rewards, tts
+from app.routers import students, stories, quizzes, rewards, tts, parents
 import app.database as db
 
 app = FastAPI(
@@ -46,3 +46,7 @@ app.include_router(stories.router, prefix="/api/stories", tags=["stories"])
 app.include_router(quizzes.router, prefix="/api/quizzes", tags=["quizzes"])
 app.include_router(rewards.router, prefix="/api/rewards", tags=["rewards"])
 app.include_router(tts.router, prefix="/api/tts", tags=["tts"])
+
+# Added auth routers
+
+app.include_router(parents.router, prefix="/api/parents", tags=["parents"])
