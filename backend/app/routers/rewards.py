@@ -1,5 +1,6 @@
 """Rewards router — XP, badges, streaks, leaderboard"""
 from fastapi import APIRouter, Depends, Header
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from datetime import date, timedelta
@@ -200,31 +201,132 @@ async def complete_story(
             completed_at=datetime.utcnow(),
         ))
     await db.commit()
-    return {"completed": True}
+
+    # ── Auto-award any newly unlocked badges ───────────────────────────────
+    try:
+        from app.services.badge_service import check_and_award_badges
+        newly_earned = await check_and_award_badges(db, x_student_id)
+    except Exception:
+        newly_earned = []
+
+    return {"completed": True, "badges_earned": newly_earned}
+
+
+class AwardXPRequest(BaseModel):
+    amount: int
+    reason: str
+    idempotency_key: str   # e.g. story_id — prevents double-awarding
+
+
+class SyncXPRequest(BaseModel):
+    entries: list[dict]    # list of {story_id, total_xp, reason}
+
+
+@router.post("/award-xp")
+async def award_xp_direct(
+    body: AwardXPRequest,
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+):
+    """Award XP to the correct student with idempotency — safe to call multiple times."""
+    from app.services.gamification_service import award_xp as _award_xp
+    # Check if we already awarded XP for this idempotency key
+    existing = await db.execute(
+        select(XPLedger).where(
+            XPLedger.student_id == x_student_id,
+            XPLedger.reason == body.idempotency_key,
+        )
+    )
+    if existing.scalar_one_or_none():
+        total = (await db.execute(
+            select(func.sum(XPLedger.amount)).where(XPLedger.student_id == x_student_id)
+        )).scalar() or 0
+        return {"awarded": False, "already_awarded": True, "total_xp": int(total)}
+
+    total_xp = await _award_xp(db, x_student_id, body.amount, body.idempotency_key)
+
+    # Auto-check badges after new XP
+    try:
+        from app.services.badge_service import check_and_award_badges
+        newly_earned = await check_and_award_badges(db, x_student_id)
+    except Exception:
+        newly_earned = []
+
+    return {"awarded": True, "amount": body.amount, "total_xp": total_xp, "badges_earned": newly_earned}
+
+
+@router.post("/sync-xp")
+async def sync_xp(
+    body: SyncXPRequest,
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+):
+    """Backfill XP from a list of reading log entries — idempotent, safe to call on page load."""
+    from app.services.gamification_service import award_xp as _award_xp
+    awarded_count = 0
+    for entry in body.entries:
+        story_id = entry.get("story_id", "")
+        xp = int(entry.get("total_xp", 0))
+        reason = f"reading_log_{story_id}"
+        if xp <= 0:
+            continue
+        existing = await db.execute(
+            select(XPLedger).where(
+                XPLedger.student_id == x_student_id,
+                XPLedger.reason == reason,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        await _award_xp(db, x_student_id, xp, reason)
+        awarded_count += 1
+
+    total = (await db.execute(
+        select(func.sum(XPLedger.amount)).where(XPLedger.student_id == x_student_id)
+    )).scalar() or 0
+    return {"synced": awarded_count, "total_xp": int(total)}
 
 
 @router.get("/leaderboard")
+async def get_leaderboard(
+    x_student_id: str = Header(None),
+    db: AsyncSession = Depends(get_session)
+):
+    parent_id = None
+    if x_student_id:
+        # Check if x_student_id is a student — if so, find their parent
+        student_res = await db.execute(select(Student.parent_id).where(Student.id == x_student_id))
+        pid = student_res.scalar_one_or_none()
+        if pid:
+            parent_id = pid
+        else:
+            # x_student_id might actually be the parent's UUID (auth user id)
+            parent_id = x_student_id
 
-async def get_leaderboard(db: AsyncSession = Depends(get_session)):
-    result = await db.execute(
-        select(XPLedger.student_id, func.sum(XPLedger.amount).label("total_xp"))
-        .group_by(XPLedger.student_id)
+    query = (
+        select(Student.id, Student.name, func.coalesce(func.sum(XPLedger.amount), 0).label("total_xp"))
+        .outerjoin(XPLedger, XPLedger.student_id == Student.id)
+        .group_by(Student.id, Student.name)
         .order_by(desc("total_xp"))
-        .limit(10)
     )
+
+    if parent_id:
+        query = query.where(Student.parent_id == parent_id)
+    else:
+        query = query.limit(25)
+
+    result = await db.execute(query)
     rows = result.fetchall()
+
     leaderboard = []
-    for rank, (student_id, total_xp) in enumerate(rows, start=1):
-        student_res = await db.execute(select(Student).where(Student.id == student_id))
-        student = student_res.scalar_one_or_none()
-        if student:
-            level, level_name, _, _ = compute_level(total_xp)
-            leaderboard.append({
-                "student_id": student_id,
-                "name": student.name,
-                "total_xp": total_xp,
-                "level": level,
-                "level_name": level_name,
-                "rank": rank,
-            })
+    for rank, (student_id, name, total_xp) in enumerate(rows, start=1):
+        level, level_name, _, _ = compute_level(total_xp)
+        leaderboard.append({
+            "student_id": student_id,
+            "name": name,
+            "total_xp": int(total_xp),
+            "level": level,
+            "level_name": level_name,
+            "rank": rank,
+        })
     return leaderboard

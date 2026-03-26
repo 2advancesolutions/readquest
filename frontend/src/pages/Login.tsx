@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import '../styles/auth.css';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -15,13 +16,15 @@ const Login = () => {
     setError('');
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) throw authError;
-
+      // Persist user identity for Dashboard / API calls
+      if (data.user) {
+        localStorage.setItem('readquest_student_id', data.user.id);
+        const meta = data.user.user_metadata;
+        const displayName = [meta?.first_name, meta?.last_name].filter(Boolean).join(' ') || email;
+        localStorage.setItem('readquest_student_name', displayName);
+      }
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Error logging in');
@@ -31,39 +34,63 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign in to your account
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Or{' '}
-          <Link to="/signup" className="font-medium text-blue-600 hover:text-blue-500">
-            create a new account
-          </Link>
-        </p>
+    <div className="auth-root">
+      {/* Left hero panel — visible desktop only via CSS */}
+      <div className="auth-hero">
+        <div className="auth-hero-emoji animate-float">🦉</div>
+        <div className="auth-hero-title">ReadQuest ✨</div>
+        <div className="auth-hero-sub">Where every child becomes a confident, joyful reader.</div>
+        <div className="auth-hero-dots">
+          <span /><span /><span /><span />
+        </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <form className="space-y-6" onSubmit={handleLogin}>
-            {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded">{error}</div>}
+      {/* Right form side */}
+      <div className="auth-form-side">
+        <div className="auth-card">
+          <div className="auth-mascot">🦉</div>
+          <div className="auth-logo" onClick={() => navigate('/')}>ReadQuest <span>✨</span></div>
+          <div className="auth-tagline">Your magical reading adventure awaits!</div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Email address</label>
-              <input required type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+          <h1 className="auth-title">Welcome Back</h1>
+          <p className="auth-sub">No account? <Link to="/signup" className="auth-link">Create one →</Link></p>
+
+          <form className="auth-form" onSubmit={handleLogin}>
+            {error && <div className="auth-error">⚠️ {error}</div>}
+
+            <div className="auth-field">
+              <label className="auth-label">Email Address</label>
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="auth-input"
+                placeholder="jane@example.com"
+                id="login-email"
+              />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
-              <input required type="password" value={password} onChange={e => setPassword(e.target.value)}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+            <div className="auth-field">
+              <label className="auth-label">Password</label>
+              <input
+                required
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="auth-input"
+                placeholder="••••••••"
+                id="login-password"
+              />
             </div>
 
-            <button type="submit" disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50">
-              {loading ? 'Signing in...' : 'Sign in'}
+            <div className="auth-forgot">
+              <a href="#">Forgot password?</a>
+            </div>
+
+            <button type="submit" className="auth-btn" disabled={loading} id="login-submit">
+              {loading ? <span className="auth-spinner" /> : null}
+              {loading ? 'Signing in...' : 'Sign In →'}
             </button>
           </form>
         </div>

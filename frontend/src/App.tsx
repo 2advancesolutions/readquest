@@ -10,21 +10,23 @@ import Rewards from './pages/Rewards'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import AddKid from './pages/AddKid'
+import ReadingShelf from './pages/ReadingShelf'
+import Profile from './pages/Profile'
 
 function App() {
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
-
+    // onAuthStateChange fires INITIAL_SESSION first with the persisted session,
+    // so we use that as the single source of truth to avoid a login flash.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
+      if (event === 'INITIAL_SESSION') {
+        setLoading(false)
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -38,7 +40,8 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/dashboard" replace />} />
+        {/* Signup renders regardless of session — the wizard controls its own flow */}
+        <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
         <Route path="/add-kid" element={session ? <AddKid /> : <Navigate to="/login" replace />} />
 
@@ -47,6 +50,8 @@ function App() {
         <Route path="/read/:storyId" element={session ? <BookReader /> : <Navigate to="/login" replace />} />
         <Route path="/generate" element={session ? <StoryGenerator /> : <Navigate to="/login" replace />} />
         <Route path="/rewards" element={session ? <Rewards /> : <Navigate to="/login" replace />} />
+        <Route path="/shelf" element={session ? <ReadingShelf /> : <Navigate to="/login" replace />} />
+        <Route path="/profile" element={session ? <Profile /> : <Navigate to="/login" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

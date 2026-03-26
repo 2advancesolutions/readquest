@@ -1,15 +1,20 @@
 """
-Text-to-Speech router.
+Text-to-Speech router — Google Cloud Chirp 3: HD voices.
 
-Primary:  Google Cloud TTS Neural2 (en-US-Neural2-F) — warm human female voice
-Fallback: Gemini TTS (Kore voice)
+Chirp 3: HD is Google's latest generative TTS model with the most realistic,
+emotionally resonant speech quality. Different voices are used per mode to
+give each part of the app the right feel:
 
-Both run their sync SDK calls in run_in_executor(None) so they work correctly
-inside FastAPI's async handlers without event-loop conflicts.
+  story   → Aoede  (warm, engaging storyteller)
+  teacher → Kore   (clear, encouraging, friendly)
+  quiz    → Puck   (bright, enthusiastic, fun for kids)
+  word    → Kore   (slow + clear pronunciation practice)
+  default → Aoede  (warm natural)
+
+Falls back to Gemini TTS (Kore voice) if the service account key is unavailable.
+Both sync SDK calls run in run_in_executor(None) to stay async-safe in FastAPI.
 """
 import asyncio
-import json
-import base64
 import struct
 import os
 from pathlib import Path
@@ -20,11 +25,21 @@ from app.config import settings
 
 router = APIRouter()
 
-# ── Voice / audio config ────────────────────────────────────────────────────
-VOICE_NAME    = "en-US-Neural2-F"   # warm natural female
-SPEAKING_RATE = {"story": 0.90, "teacher": 0.95, "quiz": 1.00, "word": 0.75, "default": 0.93}
-PITCH_MAP     = {"story": 1.5,  "teacher": 2.0,  "quiz":  3.0, "word": 1.0,  "default": 1.5}
+# ── Chirp 3: HD voice map per mode ─────────────────────────────────────────
+CHIRP3_VOICE = {
+    "story":   "en-US-Chirp3-HD-Aoede",   # warm, expressive storyteller
+    "teacher": "en-US-Chirp3-HD-Kore",    # clear, friendly, encouraging
+    "quiz":    "en-US-Chirp3-HD-Puck",    # bright, upbeat, fun for kids
+    "word":    "en-US-Chirp3-HD-Kore",    # clear pronunciation
+    "default": "en-US-Chirp3-HD-Aoede",   # warm natural
+}
 
+# Chirp 3 HD doesn't support speakingRate/pitch overrides —
+# it's a generative model; prompt-style delivery is used instead.
+# We use text prefixes to guide tone where needed (word mode).
+WORD_PREFIX = "Say this word slowly and clearly so a child can repeat it: "
+
+# ── Gemini fallback style prompts ────────────────────────────────────────────
 GEMINI_STYLE = {
     "story":   "Read warmly as a friendly children's storyteller: ",
     "teacher": "Speak as a warm encouraging teacher for kids: ",
@@ -36,7 +51,7 @@ GEMINI_STYLE = {
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "en-US-Neural2-F"
+    voice: str = "Chirp3-HD"   # ignored — mode drives voice selection
     mode: str = "default"
 
 
@@ -48,42 +63,58 @@ def _pcm_to_wav(pcm: bytes, rate: int = 24000, ch: int = 1, bits: int = 16) -> b
     return hdr + pcm
 
 
-def _gcloud_tts_sync(text: str, mode: str) -> bytes:
-    """Synchronous Google Cloud TTS REST call — safe to run in executor."""
-    import requests as req_lib
+def _chirp3_tts_sync(text: str, mode: str) -> bytes:
+    """
+    Google Cloud TTS — Chirp 3: HD voice.
+    Uses the standard TextToSpeechClient (v1) with Chirp3-HD voice names.
+    Auth via GOOGLE_APPLICATION_CREDENTIALS service account JSON.
+    """
+    from google.cloud import texttospeech
     from google.oauth2 import service_account
-    from google.auth.transport.requests import Request as GReq
 
     key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "gcloud-tts-key.json")
     if not os.path.isabs(key_path):
         key_path = str(Path(__file__).parent.parent.parent / key_path)
 
-    creds = service_account.Credentials.from_service_account_file(
-        key_path, scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    creds.refresh(GReq())
+    if not os.path.exists(key_path):
+        raise FileNotFoundError(f"Service account key not found: {key_path}")
 
-    payload = {
-        "input": {"text": text[:4500]},
-        "voice": {"languageCode": "en-US", "name": VOICE_NAME},
-        "audioConfig": {
-            "audioEncoding": "MP3",
-            "speakingRate": SPEAKING_RATE.get(mode, 0.93),
-            "pitch": PITCH_MAP.get(mode, 1.5),
-            "effectsProfileId": ["large-home-entertainment-class-device"],
-        },
-    }
-    r = req_lib.post(
-        "https://texttospeech.googleapis.com/v1/text:synthesize",
-        headers={"Authorization": f"Bearer {creds.token}", "Content-Type": "application/json"},
-        data=json.dumps(payload),
-        timeout=20,
+    creds = service_account.Credentials.from_service_account_file(
+        key_path,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
     )
-    r.raise_for_status()
-    return base64.b64decode(r.json()["audioContent"])
+    client = texttospeech.TextToSpeechClient(credentials=creds)
+
+    # For 'word' mode, prefix the text so the model reads slowly and clearly
+    input_text = text[:4500]
+    if mode == "word":
+        input_text = WORD_PREFIX + input_text
+
+    synthesis_input = texttospeech.SynthesisInput(text=input_text)
+
+    voice_name = CHIRP3_VOICE.get(mode, CHIRP3_VOICE["default"])
+    voice = texttospeech.VoiceSelectionParams(
+        language_code="en-US",
+        name=voice_name,
+    )
+
+    # Chirp 3 HD supports MP3 output — use it for smaller payloads
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3,
+    )
+
+    response = client.synthesize_speech(
+        input=synthesis_input,
+        voice=voice,
+        audio_config=audio_config,
+    )
+
+    print(f"[TTS] ✅ Chirp3-HD ({voice_name}) | mode={mode} | {len(text)} chars")
+    return response.audio_content
 
 
 def _gemini_tts_sync(text: str, mode: str) -> bytes:
-    """Synchronous Gemini TTS call — safe to run in executor."""
+    """Synchronous Gemini TTS fallback — Kore voice."""
     from google import genai as _genai
     from google.genai import types as _gt
 
@@ -125,15 +156,14 @@ async def speak(req: TTSRequest):
 
     loop = asyncio.get_running_loop()
 
-    # ── Primary: Google Cloud TTS Neural2 ───────────────────────────────────
+    # ── Primary: Google Cloud Chirp 3: HD ────────────────────────────────────
     try:
-        audio = await loop.run_in_executor(None, _gcloud_tts_sync, text, req.mode)
-        print(f"[TTS] ✅ Google Cloud Neural2 | mode={req.mode} | {len(text)} chars")
+        audio = await loop.run_in_executor(None, _chirp3_tts_sync, text, req.mode)
         return Response(content=audio, media_type="audio/mpeg")
     except Exception as e:
-        print(f"[TTS] Google Cloud failed ({e}) → trying Gemini fallback")
+        print(f"[TTS] Chirp3-HD failed ({e}) → trying Gemini fallback")
 
-    # ── Fallback: Gemini TTS ─────────────────────────────────────────────────
+    # ── Fallback: Gemini TTS (Kore voice) ────────────────────────────────────
     try:
         audio = await loop.run_in_executor(None, _gemini_tts_sync, text, req.mode)
         print(f"[TTS] ✅ Gemini Kore fallback | mode={req.mode}")

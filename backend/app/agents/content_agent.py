@@ -17,6 +17,48 @@ OPENROUTER_URL        = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_IMAGE_MODEL = "google/gemini-3.1-flash-image-preview"
 OPENROUTER_TEXT_MODEL  = "google/gemini-2.0-flash-001"
 
+# ── Supabase Storage config ──────────────────────────────────────────────────
+SUPABASE_URL     = "https://nspehtlzknfbiwvjswge.supabase.co"
+SUPABASE_BUCKET  = "story-images"
+# Service-role key is needed for Storage uploads (more permissive than anon key)
+# Falls back to env var SUPABASE_SERVICE_KEY if set, else uses anon key
+SUPABASE_SERVICE_KEY = getattr(settings, "SUPABASE_SERVICE_KEY", "") or getattr(settings, "SUPABASE_ANON_KEY", "")
+
+
+async def _upload_to_supabase(img_bytes: bytes, filename: str) -> Optional[str]:
+    """
+    Upload image bytes to Supabase Storage 'story-images' bucket.
+    Returns the permanent public URL, or None on failure.
+    """
+    if not SUPABASE_SERVICE_KEY:
+        return None
+
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "image/png",
+        "x-upsert": "true",   # overwrite if exists
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(upload_url, content=img_bytes, headers=headers)
+            if resp.status_code in (200, 201):
+                public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}"
+                print(f"[Supabase Storage] Uploaded: {public_url}")
+                return public_url
+            else:
+                print(f"[Supabase Storage] Upload failed: {resp.status_code} {resp.text[:200]}")
+                return None
+    except Exception as e:
+        print(f"[Supabase Storage] Upload error: {e}")
+        return None
+
+
+OPENROUTER_URL        = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_IMAGE_MODEL = "google/gemini-3.1-flash-image-preview"
+OPENROUTER_TEXT_MODEL  = "google/gemini-2.0-flash-001"
+
 # ── State Schema ────────────────────────────────────────────────────────────
 class ContentState(TypedDict):
     grade: int
@@ -37,15 +79,49 @@ class ContentState(TypedDict):
 
 # ── Grade level vocabulary descriptions ─────────────────────────────────────
 GRADE_VOCAB = {
-    0: "Kindergarten: very simple 3-5 word sentences, sight words only, short words (cat, dog, red, big, run)",
-    1: "1st Grade: 5-8 word sentences, simple CVC words, basic sight words (the, and, is, it, he, she)",
-    2: "2nd Grade: 8-12 word sentences, two-syllable words common, compound sentences OK",
-    3: "3rd Grade: 10-14 word sentences, descriptive adjectives, basic figurative language, some multisyllabic words",
-    4: "4th Grade: 12-16 word sentences, metaphors and similes, varied sentence structure, topic-specific vocabulary",
-    5: "5th Grade: 14-18 word sentences, complex vocabulary, clear themes and motifs, nuanced characters",
-    6: "6th Grade: 15-20 word sentences, abstract concepts, foreshadowing, subplots, varied narrative perspective",
-    7: "7th Grade: 16-22 word sentences, sophisticated vocabulary, complex plot, irony and symbolism",
-    8: "8th Grade: 18-25 word sentences, advanced literary devices, multi-layered themes, mature vocabulary",
+    0: (
+        "Kindergarten: Max 3-5 words per sentence. ONLY the most common sight words: "
+        "I, a, the, is, it, in, on, at, go, do, to, see, me, my, can, big, red, cat, dog, sun, mom, dad. "
+        "Story pages: 25-35 words each. No word over 4 letters. Zero adjectives beyond size/color."
+    ),
+    1: (
+        "1st Grade: Max 5-7 words per sentence. Use ONLY 1-2 syllable words; avoid 3-syllable words entirely. "
+        "Allowed vocabulary: Dolch sight words (the, and, is, it, he, she, we, you, I, was, said, for, "
+        "are, but, not, from, had, him, his, how, her, if, did, get, has, its, let, man, old, put, sat, set). "
+        "Story pages: 40-55 words each. Simple subject-verb-object sentences only. "
+        "NO words like: magical, created, adventure, discovered, beautiful, enormous, frightened, breathtaking. "
+        "YES words like: happy, sad, big, small, run, jump, play, funny, round, fast, soft, kind."
+    ),
+    2: (
+        "2nd Grade: Max 8-12 words per sentence. Two-syllable words are fine; limit 3-syllable words. "
+        "Compound sentences with 'and', 'but', 'so' are OK. "
+        "Story pages: 55-75 words each. Simple emotions and motivations shown clearly."
+    ),
+    3: (
+        "3rd Grade: 10-14 words per sentence. Descriptive adjectives and adverbs welcome. "
+        "Some 3-syllable words OK. Light figurative language (she ran like the wind). "
+        "Story pages: 70-90 words each."
+    ),
+    4: (
+        "4th Grade: 12-16 words per sentence. Metaphors, similes, varied sentence structure. "
+        "Topic-specific vocabulary with context clues. Story pages: 80-100 words each."
+    ),
+    5: (
+        "5th Grade: 14-18 words per sentence. Complex vocabulary, clear themes and motifs, "
+        "nuanced characters. Story pages: 90-110 words each."
+    ),
+    6: (
+        "6th Grade: 15-20 words per sentence. Abstract concepts, foreshadowing, subplots, "
+        "varied narrative perspective. Story pages: 100-120 words each."
+    ),
+    7: (
+        "7th Grade: 16-22 words per sentence. Sophisticated vocabulary, complex plot, "
+        "irony and symbolism. Story pages: 110-130 words each."
+    ),
+    8: (
+        "8th Grade: 18-25 words per sentence. Advanced literary devices, multi-layered themes, "
+        "mature vocabulary. Story pages: 120-140 words each."
+    ),
 }
 
 
@@ -85,16 +161,37 @@ async def grade_setup_node(state: ContentState) -> ContentState:
 
 async def story_writer_node(state: ContentState) -> ContentState:
     """Generate the story text with proper grade-level vocabulary via OpenRouter."""
-    prompt = f"""You are a brilliant children's book author writing for a {state['grade']}-grade reading level.
+    char = state['character_name']
+    grade = state['grade']
+    vocab_desc = state['grade_vocab_desc']
 
-Grade Level Writing Guide: {state['grade_vocab_desc']}
+    # Extra enforcement block for the lowest grades
+    early_grade_warning = ""
+    if grade <= 1:
+        early_grade_warning = """
+⚠️ GRADE 1 STRICT RULES — MUST FOLLOW:
+- EVERY sentence must be 5-7 words or shorter. Count the words. If a sentence is longer, split it.
+- NEVER use 3-syllable words (no: beautiful, adventure, magical, rainforest, discovered, wonderful, together).
+- Use ONLY these kinds of words: run, play, jump, hop, big, small, fast, slow, happy, sad, kind, fun.
+- Each page must be 40-55 words total. Count each page. If over 55 words, shorten it.
+- Re-read each page aloud and ask: could a 5-year-old read this? If not, simplify.
+"""
+    elif grade == 2:
+        early_grade_warning = """
+⚠️ GRADE 2 RULE: Keep sentences to max 10 words. Avoid words with 3+ syllables unless very common.
+Each page must be 55-75 words.
+"""
+
+    prompt = f"""You are a brilliant children's book author writing for a Grade {grade} reading level.
+
+Grade Level Writing Guide:
+{vocab_desc}
 
 Theme / Setting: {state['theme']}
-Main Character: {state['character_name']}
-
+Main Character: {char}
 Language: {state.get('language', 'english')}
-
-Write a complete, engaging children's story in {state.get('language', 'english')} with EXACTLY 5 pages. Each page should have about 50-70 words.
+{early_grade_warning}
+Write a complete, engaging children's story in {state.get('language', 'english')} with EXACTLY 5 pages.
 
 Output ONLY valid JSON in this exact format:
 {{
@@ -109,15 +206,22 @@ Output ONLY valid JSON in this exact format:
 }}
 
 Guidelines:
-- Page 1: Introduce {state['character_name']} and the setting
+- Page 1: Introduce {char} and the setting
 - Pages 2-4: Build the adventure and conflict
 - Page 5: Resolution and a positive lesson
 - Make it fun, exciting, and suitable for the reading level
 - NO quotation marks inside the page text that would break JSON
+
+CRITICAL — CHARACTER NAME RULES (MUST FOLLOW):
+- Use the character name EXACTLY as given: "{char}"
+- Do NOT add a last name, surname, or title (e.g. if given "Dora" write "Dora" NOT "Dora Márquez" or "Dora the Explorer")
+- Do NOT translate, expand, or creatively rename the character
+- Every reference to the character in the story must use exactly "{char}"
 """
     raw = await _call_openrouter_text(
-        system="You are a creative children's book author. Always respond with valid JSON only.",
+        system="You are a creative children's book author. Always respond with valid JSON only. Follow ALL grade level and character name instructions exactly.",
         user=prompt,
+        temperature=0.7,
     )
     state["story_raw"] = raw
     return state
@@ -234,9 +338,16 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
 
         if img_bytes:
             filename = f"{uuid.uuid4().hex}.png"
+            # Try Supabase Storage first (persistent), fall back to local
+            public_url = await _upload_to_supabase(img_bytes, filename)
+            if public_url:
+                return public_url
+            # Fallback: local static dir (ephemeral in production, but better than nothing)
+            STATIC_DIR.mkdir(parents=True, exist_ok=True)
             (STATIC_DIR / filename).write_bytes(img_bytes)
-            print(f"[Gemini-Image] Saved: static/images/{filename} ({len(img_bytes)} bytes)")
+            print(f"[Gemini-Image] Saved locally (no Supabase key): static/images/{filename} ({len(img_bytes)} bytes)")
             return f"/static/images/{filename}"
+
 
         print("[Gemini-Image] Could not generate image after all retries — skipping")
         return None

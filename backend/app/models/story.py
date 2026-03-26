@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, Integer, Text, DateTime, JSON, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -10,8 +11,8 @@ from app.database import Base
 class Story(Base):
     __tablename__ = "stories"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id"))
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    student_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("students.id"))
     title: Mapped[str] = mapped_column(String(200))
     grade_level: Mapped[int] = mapped_column(Integer)
     theme: Mapped[str] = mapped_column(String(50))
@@ -23,8 +24,8 @@ class Story(Base):
 class StoryPage(Base):
     __tablename__ = "story_pages"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    story_id: Mapped[str] = mapped_column(String, ForeignKey("stories.id"))
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    story_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("stories.id"))
     page_number: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text)
     media_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)

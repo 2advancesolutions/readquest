@@ -14,13 +14,31 @@ app = FastAPI(
     version="0.1.0",
 )
 
+import os
+
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "")
+
+# Exact origins always allowed (dev)
+_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+    # S3 static website fallback
+    "http://readquest-frontend-2532.s3-website-us-east-1.amazonaws.com",
+]
+if _FRONTEND_URL:
+    _ALLOWED_ORIGINS.append(_FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=_ALLOWED_ORIGINS,
+    # Also match any CloudFront or App Runner subdomain dynamically
+    allow_origin_regex=r"https://.*\.(cloudfront\.net|awsapprunner\.com)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 @app.on_event("startup")

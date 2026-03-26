@@ -1,164 +1,354 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import '../styles/app-shell.css';
+import '../styles/design-tokens.css';
 
+const GRADES = [
+  { value: 'K', label: 'Kindergarten' },
+  { value: '1', label: '1st Grade' },
+  { value: '2', label: '2nd Grade' },
+  { value: '3', label: '3rd Grade' },
+  { value: '4', label: '4th Grade' },
+  { value: '5', label: '5th Grade' },
+  { value: '6', label: '6th Grade' },
+  { value: '7', label: '7th Grade' },
+  { value: '8', label: '8th Grade' },
+];
+
+const AVATAR_COLORS = [
+  '#702AE1', '#10B981', '#3B82F6', '#EC4899',
+  '#F97316', '#06B6D4', '#8B5CF6', '#EF4444',
+];
+
+interface ExistingChild {
+  id: string;
+  name: string;
+  grade_level: number;
+  school?: string;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+function AppSidebar({ active }: { active: string }) {
+  const navigate = useNavigate();
+  const handleLogout = useCallback(() => {
+    localStorage.clear();
+    supabase.auth.signOut();
+    navigate('/');
+  }, [navigate]);
+
+  const links = [
+    { key: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> },
+    { key: 'rewards', label: 'Progress & Metrics', path: '/rewards', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
+    { key: 'shelf', label: 'Reading Shelf', path: '/shelf', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg> },
+    { key: 'generate', label: 'Generate Story', path: '/generate', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> },
+    { key: 'kids', label: 'Manage Children', path: '/add-kid', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg> },
+    { key: 'profile', label: 'My Profile', path: '/profile', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
+  ];
+
+  return (
+    <aside className="app-sidebar">
+      <div className="app-sidebar-logo" onClick={() => navigate('/dashboard')}>ReadQuest ✨</div>
+      <nav className="app-sidebar-nav">
+        {links.map(l => (
+          <button key={l.key} className={`app-sidebar-link ${active === l.key ? 'active' : ''}`} onClick={() => navigate(l.path)}>
+            {l.icon}<span>{l.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="app-sidebar-bottom">
+        <button className="app-sidebar-logout" onClick={handleLogout}><span>Log out</span></button>
+      </div>
+    </aside>
+  );
+}
+
+/* ── Main ─────────────────────────────────────────────────────────── */
 const AddKid = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+  const [parentId, setParentId] = useState<string | null>(null);
+  const [existingChildren, setExistingChildren] = useState<ExistingChild[]>([]);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [grade, setGrade] = useState('1');
   const [school, setSchool] = useState('');
-
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const [parentSession, setParentSession] = useState<any>(null);
-  const navigate = useNavigate();
+  const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setParentSession(session);
-      if (!session) {
-        navigate('/login');
-      }
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { navigate('/login'); return; }
+      setParentId(session.user.id);
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/students/parent/${session.user.id}`);
+        if (res.ok) setExistingChildren(await res.json());
+      } catch { /* non-fatal */ }
+      setFetching(false);
     });
   }, [navigate]);
 
   const handleAddKid = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!parentId) return;
     setLoading(true);
     setError('');
-
+    setSuccess('');
     try {
-      // Because we want the kid to have their own email/password, they must be signed up as a user.
-      // However, Supabase Auth signIn/signUp overrides the current session.
-      // A common pattern is to either sign them out first, or use the Admin API (which we shouldn't do from frontend).
-      // For MVP, we can just hit our backend API to handle this, or let the parent stay logged in and just insert into `students` for now if the kid doesn't need to literally log in from the same device immediately.
-      // Let's create an auth user via a backend endpoint or, if we do it here, we will lose the parent session.
-      // Actually, since the prompt says "allow users to add their kids to better track their own progress", we can just store the kid's info in our `students` table and bypass auth for the kid for now, OR if the kid needs their own email/pw, we sign them up and re-login the parent, or make a backend endpoint.
-
-      // We will just sign up the kid using Supabase from the frontend, but we need to warn that it changes session,
-      // so we use our backend to insert the student record linked to the parent.
-
-      // 1. Sign up the kid via Supabase Auth
-      const { data: kidAuthData, error: kidAuthError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-            is_kid: true
-          }
-        }
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/students`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent_id: parentId,
+          name: `${firstName} ${lastName}`.trim(),
+          grade_level: grade === 'K' ? 0 : parseInt(grade),
+          school: school || null,
+        }),
       });
-
-      if (kidAuthError) throw kidAuthError;
-
-      // 2. Add to backend via API, associating with the parent ID
-      if (kidAuthData.user && parentSession?.user) {
-        const response = await fetch('http://localhost:8000/api/students', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: kidAuthData.user.id,
-            parent_id: parentSession.user.id,
-            name: `${firstName} ${lastName}`,
-            grade_level: parseInt(grade),
-            school: school
-          })
-        });
-
-        if (!response.ok) {
-           console.error("Failed to add kid to backend");
-        }
-      }
-
-      // Supabase sign up might have logged in the kid.
-      // So we can navigate to dashboard (now acting as the kid), or log out and log back in.
-      navigate('/dashboard');
-
+      if (!res.ok) throw new Error('Failed to add child');
+      const newChild: ExistingChild = await res.json();
+      setExistingChildren(prev => [...prev, newChild]);
+      setFirstName(''); setLastName(''); setGrade('1'); setSchool('');
+      setSuccess(`${firstName} was added! 🎉`);
+      setTimeout(() => setSuccess(''), 3500);
     } catch (err: any) {
-      setError(err.message || 'Error adding kid');
+      setError(err.message || 'Error adding child');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!parentSession) return <div className="p-8 text-center">Loading...</div>;
+  const gradeLabel = (gl: number) => {
+    if (gl === 0) return 'Kindergarten';
+    return GRADES.find(g => g.value === String(gl))?.label ?? `Grade ${gl}`;
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Add your kid
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Create an account for them to track their progress
-        </p>
-      </div>
+    <div className="app-shell">
+      <AppSidebar active="kids" />
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <form className="space-y-6" onSubmit={handleAddKid}>
-            {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded">{error}</div>}
+      <div className="app-content">
+        <div style={{
+          minHeight: '100vh',
+          background: 'linear-gradient(160deg, #FCF4FF 0%, #F0E6FF 100%)',
+          padding: '48px 48px 80px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          {/* Background blobs */}
+          <div style={{ position: 'absolute', top: -80, right: -80, width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(178,140,255,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', bottom: 80, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(112,42,225,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-            <div className="flex gap-4">
-              <div className="w-1/2">
-                <label className="block text-sm font-medium text-gray-700">First Name</label>
-                <input required type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+          {/* ── Page Header ── */}
+          <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 40 }}>
+            <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 800, color: 'var(--rq-text)', letterSpacing: '-0.03em', margin: '0 0 6px' }}>
+              👧 Manage Children
+            </h1>
+            <p style={{ color: 'var(--rq-text-muted)', fontSize: '1rem', margin: 0, fontWeight: 500 }}>
+              Add or manage children linked to your account
+            </p>
+          </motion.div>
+
+          {/* ── Your Children ── */}
+          {fetching ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 40 }}>
+              {[0, 1].map(i => (
+                <div key={i} style={{ height: 80, borderRadius: 24, background: 'linear-gradient(90deg, #F7EDFF 25%, #EFE3FE 50%, #F7EDFF 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+              ))}
+            </div>
+          ) : existingChildren.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} style={{ marginBottom: 40 }}>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--rq-text-muted)', marginBottom: 16 }}>
+                Your Children
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {existingChildren.map((child, i) => (
+                  <motion.div key={child.id}
+                    initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.06 * i, type: 'spring', stiffness: 240, damping: 22 }}
+                    style={{
+                      background: '#fff',
+                      borderRadius: 24,
+                      padding: '18px 24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 18,
+                      boxShadow: '0 8px 32px rgba(112,42,225,0.08)',
+                    }}>
+                    {/* Avatar */}
+                    <div style={{
+                      width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
+                      background: AVATAR_COLORS[i % AVATAR_COLORS.length],
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '1.2rem', fontWeight: 800, color: '#fff',
+                    }}>
+                      {child.name.charAt(0).toUpperCase()}
+                    </div>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--rq-text)', marginBottom: 3 }}>{child.name}</div>
+                      <div style={{ fontSize: '0.82rem', color: 'var(--rq-text-muted)' }}>
+                        {child.school || gradeLabel(child.grade_level)}
+                      </div>
+                    </div>
+
+                    {/* Grade chip */}
+                    <div style={{
+                      background: 'var(--rq-purple-light2)', color: 'var(--rq-purple)',
+                      borderRadius: 999, padding: '5px 14px',
+                      fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
+                    }}>
+                      {gradeLabel(child.grade_level)}
+                    </div>
+
+                    {/* Select button */}
+                    <motion.button
+                      whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                      onClick={() => {
+                        localStorage.setItem('readquest_student_id', child.id);
+                        localStorage.setItem('readquest_student_name', child.name);
+                        navigate('/dashboard');
+                      }}
+                      style={{
+                        background: 'var(--rq-surface)', color: 'var(--rq-purple)',
+                        border: 'none', borderRadius: 999, padding: '9px 20px',
+                        fontFamily: 'var(--font-body)', fontSize: '0.85rem', fontWeight: 700,
+                        cursor: 'pointer', flexShrink: 0, transition: 'background 0.18s',
+                      }}>
+                      Select
+                    </motion.button>
+                  </motion.div>
+                ))}
               </div>
-              <div className="w-1/2">
-                <label className="block text-sm font-medium text-gray-700">Last Name</label>
-                <input required type="text" value={lastName} onChange={e => setLastName(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+            </motion.div>
+          )}
+
+          {/* ── Add a Child Form ── */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+            style={{ background: '#fff', borderRadius: 28, padding: '32px 32px 28px', boxShadow: '0 8px 40px rgba(112,42,225,0.09)' }}>
+
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--rq-text-muted)', marginBottom: 24 }}>
+              Add a Child
+            </p>
+
+            <AnimatePresence>
+              {error && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  style={{ background: 'rgba(247,75,109,0.08)', borderRadius: 14, padding: '12px 18px', color: 'var(--rq-coral)', fontSize: '0.88rem', fontWeight: 600, marginBottom: 20 }}>
+                  ❌ {error}
+                </motion.div>
+              )}
+              {success && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  style={{ background: 'rgba(0,116,57,0.08)', borderRadius: 14, padding: '12px 18px', color: '#007439', fontSize: '0.88rem', fontWeight: 600, marginBottom: 20 }}>
+                  {success}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <form onSubmit={handleAddKid}>
+              {/* Row 1 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={labelStyle}>First Name</label>
+                  <input required value={firstName} onChange={e => setFirstName(e.target.value)}
+                    style={inputStyle} placeholder="Alex" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Last Name</label>
+                  <input required value={lastName} onChange={e => setLastName(e.target.value)}
+                    style={inputStyle} placeholder="Johnson" />
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Kid's Email</label>
-              <input required type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
-              <input required type="password" value={password} onChange={e => setPassword(e.target.value)}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-
-            <div className="flex gap-4">
-              <div className="w-1/3">
-                <label className="block text-sm font-medium text-gray-700">Grade</label>
-                <select value={grade} onChange={e => setGrade(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map(g => (
-                    <option key={g} value={g}>Grade {g}</option>
-                  ))}
-                </select>
+              {/* Row 2 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
+                <div>
+                  <label style={labelStyle}>Grade Level</label>
+                  <select value={grade} onChange={e => setGrade(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                    {GRADES.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>School <span style={{ fontWeight: 400, opacity: 0.65 }}>(optional)</span></label>
+                  <input value={school} onChange={e => setSchool(e.target.value)}
+                    style={inputStyle} placeholder="Lincoln Elementary" />
+                </div>
               </div>
-              <div className="w-2/3">
-                <label className="block text-sm font-medium text-gray-700">School</label>
-                <input type="text" value={school} onChange={e => setSchool(e.target.value)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-              </div>
-            </div>
 
-            <button type="submit" disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50">
-              {loading ? 'Adding...' : 'Add Kid'}
-            </button>
-            <div className="text-center mt-4">
-              <button type="button" onClick={() => navigate('/dashboard')} className="text-sm text-gray-500 hover:text-gray-700">
-                Skip for now
-              </button>
-            </div>
-          </form>
+              {/* CTA */}
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileHover={{ scale: loading ? 1 : 1.02 }}
+                whileTap={{ scale: loading ? 1 : 0.98 }}
+                style={{
+                  width: '100%',
+                  padding: '15px 0',
+                  background: 'linear-gradient(135deg, #702AE1, #6411D5)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 999,
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.72 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 8px 28px rgba(112,42,225,0.32)',
+                  letterSpacing: '-0.01em',
+                  transition: 'opacity 0.18s',
+                }}>
+                {loading ? (
+                  <>
+                    <svg style={{ width: 18, height: 18, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83" />
+                    </svg>
+                    Adding…
+                  </>
+                ) : '+ Add Child'}
+              </motion.button>
+            </form>
+          </motion.div>
+
+          <style>{`
+            @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            input:focus, select:focus { outline: none; border-color: var(--rq-purple) !important; box-shadow: 0 0 0 3px rgba(112,42,225,0.12); background: #fff !important; }
+          `}</style>
         </div>
       </div>
     </div>
   );
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'var(--rq-text-muted)',
+  marginBottom: 8,
+  letterSpacing: '0.01em',
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 16px',
+  borderRadius: 14,
+  border: '1.5px solid transparent',
+  background: 'var(--rq-surface-low)',
+  fontFamily: 'var(--font-body)',
+  fontSize: '0.95rem',
+  fontWeight: 500,
+  color: 'var(--rq-text)',
+  boxSizing: 'border-box',
+  transition: 'border-color 0.18s, box-shadow 0.18s, background 0.18s',
 };
 
 export default AddKid;

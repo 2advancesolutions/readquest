@@ -1,5 +1,5 @@
 /* ============================================================
-   ReadQuest Global Styles — d1
+   ReadQuest Global — Stitch Levitation Library
    ============================================================ */
 @import './design-tokens.css';
 
@@ -17,7 +17,7 @@ html {
 
 body {
   font-family: var(--font-body);
-  background-color: var(--rq-bg);
+  background: var(--rq-bg);
   color: var(--rq-text);
   min-height: 100vh;
   overflow-x: hidden;
@@ -26,20 +26,22 @@ body {
 /* ── Typography ── */
 h1, h2, h3, h4, h5 {
   font-family: var(--font-heading);
-  font-weight: 600;
-  line-height: 1.2;
+  font-weight: 800;
+  line-height: 1.15;
   color: var(--rq-text);
+  letter-spacing: -0.02em;
 }
 
-h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
-h2 { font-size: clamp(1.5rem, 3.5vw, 2.5rem); }
-h3 { font-size: clamp(1.2rem, 2.5vw, 1.75rem); }
-h4 { font-size: 1.25rem; }
+h1 { font-size: clamp(2rem, 5vw, 3.2rem); }
+h2 { font-size: clamp(1.5rem, 3.5vw, 2.2rem); }
+h3 { font-size: clamp(1.15rem, 2.5vw, 1.6rem); }
+h4 { font-size: 1.15rem; }
 
-p { 
+p {
   font-family: var(--font-body);
   line-height: 1.7;
   font-size: 1rem;
+  color: var(--rq-text-muted);
 }
 
 button {
@@ -59,8 +61,8 @@ img { max-width: 100%; display: block; }
 /* ── Utility Classes ── */
 .rq-card {
   background: var(--rq-card);
-  border-radius: var(--rq-radius-md);
-  box-shadow: var(--rq-shadow-md);
+  border-radius: var(--rq-radius-lg);
+  box-shadow: var(--rq-shadow-card);
   padding: var(--rq-space-lg);
 }
 
@@ -68,15 +70,15 @@ img { max-width: 100%; display: block; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 14px;
+  padding: 5px 14px;
   border-radius: var(--rq-radius-full);
   font-family: var(--font-heading);
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--rq-bg); border-radius: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--rq-purple-light); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--rq-purple); }
@@ -86,12 +88,12 @@ img { max-width: 100%; display: block; }
 ══════════════════════════════════ */
 
 @keyframes slide-up {
-  from { transform: translateY(15px); opacity: 0; }
+  from { transform: translateY(16px); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
 
 @keyframes slide-down {
-  from { transform: translateY(-15px); opacity: 0; }
+  from { transform: translateY(-16px); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
 
@@ -105,11 +107,18 @@ img { max-width: 100%; display: block; }
   50%       { opacity: 0.7; }
 }
 
+@keyframes float-up {
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-8px); }
+  100% { transform: translateY(0px); }
+}
+
 /* ── Animation Utility Classes ── */
-.animate-slide-up { animation: slide-up 0.4s ease forwards; }
-.animate-slide-down { animation: slide-down 0.4s ease forwards; }
-.animate-fade-in  { animation: fade-in 0.4s ease forwards; }
-.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+.animate-slide-up    { animation: slide-up 0.4s ease forwards; }
+.animate-slide-down  { animation: slide-down 0.4s ease forwards; }
+.animate-fade-in     { animation: fade-in 0.4s ease forwards; }
+.animate-pulse-soft  { animation: pulse-soft 2s ease-in-out infinite; }
+.animate-float       { animation: float-up 3s ease-in-out infinite; }
 
 /* ── Page transition container ── */
 #root {
