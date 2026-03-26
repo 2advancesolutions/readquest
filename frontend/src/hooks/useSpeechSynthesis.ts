@@ -91,85 +91,14 @@ export function useSpeechSynthesis(): SpeechSynthesisHook {
         await audio.play()
       } catch (err: unknown) {
         clearTimeout(fetchTimeout)
-        // Only exit silently if the user explicitly called stop() — detected by abortRef being cleared
+        // If user explicitly called stop() — detected by abortRef being cleared — exit silently
         if (err instanceof Error && err.name === 'AbortError' && !abortRef.current) {
-          setIsSpeaking(false)
-          return  // user stopped intentionally — don't fall back to Web Speech
-        }
-        // Timeout-abort or network error → fall through to Web Speech fallback
-        console.warn('[TTS] Gemini TTS failed, falling back to Web Speech API:', err)
-
-        // ── Web Speech API fallback ──────────────────────────────────────────
-        if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
           setIsSpeaking(false)
           return
         }
-
-        window.speechSynthesis.cancel()
-        const words = text.split(/\s+/)
-        const utter = new SpeechSynthesisUtterance(text)
-
-        // Tune delivery per mode
-        if (mode === 'story') {
-          utter.rate = 0.88; utter.pitch = 1.08
-        } else if (mode === 'word') {
-          utter.rate = 0.7; utter.pitch = 1.1
-        } else if (mode === 'quiz') {
-          utter.rate = 0.95; utter.pitch = 1.12
-        } else {
-          utter.rate = 0.9; utter.pitch = 1.05
-        }
-        utter.volume = 1
-
-        // Best natural voices ordered by quality (macOS Enhanced > Microsoft Natural > Google)
-        const PREFERRED_VOICES = [
-          // macOS premium voices (Enhanced = neural)
-          'Ava (Enhanced)', 'Ava', 'Allison (Enhanced)', 'Allison',
-          'Samantha (Enhanced)', 'Samantha', 'Karen (Enhanced)', 'Karen',
-          'Victoria (Enhanced)', 'Victoria',
-          // Windows/Edge natural voices
-          'Microsoft Aria Online (Natural)', 'Microsoft Jenny Online (Natural)',
-          'Microsoft Aria', 'Microsoft Jenny',
-          // Google voices
-          'Google US English', 'Google UK English Female',
-        ]
-
-        const applyVoice = () => {
-          const voices = window.speechSynthesis.getVoices()
-          for (const name of PREFERRED_VOICES) {
-            const v = voices.find(v => v.name === name || v.name.startsWith(name))
-            if (v) { utter.voice = v; break }
-          }
-          // Final fallback: any English female voice
-          if (!utter.voice) {
-            const femaleEn = window.speechSynthesis.getVoices()
-              .find(v => v.lang.startsWith('en') && (v.name.includes('Female') || v.name.includes('female')))
-            if (femaleEn) utter.voice = femaleEn
-          }
-        }
-
-        // Voices may not be loaded yet on first call
-        if (window.speechSynthesis.getVoices().length > 0) {
-          applyVoice()
-        } else {
-          window.speechSynthesis.onvoiceschanged = () => { applyVoice(); window.speechSynthesis.onvoiceschanged = null }
-        }
-
-        utter.onstart = () => setIsSpeaking(true)
-        utter.onend = () => { setIsSpeaking(false); setCurrentWordIndex(-1) }
-        utter.onerror = () => { setIsSpeaking(false); setCurrentWordIndex(-1) }
-        utter.onboundary = (e: SpeechSynthesisEvent) => {
-          if (e.name !== 'word') return
-          let idx = 0, charCount = 0
-          for (let i = 0; i < words.length; i++) {
-            if (charCount + words[i].length > e.charIndex) { idx = i; break }
-            charCount += words[i].length + 1
-          }
-          setCurrentWordIndex(idx)
-        }
-        utterRef.current = utter
-        window.speechSynthesis.speak(utter)
-
+        // TTS failed — stay silent rather than play robot Web Speech voice
+        console.warn('[TTS] Chirp3-HD failed, staying silent:', err)
+        setIsSpeaking(false)
       }
     },
     [stop]

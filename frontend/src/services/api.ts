@@ -1,15 +1,45 @@
 import axios from 'axios';
+import { supabase } from '../lib/supabase';
+
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
   timeout: 180000, // 3 min for normal API calls
 });
 
-// Request interceptor — attach student_id from localStorage
-api.interceptors.request.use((config) => {
-  const studentId = localStorage.getItem('readquest_student_id');
-  if (studentId) config.headers['X-Student-ID'] = studentId;
+/** Deduplicates concurrent identical calls — same key shares one in-flight promise (TTL: 2 s). */
+const _cache = new Map<string, { promise: Promise<unknown>; ts: number }>()
+function deduplicate<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const now = Date.now()
+  const hit = _cache.get(key)
+  if (hit && now - hit.ts < 2000) return hit.promise as Promise<T>
+  const promise = fn()
+  _cache.set(key, { promise: promise as Promise<unknown>, ts: now })
+  promise.finally(() => setTimeout(() => _cache.delete(key), 2000))
+  return promise
+}
+
+
+// Request interceptor — attach student_id from localStorage (selected child) or Supabase session (parent fallback)
+// Does NOT overwrite if already explicitly set (e.g. a specific child's UUID from the story generator)
+api.interceptors.request.use(async (config) => {
+  // If the caller already set X-Student-ID explicitly, respect it
+  if (config.headers['X-Student-ID']) return config;
+
+  // PRIORITY 1: Use the selected child's student ID from localStorage (set when parent picks a child on dashboard)
+  const selectedStudentId = localStorage.getItem('readquest_student_id');
+  if (selectedStudentId) {
+    config.headers['X-Student-ID'] = selectedStudentId;
+    return config;
+  }
+
+  // PRIORITY 2: Fall back to the Supabase auth user (parent's UUID) if no child is selected
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user?.id) config.headers['X-Student-ID'] = session.user.id;
   return config;
 });
 
@@ -27,8 +57,8 @@ export const storiesApi = {
       { grade, theme, character_name, language, art_style: artStyle },
       { timeout: 300000 }, // 5 min — story text + 5 images
     ),
-  list: () => api.get('/stories'),
-  get: (id: string) => api.get(`/stories/${id}`),
+  list: () => deduplicate('stories:list', () => api.get('/stories')),
+  get: (id: string) => deduplicate(`stories:${id}`, () => api.get(`/stories/${id}`)),
   delete: (id: string) => api.delete(`/stories/${id}`),
 };
 
@@ -38,15 +68,21 @@ export const quizzesApi = {
 };
 
 export const rewardsApi = {
-  getXP: () => api.get('/rewards/xp'),
-  getXPHistory: () => api.get('/rewards/xp/history'),
-  getBadges: () => api.get('/rewards/badges'),
-  getStreaks: () => api.get('/rewards/streaks'),
-  getLeaderboard: () => api.get('/rewards/leaderboard'),
+  getXP: () => deduplicate('rewards:xp', () => api.get('/rewards/xp')),
+  getXPHistory: () => deduplicate('rewards:xp:history', () => api.get('/rewards/xp/history')),
+  getBadges: () => deduplicate('rewards:badges', () => api.get('/rewards/badges')),
+  getStreaks: () => deduplicate('rewards:streaks', () => api.get('/rewards/streaks')),
+  getLeaderboard: () => deduplicate('rewards:leaderboard', () => api.get('/rewards/leaderboard')),
   /** Record that the student read today — updates streak + weekly activity */
   recordActivity: () => api.post('/rewards/record-activity'),
   /** Mark a story fully completed */
   completeStory: (storyId: string) => api.post(`/rewards/complete-story?story_id=${storyId}`),
+  /** Award a specific XP amount with idempotency — safe to call multiple times */
+  awardXP: (amount: number, idempotencyKey: string) =>
+    api.post('/rewards/award-xp', { amount, reason: idempotencyKey, idempotency_key: idempotencyKey }),
+  /** Backfill XP ledger from a list of reading log entries — call on page load */
+  syncXP: (entries: Array<{ story_id: string; total_xp: number }>) =>
+    api.post('/rewards/sync-xp', { entries }),
 };
 
 
@@ -55,6 +91,172 @@ export const progressApi = {
     api.post(`/stories/${storyId}/pages/${pageNumber}/read`),
   markBookComplete: (storyId: string) =>
     api.post(`/stories/${storyId}/complete`),
+
+  /** Save the last page the student read (for resume + progress bar). */
+  saveProgress: async (storyId: string, lastPage: number, totalPages: number) => {
+    const studentId =
+      (await supabase.auth.getSession()).data.session?.user?.id ||
+      localStorage.getItem('readquest_student_id') ||
+      'guest'
+
+    // 1. Always persist to localStorage for instant access
+    const key = `rq_progress_${studentId}_${storyId}`
+    const existing = JSON.parse(localStorage.getItem(key) || '{}')
+    localStorage.setItem(key, JSON.stringify({ ...existing, lastPage, totalPages }))
+
+    // 2. Sync to Supabase for cross-device persistence
+    try {
+      await supabase.from('reading_progress').upsert({
+        student_id: studentId,
+        story_id: storyId,
+        last_page: lastPage,
+        total_pages: totalPages,
+      }, { onConflict: 'student_id,story_id' })
+    } catch (_) { /* offline or table not created yet — localStorage is the fallback */ }
+  },
+
+  /** Load progress for ALL stories in one query — use this instead of calling getProgress per-story. */
+  getProgressBatch: async (storyIds: string[]): Promise<Record<string, { lastPage: number; totalPages: number; completedAt?: string }>> => {
+    if (storyIds.length === 0) return {}
+    const studentId =
+      (await supabase.auth.getSession()).data.session?.user?.id ||
+      localStorage.getItem('readquest_student_id') ||
+      'guest'
+
+    const result: Record<string, { lastPage: number; totalPages: number; completedAt?: string }> = {}
+
+    // Single batch query for all stories at once
+    try {
+      const { data } = await supabase
+        .from('reading_progress')
+        .select('story_id,last_page,total_pages,completed_at')
+        .eq('student_id', studentId)
+        .in('story_id', storyIds)
+      if (data) {
+        for (const row of data) {
+          result[row.story_id] = { lastPage: row.last_page ?? 0, totalPages: row.total_pages ?? 0, completedAt: row.completed_at }
+        }
+      }
+    } catch (_) {}
+
+    // Fill any misses from localStorage
+    for (const storyId of storyIds) {
+      if (result[storyId]) continue
+      const local = JSON.parse(localStorage.getItem(`rq_progress_${studentId}_${storyId}`) || 'null')
+      if (local) result[storyId] = { lastPage: local.lastPage ?? 0, totalPages: local.totalPages ?? 0 }
+    }
+
+    return result
+  },
+
+  /** Load progress for a single story. Prefer getProgressBatch when loading many stories. */
+  getProgress: async (storyId: string): Promise<{ lastPage: number; totalPages: number; completedAt?: string } | null> => {
+    const batch = await progressApi.getProgressBatch([storyId])
+    return batch[storyId] ?? null
+  },
 };
+
+export const readingLogsApi = {
+  /** Save a completed reading session to Supabase (and localStorage as fallback). */
+  saveLog: async (log: {
+    storyId: string
+    storyTitle: string
+    gradeLevel: number
+    coverUrl?: string
+    studentName?: string
+    readingAccuracy: number
+    quizScore: number
+    quizTotal: number
+    comprehensionScore: number
+    totalXp: number
+    stars: number
+    feedback: string
+  }) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const studentId = localStorage.getItem('readquest_student_id') || session?.user?.id || 'guest'
+    const record = {
+      student_id: studentId,
+      story_id: log.storyId,
+      story_title: log.storyTitle,
+      grade_level: log.gradeLevel,
+      cover_url: log.coverUrl ?? null,
+      student_name: log.studentName ?? null,
+      reading_accuracy: log.readingAccuracy,
+      quiz_score: log.quizScore,
+      quiz_total: log.quizTotal,
+      comprehension_score: log.comprehensionScore,
+      total_xp: log.totalXp,
+      stars: log.stars,
+      feedback: log.feedback,
+      completed_at: new Date().toISOString(),
+    }
+    // Save to localStorage always (instant, works offline)
+    const localKey = `rq_reading_logs_${studentId}`
+    const existing: unknown[] = JSON.parse(localStorage.getItem(localKey) || '[]')
+    existing.unshift(record)
+    localStorage.setItem(localKey, JSON.stringify(existing.slice(0, 100)))
+    // Sync to Supabase
+    try {
+      await supabase.from('reading_logs').insert(record)
+    } catch (_) { /* table may not exist yet — localStorage is the fallback */ }
+    // Award XP to the correct student in the XP ledger (idempotent)
+    rewardsApi.awardXP(log.totalXp, `reading_log_${log.storyId}`).catch(() => {})
+  },
+
+  /** Load all completed readings for this student, newest first. */
+  getLogs: async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const studentId = localStorage.getItem('readquest_student_id') || session?.user?.id || 'guest'
+    return readingLogsApi.getLogsForStudent(studentId)
+  },
+
+  /** Load completed readings for an explicit student ID, newest first.
+   *  Single OR query covers: real student ID, parent UUID + name, parent UUID + grade. */
+  getLogsForStudent: async (studentId: string, studentName?: string, gradeLevel?: number) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const parentUUID = session?.user?.id
+
+    try {
+      // Build OR filters: exact student ID always included; parent-UUID variants when available
+      const orParts: string[] = [`student_id.eq.${studentId}`]
+      if (parentUUID && parentUUID !== studentId) {
+        if (studentName) orParts.push(`and(student_id.eq.${parentUUID},student_name.eq.${studentName})`)
+        if (gradeLevel !== undefined) orParts.push(`and(student_id.eq.${parentUUID},grade_level.eq.${gradeLevel})`)
+      }
+
+      const { data, error } = await supabase
+        .from('reading_logs').select('*')
+        .or(orParts.join(','))
+        .order('completed_at', { ascending: false }).limit(100)
+
+      if (!error && data && data.length > 0) return data
+    } catch (_) {}
+
+    // Layer 4: localStorage — scan all rq_reading_logs_* keys, filter strictly by grade_level
+    const allLogs: unknown[] = []
+    const seen = new Set<string>()
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i) ?? ''
+      if (!key.startsWith('rq_reading_logs_')) continue
+      try {
+        const entries = JSON.parse(localStorage.getItem(key) || '[]') as Array<Record<string, unknown>>
+        for (const entry of entries) {
+          // Filter by grade_level (most reliable — name may be null, id may be wrong)
+          if (gradeLevel !== undefined && entry.grade_level !== undefined && entry.grade_level !== gradeLevel) continue
+          // Also filter by name if available
+          if (studentName && entry.student_name && entry.student_name !== studentName) continue
+          const id = `${entry.story_id}${entry.completed_at}`
+          if (!seen.has(id)) { seen.add(id); allLogs.push(entry) }
+        }
+      } catch (_) {}
+    }
+    return (allLogs as Array<Record<string, string>>).sort((a, b) =>
+      new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
+    )
+  },
+}
+
+
+
 
 export default api;

@@ -1,0 +1,130 @@
+/* ============================================================
+   ReadQuest App Shell — Shared Sidebar Layout for Desktop
+   Used by Rewards, Shelf, and other inner pages
+   ============================================================ */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  background: var(--rq-bg);
+}
+
+/* ── Sidebar (same as dashboard) ── */
+.app-sidebar {
+  width: 260px;
+  background: var(--rq-card);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-shadow: var(--rq-shadow-sm);
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.app-sidebar-logo {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--rq-purple);
+  padding: 0 12px;
+  margin-bottom: 36px;
+  letter-spacing: -0.03em;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.app-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.app-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: var(--rq-radius-full);
+  color: var(--rq-text-muted);
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition: all 0.2s;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  font-family: var(--font-body);
+}
+.app-sidebar-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+.app-sidebar-link:hover { background: var(--rq-surface-low); color: var(--rq-text); }
+.app-sidebar-link.active {
+  background: var(--rq-purple-light2);
+  color: var(--rq-purple);
+  font-weight: 700;
+}
+
+.app-sidebar-bottom {
+  padding-top: 16px;
+}
+
+.app-sidebar-logout {
+  width: 100%;
+  padding: 11px 14px;
+  text-align: left;
+  color: var(--rq-text-muted);
+  background: transparent;
+  border-radius: var(--rq-radius-full);
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.app-sidebar-logout:hover {
+  background: rgba(247, 75, 109, 0.08);
+  color: var(--rq-coral);
+}
+
+/* ── Page content (right of sidebar) ── */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* ── Mobile: hide sidebar, show top bar ── */
+@media (max-width: 768px) {
+  .app-shell { flex-direction: column; }
+
+  .app-sidebar {
+    width: 100%;
+    height: auto;
+    position: static;
+    padding: 14px 16px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: none;
+    border-bottom: none;
+  }
+
+  .app-sidebar-logo { margin-bottom: 0; }
+
+  .app-sidebar-nav {
+    flex-direction: row;
+    flex: 0;
+    gap: 2px;
+  }
+  .app-sidebar-link span { display: none; }
+  .app-sidebar-link { padding: 8px 10px; }
+
+  .app-sidebar-bottom { padding: 0; }
+  .app-sidebar-logout span { display: none; }
+}

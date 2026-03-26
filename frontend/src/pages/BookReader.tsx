@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { storiesApi, progressApi, rewardsApi } from '../services/api'
+import { storiesApi, progressApi, rewardsApi, readingLogsApi } from '../services/api'
+
 import type { Story, QuizQuestion, PageScore, ReadingSession, ComprehensionAnswer } from '../types'
 import { MOCK_STORY } from './mockStory'  // keep for dev reference but not used as fallback
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis'
@@ -12,6 +13,14 @@ import '../styles/reader.css'
 function normalize(w: string) {
   // Strip punctuation, hyphens, possessives; lowercase
   return w.replace(/[^a-zA-Z]/g, '').toLowerCase()
+}
+
+/**
+ * syllabify — disabled (produced incorrect splits like 'Ha·rmony')
+ * Words are displayed and spoken whole.
+ */
+function syllabify(word: string): string {
+  return word
 }
 
 // Levenshtein distance for fuzzy speech matching
@@ -59,9 +68,51 @@ const COMPREHENSION_QUESTIONS = [
 type WordStatus = 'idle' | 'correct' | 'wrong' | 'current'
 type ReaderPhase = 'reading' | 'review' | 'quiz' | 'comprehension'
 
+/**
+ * evaluateFullReading — batch algorithm run AFTER the student finishes speaking.
+ * Aligns the full spoken transcript against all page words using a forward
+ * greedy scan with a lookahead window. Much more accurate than real-time matching
+ * because pauses, restarts, and interim noise don't cause false negatives.
+ */
+function evaluateFullReading(transcript: string, pageWords: string[]): WordStatus[] {
+  const spoken = transcript.toLowerCase().split(/\s+/).filter(Boolean).map(normalize)
+  const statuses: WordStatus[] = new Array(pageWords.length).fill('idle')
+  if (!spoken.length) return statuses
+
+  let si = 0  // how far we've consumed in the spoken array
+
+  for (let wi = 0; wi < pageWords.length; wi++) {
+    const target = normalize(pageWords[wi])
+    if (!target) continue
+
+    // Window: proportional lookahead so skipped filler words don't desync
+    const lookahead = target.length <= 3 ? 3 : 6
+    let matched = false
+
+    for (let offset = 0; offset < lookahead && si + offset < spoken.length; offset++) {
+      if (isClose(spoken[si + offset], target)) {
+        statuses[wi] = 'correct'
+        si += offset + 1
+        matched = true
+        break
+      }
+    }
+
+    if (!matched) {
+      // Word was skipped or mispronounced — mark wrong but don't advance spoken pointer
+      statuses[wi] = 'wrong'
+    }
+  }
+
+  return statuses
+}
+
 export default function BookReader() {
   const { storyId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Double-points mode — activated when student retries after scoring < 77%
+  const doublePoints = !!(location.state as any)?.doublePoints
 
   const [story, setStory] = useState<Story | null>(null)
   const [storyLoading, setStoryLoading] = useState(true)
@@ -101,16 +152,72 @@ export default function BookReader() {
   const mic = useSpeechRecognition()
   const sfx = useSoundEffects()
 
+  // ── Comprehension-page voice dictation ───────────────────────────────────
+  const [activeCompMic, setActiveCompMic] = useState<string | null>(null)
+  const compMicRef = useRef<SpeechRecognition | null>(null)
+  const compMicTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const startCompDictation = useCallback((fieldKey: string, onResult: (text: string) => void) => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) { alert('Voice input needs Chrome or Edge!'); return }
+    if (compMicRef.current) { compMicRef.current.stop(); compMicRef.current = null }
+    if (compMicTimeoutRef.current) clearTimeout(compMicTimeoutRef.current)
+    const rec: SpeechRecognition = new SR()
+    rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true
+    compMicRef.current = rec
+    let finalText = ''
+    const resetTimer = () => {
+      if (compMicTimeoutRef.current) clearTimeout(compMicTimeoutRef.current)
+      compMicTimeoutRef.current = setTimeout(() => rec.stop(), 2500)
+    }
+    rec.onstart = () => { setActiveCompMic(fieldKey); resetTimer() }
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      resetTimer()
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
+        else interim = e.results[i][0].transcript
+      }
+      onResult(finalText + interim)
+    }
+    rec.onend = () => {
+      if (compMicTimeoutRef.current) clearTimeout(compMicTimeoutRef.current)
+      compMicRef.current = null; setActiveCompMic(null)
+      if (finalText.trim()) onResult(finalText.trim())
+    }
+    rec.onerror = () => { compMicRef.current = null; setActiveCompMic(null) }
+    rec.start()
+  }, [])
+
+  const stopCompDictation = useCallback(() => {
+    if (compMicTimeoutRef.current) clearTimeout(compMicTimeoutRef.current)
+    compMicRef.current?.stop(); compMicRef.current = null; setActiveCompMic(null)
+  }, [])
+
+  const toggleCompMic = useCallback((fieldKey: string, onResult: (text: string) => void) => {
+    if (activeCompMic === fieldKey) stopCompDictation()
+    else startCompDictation(fieldKey, onResult)
+  }, [activeCompMic, startCompDictation, stopCompDictation])
+
+  useEffect(() => () => { compMicRef.current?.stop() }, [])
+
   const prevTranscriptRef = useRef('')
   const pageWordsRef = useRef<string[]>([])
-  const readingWordIdxRef = useRef(0)  // which page word we're matching next
-  const spokenWordIdxRef = useRef(0)   // which spoken word we've processed up to
 
-  // ── Load story ────────────────────────────────────────────────────────────
+  // ── Load story + resume from saved progress ───────────────────────────────
   useEffect(() => {
     setStoryLoading(true)
     storiesApi.get(storyId!)
-      .then(r => { setStory(r.data); setStoryLoading(false) })
+      .then(async r => {
+        const s = r.data
+        setStory(s)
+        setStoryLoading(false)
+        // Resume from last saved page
+        const prog = await progressApi.getProgress(storyId!)
+        if (prog && prog.lastPage > 0 && prog.lastPage < s.pages.length) {
+          setCurrentPage(prog.lastPage)
+        }
+      })
       .catch(() => {
         setStoryError('Could not load story. Please go back and try again.')
         setStoryLoading(false)
@@ -125,13 +232,14 @@ export default function BookReader() {
     if (!page) return
     const words = page.content.split(/\s+/).filter(Boolean)
     pageWordsRef.current = words
-    readingWordIdxRef.current = 0
-    spokenWordIdxRef.current = 0
     setWordStatuses(words.map(() => 'idle'))
     setPhase('reading')
     prevTranscriptRef.current = ''
+    accTranscriptRef.current = ''
+    wasReadingRef.current = false
     tts.stop()
     mic.stopListening()
+    mic.resetTranscript()
     // Block page display until image loads; skip wait if no image on this page
     setImageLoaded(!page.media_url)
 
@@ -149,170 +257,167 @@ export default function BookReader() {
     return () => { clearTimeout(timer); clearTimeout(imgTimeout) }
   }, [currentPage, story])  // eslint-disable-line
 
-  // ── Voice recognition → word matching ─────────────────────────────────────
+  // ── BATCH evaluation — runs AFTER the student finishes speaking ───────────
+  // We collect the full transcript while mic is active, then evaluate all words
+  // at once when they stop. This prevents premature wrong marks mid-reading.
+  const wasReadingRef = useRef(false)
+  const accTranscriptRef = useRef('') // accumulates the full reading transcript
+
+  // Accumulate transcript while reading
+  useEffect(() => {
+    if (phase === 'reading' && mic.isListening) {
+      accTranscriptRef.current = mic.transcript
+    }
+  }, [mic.transcript, phase, mic.isListening])
+
+  // ── Live green progress highlighting ─────────────────────────────────────
+  // Count words spoken so far (final + interim) and mark that many green.
+  // No string comparison — O(1) per update. Fires on interimTranscript for
+  // real-time word-by-word highlighting as the student reads.
   useEffect(() => {
     if (phase !== 'reading' || !mic.isListening) return
-    const transcript = mic.transcript
-    if (!transcript) return
+    const combined = (mic.transcript + ' ' + mic.interimTranscript).trim()
+    if (!combined) return
 
+    const spokenCount = combined.split(/\s+/).filter(Boolean).length
     const words = pageWordsRef.current
-    const spoken = transcript.toLowerCase().split(/\s+/).filter(Boolean)
-    const startFrom = spokenWordIdxRef.current
+    setWordStatuses(words.map((_, i) => (i < spokenCount ? 'correct' : 'idle')) as WordStatus[])
+  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening])  // eslint-disable-line
 
-    for (let i = startFrom; i < spoken.length; i++) {
-      const wordIdx = readingWordIdxRef.current
-      if (wordIdx >= words.length) break
-
-      const said = normalize(spoken[i])
-      const target = normalize(words[wordIdx])
-
-      // ── Redemption pass: if current word is already 'wrong' and the user
-      // says it correctly now, flip it green without advancing the pointer
-      if (wordIdx > 0) {
-        setWordStatuses(prev => {
-          // Look back up to 3 words for a wrong word that matches what was said
-          for (let back = 1; back <= 3; back++) {
-            const checkIdx = wordIdx - back
-            if (checkIdx < 0) break
-            if (prev[checkIdx] === 'wrong' && isClose(said, normalize(words[checkIdx]))) {
-              const next = [...prev]
-              next[checkIdx] = 'correct'
-              sfx.playPop()
-              const el = document.getElementById(`word-${checkIdx}`)
-              if (el) {
-                const rect = el.getBoundingClientRect()
-                const id = Date.now() + Math.random()
-                setSparkles(s => [...s, { id, x: rect.x + rect.width / 2, y: rect.y }])
-                setTimeout(() => setSparkles(s => s.filter(sp => sp.id !== id)), 1200)
-              }
-              return next
-            }
-          }
-          return prev
-        })
-      }
-
-      if (isClose(said, target)) {
-        // ✅ Correct — green + sparkle
-        const capturedIdx = wordIdx
-        setWordStatuses(prev => {
-          const next = [...prev]
-          next[capturedIdx] = 'correct'
-          return next
-        })
-        sfx.playPop()
-        readingWordIdxRef.current++
-        spokenWordIdxRef.current = i + 1
-
-        const el = document.getElementById(`word-${capturedIdx}`)
-        if (el) {
-          const rect = el.getBoundingClientRect()
-          const id = Date.now() + Math.random()
-          setSparkles(s => [...s, { id, x: rect.x + rect.width / 2, y: rect.y }])
-          setTimeout(() => setSparkles(s => s.filter(sp => sp.id !== id)), 1200)
-        }
-      } else {
-        // ── Lookahead: maybe user skipped this word and said the next one
-        const nextTarget = wordIdx + 1 < words.length ? normalize(words[wordIdx + 1]) : null
-        if (nextTarget && isClose(said, nextTarget)) {
-          // Mark current as wrong, advance and mark next as correct
-          const capturedWrong = wordIdx
-          const capturedRight = wordIdx + 1
-          setWordStatuses(prev => {
-            const next = [...prev]
-            next[capturedWrong] = 'wrong'
-            next[capturedRight] = 'correct'
-            return next
-          })
-          sfx.playPop()
-          readingWordIdxRef.current += 2
-          spokenWordIdxRef.current = i + 1
-        } else {
-          // ❌ Wrong — mark red
-          const capturedIdx = wordIdx
-          setWordStatuses(prev => {
-            const next = [...prev]
-            next[capturedIdx] = 'wrong'
-            return next
-          })
-          readingWordIdxRef.current++
-          spokenWordIdxRef.current = i + 1
-        }
-      }
-    }
-  }, [mic.transcript, phase, mic.isListening, sfx])  // eslint-disable-line
-
-  // ── Review phase — voice says word then auto-mic ──────────────────────────
-  const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
+  // When mic stops during reading phase → run batch evaluation
   useEffect(() => {
-    // Only run once user pressed Start
+    if (phase !== 'reading') { wasReadingRef.current = false; return }
+
+    if (mic.isListening) {
+      wasReadingRef.current = true
+    } else if (wasReadingRef.current) {
+      wasReadingRef.current = false
+      const fullTranscript = accTranscriptRef.current || mic.transcript
+      if (!fullTranscript.trim()) return
+
+      const words = pageWordsRef.current
+      const statuses = evaluateFullReading(fullTranscript, words)
+      setWordStatuses(statuses)
+
+      // Sparkles + sounds for correct words
+      const correctCount = statuses.filter(s => s === 'correct').length
+      if (correctCount > 0) sfx.playPop()
+      statuses.forEach((status, idx) => {
+        if (status === 'correct') {
+          const el = document.getElementById(`word-${idx}`)
+          if (el) {
+            const rect = el.getBoundingClientRect()
+            const id = Date.now() + Math.random()
+            setSparkles(s => [...s, { id, x: rect.x + rect.width / 2, y: rect.y }])
+            setTimeout(() => setSparkles(s => s.filter(sp => sp.id !== id)), 1200)
+          }
+        }
+      })
+    }
+  }, [mic.isListening, phase, sfx])  // eslint-disable-line
+
+  // ── Auto-stop on silence → triggers batch evaluation ─────────────────────
+  // Chrome SpeechRecognition with continuous=true never fires onend on its own.
+  // We reset a 2.5s timer on every speech event; when it fires the mic stops,
+  // which flips isListening false, which triggers the batch evaluation above.
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!mic.isListening || phase !== 'reading') {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      return
+    }
+    // Reset the timer each time speech arrives
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    silenceTimerRef.current = setTimeout(() => {
+      mic.stopListening()   // → isListening goes false → batch eval fires
+    }, 3000)
+    return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    }
+  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening])  // eslint-disable-line
+
+  // ── Review phase — MANUAL mic: TTS speaks word, student presses button to repeat ──
+  const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track which review words have been spoken by TTS so we don't re-speak on re-renders
+  const reviewSpokenRef = useRef<number>(-1)
+
+  // Speak the current word when reviewIdx changes (or review starts)
+  useEffect(() => {
     if (phase !== 'review' || !reviewStarted) return
     const currentMissed = missedWords[reviewIdx]
     if (!currentMissed) return
+    if (reviewSpokenRef.current === reviewIdx) return  // already spoken this word
 
-    // 1. Stop any playing audio
-    tts.stop()
+    reviewSpokenRef.current = reviewIdx
     mic.stopListening()
     mic.resetTranscript()
 
-    // 2. Voice says the word
-    const sayTimer = setTimeout(() => {
-      tts.speak(`Say the word: ${currentMissed.word}`, 'word')
-    }, 200)
+    // Strip punctuation for clean TTS pronunciation
+    const cleanWord = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
+    const prompt = `Listen carefully: ${cleanWord}. Now you say it!`
 
-    // 3. After voice (~2.2s), auto-start the mic so user can repeat immediately
-    const micTimer = setTimeout(() => {
-      mic.resetTranscript()
-      mic.startListening()
-    }, 2400)
-
-    // 4. Auto-skip after 8 seconds total if user doesn't say it
-    if (reviewTimerRef.current) clearTimeout(reviewTimerRef.current)
-    reviewTimerRef.current = setTimeout(() => {
-      mic.stopListening()
-      const nextReview = reviewIdx + 1
-      if (nextReview < missedWords.length) {
-        setReviewIdx(nextReview)
-      } else {
-        tts.stop()
-        setTimeout(() => {
-          tts.speak("Good effort! Let's move on to the quiz.", 'teacher')
-          setTimeout(() => startQuiz(), 2500)
-        }, 300)
-      }
-    }, 8000)
-
-    return () => {
-      clearTimeout(sayTimer)
-      clearTimeout(micTimer)
-      if (reviewTimerRef.current) clearTimeout(reviewTimerRef.current)
-    }
+    const t = setTimeout(() => tts.speak(prompt, 'word'), 300)
+    return () => clearTimeout(t)
   }, [phase, reviewIdx, reviewStarted, missedWords])  // eslint-disable-line
 
+  // Called when student taps the "I'm Ready!" mic button
+  const handleReviewMicPress = useCallback(() => {
+    if (mic.isListening) {
+      mic.stopListening()
+      return
+    }
+    tts.stop()  // stop TTS if still playing
+    mic.resetTranscript()
+    mic.startListening()
+  }, [mic, tts])
+
+  // Called when student wants to hear the word again
+  const handleReviewHearAgain = useCallback(() => {
+    mic.stopListening()
+    mic.resetTranscript()
+    const currentMissed = missedWords[reviewIdx]
+    if (!currentMissed) return
+    const cleanWord = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
+    tts.speak(`${cleanWord}`, 'word')
+  }, [reviewIdx, missedWords, tts, mic])
+
+  // Match detection — only when mic is actively listening
   useEffect(() => {
     if (phase !== 'review' || !mic.isListening) return
-    const transcript = mic.transcript
-    if (!transcript) return
 
-    const spoken = transcript.toLowerCase().split(/\s+/).filter(Boolean)
+    const combined = (mic.transcript + ' ' + mic.interimTranscript).trim()
+    if (!combined) return
+
+    const spoken = combined.toLowerCase().split(/\s+/).filter(Boolean)
     const currentMissed = missedWords[reviewIdx]
     if (!currentMissed) return
 
-    const lastSpoken = normalize(spoken[spoken.length - 1] ?? '')
-    const target = normalize(currentMissed.word)
+    // Strip punctuation from stored word before matching
+    const cleanTarget = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
+    const target = normalize(cleanTarget)
 
-    if (isClose(lastSpoken, target)) {
-      // Clear auto-skip timer
+    // Check ALL spoken words (not just the last) so the user can say the
+    // word anywhere in their utterance (e.g. "Rio" or "I said Rio")
+    const matched = spoken.some(w => {
+      const norm = normalize(w)
+      // For very short words use 1-edit-distance instead of exact-only
+      if (target.length <= 3) return norm === target || levenshtein(norm, target) <= 1
+      return isClose(norm, target)
+    })
+
+    if (matched) {
       if (reviewTimerRef.current) clearTimeout(reviewTimerRef.current)
+      mic.stopListening()
 
-      // Flip word to correct
+      // Mark correct
       setWordStatuses(prev => {
         const next = [...prev]
         next[currentMissed.idx] = 'correct'
         return next
       })
       sfx.playPop()
+
+      // Sparkle effect
       const el = document.querySelector(`.review-word-card:nth-child(${reviewIdx + 1})`)
       if (el) {
         const rect = el.getBoundingClientRect()
@@ -321,21 +426,21 @@ export default function BookReader() {
         setTimeout(() => setSparkles(s => s.filter(sp => sp.id !== id)), 1200)
       }
 
+      // Give positive feedback then advance
+      tts.speak('Great job!', 'teacher')
       const nextReview = reviewIdx + 1
       if (nextReview < missedWords.length) {
-        setReviewIdx(nextReview)
-        mic.resetTranscript()
+        reviewSpokenRef.current = -1  // allow next word to be spoken
+        setTimeout(() => setReviewIdx(nextReview), 1200)
       } else {
-        mic.stopListening()
         sfx.playCorrect()
-        tts.stop()
         setTimeout(() => {
           tts.speak("Amazing! You got them all! Now let's see what you remember — quiz time!", 'teacher')
           setTimeout(() => startQuiz(), 2500)
-        }, 300)
+        }, 1200)
       }
     }
-  }, [mic.transcript, phase, mic.isListening, reviewIdx, missedWords])  // eslint-disable-line
+  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening, reviewIdx, missedWords])  // eslint-disable-line
 
 
   // ── XP toast ─────────────────────────────────────────────────────────────
@@ -434,13 +539,18 @@ export default function BookReader() {
       setSession(sess)
       setPhase('comprehension')
       progressApi.markBookComplete(story.id).catch(() => {})
+      // Save completed progress
+      progressApi.saveProgress(story.id, story.pages.length, story.pages.length).catch(() => {})
       rewardsApi.completeStory(story.id).catch(() => {})   // ← record story completed
       showXPToast(50)
     } else {
+      const nextPage = currentPage + 1
       setDirection(1)
-      setCurrentPage(p => p + 1)
+      setCurrentPage(nextPage)
       setSelectedAnswer(null)
       setAnswerResult(null)
+      // Save progress so student can resume here
+      progressApi.saveProgress(story.id, nextPage, story.pages.length).catch(() => {})
     }
   }, [story, currentPage, quizResults])
 
@@ -503,7 +613,9 @@ export default function BookReader() {
     } else {
       tts.stop()
       mic.resetTranscript()
-      spokenWordIdxRef.current = 0  // reset spoken word cursor
+      accTranscriptRef.current = ''
+      wasReadingRef.current = false
+      setWordStatuses(pageWordsRef.current.map(() => 'idle'))  // reset all to grey
       mic.startListening()
     }
   }
@@ -517,6 +629,8 @@ export default function BookReader() {
     setCompLoading(true)
     const allText = story?.pages.map(p => p.content).join(' ') ?? ''
 
+    let gradedScore = 50
+    let gradedFeedback = 'Great effort reading this story!'
     try {
       const res = await fetch('http://localhost:8000/api/stories/grade-comprehension', {
         method: 'POST',
@@ -528,19 +642,60 @@ export default function BookReader() {
         }),
       })
       const data = await res.json()
-      setCompScore(data.score ?? 50)
-      setCompFeedback(data.feedback ?? 'Great job reading!')
+      gradedScore = data.score ?? 50
+      gradedFeedback = data.feedback ?? 'Great job reading!'
     } catch {
       // Fallback to local scoring
-      const score = comprehensionScore(summaryText + ' ' + comprehensionAnswers.map(a => a.answer).join(' '), allText)
-      setCompScore(score)
-      setCompFeedback('Great effort reading this story!')
+      gradedScore = comprehensionScore(summaryText + ' ' + comprehensionAnswers.map(a => a.answer).join(' '), allText)
     }
+    setCompScore(gradedScore)
+    setCompFeedback(gradedFeedback)
     setCompLoading(false)
     setComprehensionSubmitted(true)
-    showXPToast(50 + Math.round(compScore * 0.5))
-    tts.speak('Wonderful! You did an amazing job reading and understanding this story! You should be so proud of yourself!', 'teacher')
-  }
+
+    const readAcc = session?.accuracyPct ?? 0
+    const overallAvg = Math.round((readAcc + gradedScore) / 2)
+    const passed = overallAvg >= 77
+    const xpBase = 50 + Math.round(gradedScore * 0.5)
+    const xpAwarded = doublePoints ? xpBase * 2 : xpBase
+    showXPToast(xpAwarded)
+    // ── Record reading activity (populates streak + weekly_activity) ─────────
+    rewardsApi.recordActivity().catch(() => {})
+
+    if (passed) {
+      tts.speak('Wonderful! You did an amazing job reading and understanding this story! You should be so proud of yourself!', 'teacher')
+    } else {
+      tts.speak(`Good effort! You scored ${overallAvg} percent. Try reading again to beat 77 percent and earn double points!`, 'teacher')
+    }
+
+    // ── Save to Reading Shelf ─────────────────────────────────────────────
+    if (story) {
+      const qCorrect = quizResults.filter(r => r.correct).length
+      const qTotal = quizResults.length
+      const avg = overallAvg
+      const stars = avg >= 90 ? 5 : avg >= 75 ? 4 : avg >= 60 ? 3 : avg >= 40 ? 2 : 1
+      const coverRaw = story.cover_media_url
+      const resolvedCover = coverRaw
+        ? (coverRaw.startsWith('/static')
+            ? `${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}${coverRaw}`
+            : coverRaw)
+        : undefined
+      readingLogsApi.saveLog({
+        storyId: story.id,
+        storyTitle: story.title,
+        gradeLevel: story.grade_level,
+        coverUrl: resolvedCover,
+        studentName: localStorage.getItem('readquest_student_name') ?? undefined,
+        readingAccuracy: readAcc,
+        quizScore: qCorrect,
+        quizTotal: qTotal,
+        comprehensionScore: gradedScore,
+        totalXp: 50 + Math.round(gradedScore * 0.5),
+        stars,
+        feedback: gradedFeedback,
+      }).catch(() => {})
+    }
+  }  // end handleComprehensionSubmit
 
   const getStars = (pct: number) => {
     if (pct >= 90) return 5; if (pct >= 75) return 4
@@ -569,11 +724,15 @@ export default function BookReader() {
 
   // ── Comprehension Screen ──────────────────────────────────────────────────
   if (phase === 'comprehension') {
-    const stars = getStars(session?.accuracyPct ?? 100)
     const readPct  = session?.readingPct  ?? session?.accuracyPct ?? 100
     const qPct     = session?.quizPct     ?? 100
     const qCorrect = session?.quizCorrect ?? 0
     const qTotal   = session?.quizTotal   ?? 0
+    // overallAvg is only meaningful after submission (compScore defaults to 0)
+    const overallAvg = comprehensionSubmitted
+      ? Math.round(((session?.accuracyPct ?? 0) + compScore) / 2)
+      : 0
+    const passed = overallAvg >= 77
     return (
       <div className="reader-root">
         <div className="reader-progress-bar">
@@ -611,7 +770,7 @@ export default function BookReader() {
                     </div>
                     <div className="star-rating">
                       {[1,2,3,4,5].map(i => (
-                        <motion.span key={i} className={`star ${i<=stars?'lit':''}`}
+                        <motion.span key={i} className={`star ${i<=getStars(session?.accuracyPct ?? 0)?'lit':''}`}
                           initial={{scale:0}} animate={{scale:1}} transition={{delay:0.1*i,type:'spring',stiffness:300}}>★</motion.span>
                       ))}
                     </div>
@@ -632,8 +791,21 @@ export default function BookReader() {
 
                 {/* Summary writing */}
                 <div className="comp-section">
-                  <label className="comp-label">📝 Tell us what the story was about:</label>
-                  <textarea className="comp-textarea" placeholder="Write a few sentences about what happened..."
+                  <div className="comp-label-row">
+                    <label className="comp-label">📝 Tell us what the story was about:</label>
+                    <button
+                      className={`comp-mic-btn${activeCompMic === 'summary' ? ' active' : ''}`}
+                      onClick={() => toggleCompMic('summary', (txt) => setSummaryText(txt))}
+                      title={activeCompMic === 'summary' ? 'Stop listening' : 'Talk your answer!'}
+                      type="button">
+                      {activeCompMic === 'summary' ? <><span className="comp-mic-pulse" />🎤</> : '🎤'}
+                    </button>
+                  </div>
+                  {activeCompMic === 'summary' && (
+                    <div className="comp-listening-pill">🎙️ Listening — say what you remember about the story!</div>
+                  )}
+                  <textarea className={`comp-textarea${activeCompMic === 'summary' ? ' comp-textarea-listening' : ''}`}
+                    placeholder="Write or say a few sentences about what happened..."
                     value={summaryText} onChange={e => setSummaryText(e.target.value)} rows={4} />
                   <span className="comp-word-count">{summaryText.trim().split(/\s+/).filter(Boolean).length} words</span>
                 </div>
@@ -644,7 +816,26 @@ export default function BookReader() {
                   {comprehensionAnswers.map((qa, i) => (
                     <div key={i} className="comp-qa">
                       <p className="comp-question">{qa.question}</p>
-                      <textarea className="comp-textarea small" placeholder="Write your answer here..."
+                      <div className="comp-label-row" style={{ marginBottom: 6 }}>
+                        <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>Your answer:</span>
+                        <button
+                          className={`comp-mic-btn${activeCompMic === `qa-${i}` ? ' active' : ''}`}
+                          onClick={() => toggleCompMic(`qa-${i}`, (txt) => {
+                            const next = [...comprehensionAnswers]
+                            next[i] = { ...next[i], answer: txt }
+                            setComprehensionAnswers(next)
+                          })}
+                          title={activeCompMic === `qa-${i}` ? 'Stop listening' : 'Say your answer!'}
+                          type="button">
+                          {activeCompMic === `qa-${i}` ? <><span className="comp-mic-pulse" />🎤</> : '🎤'}
+                        </button>
+                      </div>
+                      {activeCompMic === `qa-${i}` && (
+                        <div className="comp-listening-pill">🎙️ Listening — say your answer out loud!</div>
+                      )}
+                      <textarea
+                        className={`comp-textarea small${activeCompMic === `qa-${i}` ? ' comp-textarea-listening' : ''}`}
+                        placeholder="Type or say your answer..."
                         value={qa.answer} onChange={e => {
                           const next = [...comprehensionAnswers]
                           next[i] = { ...next[i], answer: e.target.value }
@@ -656,17 +847,28 @@ export default function BookReader() {
 
                 <motion.button className="comp-submit-btn" whileHover={{scale:1.03}} whileTap={{scale:0.97}}
                   onClick={handleComprehensionSubmit}
-                  disabled={summaryText.trim().split(/\s+/).filter(Boolean).length < 5}>
+                  disabled={summaryText.trim().length < 1}>
                   🚀 Submit My Answers!
                 </motion.button>
               </>
             ) : (
               <>
-                <div className="comp-header">
-                  <span className="comp-trophy">🏆</span>
-                  <h2>Amazing Work!</h2>
-                  <p className="comp-sub">Here's how you did today:</p>
-                </div>
+                {/* ── Header ── */}
+                {passed ? (
+                  <div className="comp-header" style={{borderRadius:'28px 28px 0 0'}}>
+                    <span className="comp-trophy">🏆</span>
+                    <h2>Amazing Work!</h2>
+                    <p className="comp-sub">You passed! Here's how you did:</p>
+                  </div>
+                ) : (
+                  <div className="comp-header" style={{background:'linear-gradient(135deg,#7c2d12,#c2410c)',borderRadius:'28px 28px 0 0'}}>
+                    <span className="comp-trophy">💪</span>
+                    <h2 style={{color:'#ffd709'}}>Keep Going!</h2>
+                    <p className="comp-sub">You scored {overallAvg}% — read again to beat 77% &amp; earn double points!</p>
+                  </div>
+                )}
+
+                {/* Score cards */}
                 <div className="comp-results">
                   <div className="result-card">
                     <span className="result-icon">📖</span>
@@ -685,27 +887,64 @@ export default function BookReader() {
                     <span className="result-val">{compScore}%</span>
                     <span className="result-label">Comprehension</span>
                   </div>
-                  <div className="result-card featured">
+                  <div className={`result-card featured${!passed?' result-card-warn':''}`}>
                     <span className="result-icon">⭐</span>
-                    <span className="result-val">{session?.accuracyPct ?? 0}%</span>
-                    <span className="result-label">Total XP</span>
+                    <span className="result-val">{overallAvg}%</span>
+                    <span className="result-label">Overall Score</span>
                   </div>
                 </div>
+
+                {/* AI Feedback */}
                 {compFeedback && (
                   <div className="comp-ai-feedback">
                     <strong>📝 Teacher's feedback:</strong> {compFeedback}
                   </div>
                 )}
+
+                {/* Stars */}
                 <div className="star-rating large" style={{justifyContent:'center',margin:'8px 0'}}>
                   {[1,2,3,4,5].map(i => (
-                    <motion.span key={i} className={`star ${i<=getStars(((session?.accuracyPct??100)+compScore)/2)?'lit':''}`}
+                    <motion.span key={i} className={`star ${i<=getStars(overallAvg)?'lit':''}`}
                       initial={{scale:0,rotate:-30}} animate={{scale:1,rotate:0}}
                       transition={{delay:0.15*i,type:'spring',stiffness:250}}>★</motion.span>
                   ))}
                 </div>
+
+                {/* Under 77%: encouragement banner */}
+                {!passed && (
+                  <div className="retry-banner">
+                    <p className="retry-msg">
+                      🎯 You need <strong>77%</strong> to complete this story.
+                      Read it again — you'll earn <strong>double points</strong>! 🌟
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
                 <div className="finished-actions">
-                  <motion.button className="hero-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/generate')}>✨ Read Another Story</motion.button>
-                  <motion.button className="ghost-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/dashboard')}>🏠 Dashboard</motion.button>
+                  {!passed ? (
+                    <>
+                      <motion.button
+                        className="hero-btn double-points-btn"
+                        whileHover={{scale:1.05}} whileTap={{scale:0.97}}
+                        onClick={() => navigate(`/read/${storyId}`, { state: { doublePoints: true } })}>
+                        🔥 Read Again for Double Points!
+                      </motion.button>
+                      <motion.button className="ghost-btn" whileHover={{scale:1.03}}
+                        onClick={() => navigate('/dashboard')}>
+                        🏠 Back to Dashboard
+                      </motion.button>
+                    </>
+                  ) : (
+                    <>
+                      <motion.button className="hero-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/generate')}>✨ Read Another Story</motion.button>
+                      <motion.button className="ghost-btn shelf-cta-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/shelf')}
+                        style={{background:'#EDE9FE',color:'#6D28D9',border:'2px solid #C4B5FD',fontWeight:800}}>
+                        📚 View My Reading Shelf
+                      </motion.button>
+                      <motion.button className="ghost-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/dashboard')}>🏠 Dashboard</motion.button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -742,11 +981,10 @@ export default function BookReader() {
         </button>
         <h1 className="reader-title">{story.title}</h1>
         <div className="reader-topbar-right">
-          <span className="reader-page-counter">Page {currentPage+1} of {story.pages.length}</span>
+          <span className="reader-page-counter">{currentPage+1} / {story.pages.length}</span>
           {pageScores.length > 0 && (
             <span className="reader-acc-badge">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              {Math.round(pageScores.reduce((a,s)=>a+s.correctWords,0)/Math.max(pageScores.reduce((a,s)=>a+s.totalWords,0),1)*100)}% Accuracy
+              ⭐ {Math.round(pageScores.reduce((a,s)=>a+s.correctWords,0)/Math.max(pageScores.reduce((a,s)=>a+s.totalWords,0),1)*100)}%
             </span>
           )}
         </div>
@@ -756,8 +994,8 @@ export default function BookReader() {
       <AnimatePresence>
         {mic.isListening && (
           <motion.div className="phase-banner reading active" initial={{opacity:0, y:-10}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-10}}>
-            <span className="banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-            <span>Listening... Please read aloud.</span>
+            <span className="banner-icon">🎤</span>
+            <span>Listening… Read the words out loud!</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -770,25 +1008,27 @@ export default function BookReader() {
               initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
               exit={{opacity:0}} transition={{duration:0.3}}>
               <div className="quiz-header">
-                <h3>📝 Let's Practice the Missed Words!</h3>
+                <h3>📝 Let's Practice Missed Words!</h3>
                 <p className="quiz-sub">
                   {reviewStarted
-                    ? `Word ${reviewIdx + 1} of ${missedWords.length} — listen, then repeat!`
-                    : `You missed ${missedWords.length} word${missedWords.length > 1 ? 's' : ''}. Ready to try again?`
+                    ? `Word ${reviewIdx + 1} of ${missedWords.length}`
+                    : `You missed ${missedWords.length} word${missedWords.length > 1 ? 's' : ''}. Let's practice them!`
                   }
                 </p>
               </div>
 
-              {/* Word Cards */}
+              {/* Mini progress grid — all words with status dots */}
               <div className="review-words-grid">
                 {missedWords.map((mw, i) => {
                   const status = wordStatuses[mw.idx]
+                  const isActive = reviewStarted && i === reviewIdx
+                  const cleanWord = mw.word.replace(/[^a-zA-Z'-]/g, '')
                   return (
                     <motion.div key={mw.idx}
-                      className={`review-word-card ${status === 'correct' ? 'correct' : reviewStarted && i === reviewIdx ? 'active' : ''}`}
+                      className={`review-word-card ${status === 'correct' ? 'correct' : isActive ? 'active' : ''}`}
                       initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}}
-                      transition={{delay:i*0.1}}>
-                      <span className="review-word-text">{mw.word}</span>
+                      transition={{delay:i*0.05}}>
+                      <span className="review-word-text">{cleanWord}</span>
                       {status === 'correct' && <span className="review-check">✅</span>}
                     </motion.div>
                   )
@@ -800,7 +1040,7 @@ export default function BookReader() {
                 <div style={{textAlign:'center', marginTop:24}}>
                   <motion.button className="hero-btn review-start-btn"
                     whileHover={{scale:1.05}} whileTap={{scale:0.97}}
-                    onClick={() => { setReviewStarted(true) }}>
+                    onClick={() => { reviewSpokenRef.current = -1; setReviewStarted(true) }}>
                     ▶ Start Practice
                   </motion.button>
                   <div style={{marginTop:12}}>
@@ -811,18 +1051,52 @@ export default function BookReader() {
                   </div>
                 </div>
               ) : (
-                /* ── ACTIVE REVIEW ── */
-                <div>
+                /* ── ACTIVE REVIEW — focused one-word-at-a-time card ── */
+                <div className="review-active-card">
+                  {/* Big word display */}
+                  <div className="review-focus-word">
+                    {missedWords[reviewIdx]?.word.replace(/[^a-zA-Z'-]/g, '') || ''}
+                  </div>
+
+                  {/* State-specific UI */}
                   {mic.isListening ? (
-                    <motion.div className="review-listening-indicator"
-                      animate={{scale:[1,1.05,1]}} transition={{repeat:Infinity,duration:1}}>
-                      🎤 Listening… say: <strong>{missedWords[reviewIdx]?.word ?? '✓'}</strong>
-                    </motion.div>
+                    /* LISTENING STATE */
+                    <div className="review-listening-state">
+                      <motion.div className="review-mic-active-ring"
+                        animate={{scale:[1, 1.15, 1], opacity:[1, 0.7, 1]}}
+                        transition={{repeat:Infinity, duration:1.2}}>
+                        🎤
+                      </motion.div>
+                      <p className="review-mic-hint">Say the word out loud!</p>
+                      <button className="review-stop-btn" onClick={() => mic.stopListening()}>
+                        ✕ Cancel
+                      </button>
+                    </div>
+                  ) : tts.isSpeaking ? (
+                    /* TTS PLAYING STATE */
+                    <div className="review-listening-state">
+                      <motion.div className="review-tts-icon"
+                        animate={{scale:[1, 1.1, 1]}}
+                        transition={{repeat:Infinity, duration:0.8}}>
+                        🔊
+                      </motion.div>
+                      <p className="review-mic-hint">Listen carefully...</p>
+                    </div>
                   ) : (
-                    <div className="review-listening-indicator" style={{opacity:0.5}}>
-                      🔊 Listen to the word…
+                    /* READY STATE — student calls when ready */
+                    <div className="review-ready-state">
+                      <motion.button
+                        className="review-mic-btn-big"
+                        whileHover={{scale:1.07}} whileTap={{scale:0.93}}
+                        onClick={handleReviewMicPress}>
+                        🎤 Tap to Say It!
+                      </motion.button>
+                      <button className="review-hear-again-btn" onClick={handleReviewHearAgain}>
+                        🔊 Hear it again
+                      </button>
                     </div>
                   )}
+
                   <div className="review-controls" style={{marginTop:16}}>
                     <motion.button className="ghost-btn" whileHover={{scale:1.03}}
                       onClick={handleFinishReview}>
@@ -843,17 +1117,18 @@ export default function BookReader() {
               <p className="quiz-question">{quizQ?.question}</p>
               <div className="quiz-choices">
                 {quizQ?.choices.map((c,i)=>{
-                  let cls='quiz-choice'
+                  let cls='quiz-choice-btn'
                   if(selectedAnswer){
-                    if(c===quizQ.correct_answer) cls+=' correct'
-                    else if(c===selectedAnswer) cls+=' wrong'
-                    else cls+=' disabled'
+                    if(c===quizQ.correct_answer) cls+=' selected-correct'
+                    else if(c===selectedAnswer) cls+=' selected-wrong'
                   }
                   return (
                     <motion.button key={i} className={cls}
                       whileHover={!selectedAnswer?{x:4}:{}}
+                      disabled={!!selectedAnswer}
                       onClick={()=>handleAnswerSelect(c)}>
-                      <span className="choice-letter">{String.fromCharCode(65+i)}</span>{c}
+                      <span className="choice-letter">{String.fromCharCode(65+i)}</span>
+                      <span className="choice-text">{c}</span>
                     </motion.button>
                   )
                 })}
@@ -875,115 +1150,94 @@ export default function BookReader() {
               )}
             </motion.div>
           ) : (
-            <motion.div key={`page-${currentPage}`} className="reader-spread"
+            /* ── READING phase — Stitch book card ── */
+            <motion.div key={`page-${currentPage}`} className="reader-page-card"
               custom={direction}
               variants={{
-                enter:(d:number)=>({x:d*20,opacity:0}),
+                enter:(d:number)=>({x:d*30,opacity:0}),
                 center:{x:0,opacity:1},
-                exit:(d:number)=>({x:d*-20,opacity:0}),
+                exit:(d:number)=>({x:d*-30,opacity:0}),
               }}
               initial="enter" animate="center" exit="exit"
-              transition={{duration:0.3, ease:'easeInOut'}}
-              style={{ position: 'relative' }}>
+              transition={{duration:0.3, ease:'easeInOut'}}>
 
-              {/* ── Image loading overlay ── shows until Nano Banana 2 image is painted */}
-              <AnimatePresence>
-                {!imageLoaded && page?.media_url && (
-                  <motion.div
-                    className="page-loading-overlay"
-                    initial={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    <div className="reader-loading-owl">🦉</div>
-                    <div className="reader-loading-dots">
-                      {[0,1,2].map(i => (
-                        <motion.div key={i} className="loading-dot"
-                          animate={{ y: [0,-10,0] }}
-                          transition={{ repeat: Infinity, duration: 0.6, delay: i*0.15 }} />
-                      ))}
-                    </div>
-                    <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
-                      Loading illustration…
-                    </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Ornate purple/gold header — spans full width */}
+              <div className="book-card-header">
+                <span className="book-card-title">{story.title}</span>
+              </div>
 
-              {/* Left page — Nano Banana 2 illustration */}
-              <div className="book-page book-left">
-                {page?.media_url ? (
-                  <div className="book-image-wrap">
+              {/* Side-by-side: image left · text right */}
+              <div className="book-card-body">
+                {/* Illustration panel — left column */}
+                <div className="book-page-image-panel">
+                  <AnimatePresence>
+                    {!imageLoaded && page?.media_url && (
+                      <motion.div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,background:'#f5e2ff',zIndex:2}}
+                        initial={{opacity:1}} exit={{opacity:0}}>
+                        <div style={{fontSize:'2rem'}}>🦉</div>
+                        <div className="reader-loading-dots">
+                          {[0,1,2].map(i => <motion.div key={i} className="loading-dot" animate={{y:[0,-8,0]}} transition={{repeat:Infinity,duration:0.6,delay:i*0.15}} />)}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  {page?.media_url ? (
                     <img
                       key={page.media_url}
                       src={page.media_url.startsWith('/static')
-                        ? `http://localhost:8000${page.media_url}`
+                        ? `${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}${page.media_url}`
                         : page.media_url}
                       alt={`Page ${currentPage + 1} illustration`}
-                      className="book-illustration"
+                      className="book-page-image"
+                      style={{opacity: imageLoaded ? 1 : 0, transition:'opacity 0.4s ease'}}
                       onLoad={() => setImageLoaded(true)}
                       onError={() => setImageLoaded(true)}
-                      style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.3s ease' }}
                     />
-                  </div>
-                ) : (
-                  <div className="book-illustration-placeholder">
-                    <div className="video-shimmer">
-                      <div className="shimmer-bar" />
-                      <div className="shimmer-bar short" />
-                      <div className="shimmer-icon">🎨</div>
-                      <p className="shimmer-label">No illustration for this page</p>
+                  ) : (
+                    <div className="book-page-image-placeholder">
+                      <span>📖</span>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Bottom/Right — Text content */}
-              <div className="book-page book-right">
-
-                {/* Live score counter */}
-                {wordStatuses.some(s => s !== 'idle') && (() => {
-                  const correctCount = wordStatuses.filter(s => s === 'correct').length
-                  const total = pageWordsRef.current.length
-                  const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0
-                  return (
-                    <div className="live-score-bar">
-                      <div className="live-score-fill" style={{width: `${pct}%`}} />
-                      <span className="live-score-text">{pct}% Read</span>
-                    </div>
-                  )
-                })()}
-
-                <div className="book-text-content">
-                  <p className="book-text">
-                    {pageWordsRef.current.map((word,i)=>(
+                {/* Story text — right column */}
+                <div className="book-page-text-area">
+                  {wordStatuses.some(s => s !== 'idle') && (() => {
+                    const correct = wordStatuses.filter(s => s === 'correct').length
+                    const total = pageWordsRef.current.length
+                    const pct = total > 0 ? Math.round((correct / total) * 100) : 0
+                    return (
+                      <div style={{height:4,background:'#f5e2ff',borderRadius:4,marginBottom:12,overflow:'hidden'}}>
+                        <motion.div style={{height:'100%',background:'linear-gradient(90deg,#702ae1,#22c55e)',borderRadius:4}}
+                          animate={{width:`${pct}%`}} transition={{duration:0.3}} />
+                      </div>
+                    )
+                  })()}
+                  <p className="book-page-text">
+                    {pageWordsRef.current.map((word,i) => (
                       <span key={i} id={`word-${i}`}
-                        className={`word word-${wordStatuses[i]||'idle'}`}
-                        style={{transition: 'color 0.2s'}}>
+                        className={`reader-word ${wordStatuses[i]==='correct'?'correct':wordStatuses[i]==='wrong'?'wrong':wordStatuses[i]==='current'?'current':''}`}>
                         {word}{' '}
                       </span>
                     ))}
                   </p>
-                </div>
-
-                {/* Controls row */}
-                <div className="controls-row">
-                  {mic.isSupported && (
-                    <button className={`control-btn ${mic.isListening?'active':''}`} onClick={toggleMic}>
-                      {mic.isListening ? <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} /><rect x="9" y="9" width="6" height="6" fill="currentColor" /></svg> Stop</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg> Read Aloud</>}
-                    </button>
+                  {phase === 'reading' && !mic.isListening && wordStatuses.some(s => s !== 'idle') && (
+                    <motion.div initial={{opacity:0,y:4}} animate={{opacity:1,y:0}}
+                      style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 0',fontSize:'0.82rem',color:'#69537b',fontFamily:'var(--font-body)',fontWeight:600}}>
+                      <span style={{color:'#16a34a'}}>✅ {wordStatuses.filter(s=>s==='correct').length} correct</span>
+                      {wordStatuses.filter(s=>s==='wrong').length > 0 && (
+                        <span style={{color:'#dc2626'}}>· {wordStatuses.filter(s=>s==='wrong').length} to practice</span>
+                      )}
+                      <button onClick={() => {
+                        sfx.playClick(); mic.resetTranscript()
+                        accTranscriptRef.current = ''; wasReadingRef.current = false
+                        setWordStatuses(pageWordsRef.current.map(() => 'idle'))
+                        mic.startListening()
+                      }} style={{marginLeft:'auto',background:'#f1daff',border:'none',borderRadius:999,padding:'5px 12px',color:'#702ae1',fontWeight:700,cursor:'pointer',fontSize:'0.8rem'}}>
+                        🔄 Try Again
+                      </button>
+                    </motion.div>
                   )}
-                  <button className={`control-btn ${tts.isSpeaking?'active':''}`} onClick={handleReadParagraph}>
-                    {tts.isSpeaking ? <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeWidth={2} /><rect x="9" y="9" width="6" height="6" fill="currentColor" /></svg> Stop</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg> Listen</>}
-                  </button>
-                </div>
-
-                {/* Navigation */}
-                <div className="book-nav">
-                  <button className="book-nav-btn" onClick={handlePrevPage} disabled={currentPage===0}>Previous</button>
-                  <button className="book-nav-btn primary" onClick={handleNextPage}>
-                    {currentPage>=story.pages.length-1?'Finish':'Next Page'}
-                  </button>
                 </div>
               </div>
             </motion.div>
@@ -991,15 +1245,46 @@ export default function BookReader() {
         </AnimatePresence>
       </div>
 
+      {/* ── Bottom action bar ── */}
+      <div className="reader-action-bar">
+        <button className="reader-nav-btn" onClick={handlePrevPage} disabled={currentPage === 0 || phase !== 'reading'}>‹</button>
+
+        <div style={{display:'flex',alignItems:'center',gap:10,flex:1,justifyContent:'center'}}>
+          <button className={`reader-tts-btn ${tts.isSpeaking ? 'active' : ''}`} onClick={handleReadParagraph}
+            title={tts.isSpeaking ? 'Stop listening' : 'Listen to this page'}>
+            {tts.isSpeaking ? '⏹' : '🔊'}
+          </button>
+
+          <div className="reader-page-pill">
+            <span>📖</span>
+            <span>{currentPage + 1} of {story.pages.length}</span>
+          </div>
+
+          {mic.isSupported && (
+            <button className={`reader-mic-btn ${mic.isListening ? 'listening' : ''}`} onClick={toggleMic}
+              title={mic.isListening ? 'Stop' : 'Read aloud'}>
+              {mic.isListening ? '⏹' : '🎤'}
+            </button>
+          )}
+        </div>
+
+        {phase === 'reading' ? (
+          <button className="reader-next-btn" onClick={handleNextPage}>
+            {currentPage >= story.pages.length - 1 ? 'Finish 🎉' : 'Next ›'}
+          </button>
+        ) : <div style={{width:60}} />}
+      </div>
+
       {/* XP Toast */}
       <AnimatePresence>
-        {xpToast&&(
+        {xpToast && (
           <motion.div key={xpToast.id} className="xp-toast"
-            initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}} transition={{duration:0.3}}>
-            +{xpToast.amount} XP
+            initial={{opacity:0,y:20,x:'-50%'}} animate={{opacity:1,y:0,x:'-50%'}} exit={{opacity:0,y:-30,x:'-50%'}} transition={{duration:0.3}}>
+            ⭐ +{xpToast.amount} XP!
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   )
 }
+

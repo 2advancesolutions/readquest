@@ -65,6 +65,11 @@ export interface Story {
   pages: StoryPage[];
   quiz_questions: QuizQuestion[];
   created_at: string;
+  // Reading progress fields (populated from localStorage / Supabase)
+  last_page?: number;
+  page_count?: number;
+  progress_pct?: number;
+  completed_at?: string | null;
 }
 
 export interface Badge {
