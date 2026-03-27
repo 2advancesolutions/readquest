@@ -13,9 +13,9 @@ class Story(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     student_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("students.id"))
-    title: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(Text)  # no length limit — AI titles vary
     grade_level: Mapped[int] = mapped_column(Integer)
-    theme: Mapped[str] = mapped_column(String(50))
+    theme: Mapped[str] = mapped_column(Text)  # freeform scene descriptions can be long
     cover_media_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

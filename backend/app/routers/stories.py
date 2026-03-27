@@ -57,24 +57,11 @@ class StoryResponse(BaseModel):
 
 @router.post("/analyze-character")
 async def analyze_character(req: AnalyzeCharacterRequest):
-    """Use OpenRouter to identify character + Nano Banana 2 to generate a portrait."""
+    """Use Gemini SDK directly to identify character + generate portrait — no OpenRouter."""
     import json
-    import uuid
-    import base64
-    import httpx
-    from pathlib import Path
-    from app.config import settings
+    from app.agents.content_agent import _call_gemini_text
 
-    STATIC_DIR = Path("static/images")
-    OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-    OR_HEADERS = {
-        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://readquest.app",
-        "X-Title": "ReadQuest",
-    }
-
-    # ── Task 1: OpenRouter text — character analysis ──────────────────────────
+    # ── Task 1: Gemini text — character analysis ──────────────────────────────
     async def analyze():
         prompt = f"""You are a creative children's story assistant.
 
@@ -89,74 +76,20 @@ Analyze this character and respond ONLY with valid JSON in this exact format:
 }}
 
 CRITICAL: character_name must be EXACTLY "{req.character}" — do NOT expand, add a surname, or rename it."""
-        payload = {
-            "model": "google/gemini-2.0-flash-001",
-            "temperature": 0.7,
-            "messages": [{"role": "user", "content": f"You are a creative children's assistant. Reply with valid JSON only.\n\n{prompt}"}],
-        }
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(OPENROUTER_URL, json=payload, headers=OR_HEADERS)
-            if not resp.is_success:
-                print(f"[analyze-character] ERROR {resp.status_code}: {resp.text[:600]}")
-                resp.raise_for_status()
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
+        raw = await _call_gemini_text(
+            system="You are a creative children's assistant. Reply with valid JSON only.",
+            user=prompt,
+            temperature=0.7,
+        )
         if "```" in raw:
             raw = raw.split("```")[1]
             if raw.startswith("json"): raw = raw[4:]
         return json.loads(raw.strip())
 
-    # ── Task 2: Generate character portrait with Gemini Image via OpenRouter ─────
+    # ── Task 2: Generate character portrait — direct Gemini SDK ───────────────
     async def generate_portrait(image_prompt: str) -> Optional[str]:
-        import base64, uuid as _uuid
-        from pathlib import Path
-        from app.agents.content_agent import _upload_to_supabase
-
-        STATIC_DIR = Path("static/images")
-
-        payload = {
-            "model": "google/gemini-2.5-flash-image",
-            "messages": [{"role": "user", "content": image_prompt}],
-        }
-        try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                resp = await client.post(OPENROUTER_URL, json=payload, headers=OR_HEADERS)
-                if not resp.is_success:
-                    print(f"[Portrait] Gemini image ERROR {resp.status_code}: {resp.text[:400]}")
-                    return None
-            data = resp.json()
-            msg = data.get("choices", [{}])[0].get("message", {})
-
-            async def _save_img(img_bytes: bytes, prefix: str = "char") -> str:
-                filename = f"{prefix}_{_uuid.uuid4().hex}.png"
-                # Try Supabase Storage first
-                url = await _upload_to_supabase(img_bytes, filename)
-                if url:
-                    return url
-                # Fallback to local
-                STATIC_DIR.mkdir(parents=True, exist_ok=True)
-                (STATIC_DIR / filename).write_bytes(img_bytes)
-                return f"/static/images/{filename}"
-
-            # OpenRouter returns the image in message.images[]
-            images = msg.get("images", [])
-            if images:
-                img_url = images[0].get("image_url", {}).get("url", "")
-                if img_url.startswith("data:image"):
-                    _, b64 = img_url.split(",", 1)
-                    return await _save_img(base64.b64decode(b64))
-
-            # Fallback: check content list (older response format)
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "image_url":
-                        url = part["image_url"]["url"]
-                        if url.startswith("data:image"):
-                            _, b64 = url.split(",", 1)
-                            return await _save_img(base64.b64decode(b64))
-        except Exception as e:
-            print(f"[Portrait] Failed: {e}")
-        return None
+        from app.agents.content_agent import _generate_image_nano_banana2
+        return await _generate_image_nano_banana2(image_prompt)
 
 
     # Run both in parallel: LLM analysis + image generation
@@ -375,11 +308,9 @@ async def list_stories(x_student_id: Optional[str] = Header(default=None), db: A
 
     if student_obj:
         # ── Case 1: Specific child selected ───────────────────────────────────
-        # Only include THIS child's stories + any legacy stories saved under
-        # the parent's Supabase auth UUID (before child selector was added).
-        # Do NOT add siblings — that's what was causing cross-contamination.
-        if student_obj.parent_id:
-            ids_to_query.add(student_obj.parent_id)
+        # Only return stories explicitly created for THIS child.
+        # Do NOT include parent_id stories — that leaks other stories into every child's view.
+        pass  # ids_to_query already contains only x_student_id (the child)
     else:
         # ── Case 2: Show All — x_student_id is a parent's Supabase auth UUID ──
         # Aggregate stories for ALL children of this parent.

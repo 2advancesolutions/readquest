@@ -161,9 +161,13 @@ export default function CharacterGallery({ onSelect, onHoverChar, onHoverLeave, 
   if (checking) {
     return (
       <div className="cgal-section">
-        <div className="cgal-checking">
-          <div className="cgal-checking-dots"><span /><span /><span /></div>
-          <span className="cgal-checking-label">Loading characters...</span>
+        <div className="cgal-skeleton-grid">
+          {Array.from({ length: 16 }).map((_, i) => (
+            <div key={i} className="cgal-skeleton-item">
+              <div className="cgal-skeleton-circle" />
+              <div className="cgal-skeleton-name" />
+            </div>
+          ))}
         </div>
       </div>
     )

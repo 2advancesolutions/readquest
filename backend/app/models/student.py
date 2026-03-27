@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Integer, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -12,7 +12,7 @@ class Student(Base):
     __tablename__ = "students"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
-    parent_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("parents.id", ondelete="CASCADE"), nullable=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), nullable=True)  # Supabase auth.users UUID — no FK, managed by Supabase
     name: Mapped[str] = mapped_column(String(100))
     grade_level: Mapped[int] = mapped_column(Integer)
     school: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

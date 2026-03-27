@@ -120,25 +120,40 @@ export default function Dashboard() {
 
       fetch(`${import.meta.env.VITE_API_URL}/api/students/parent/${session.user.id}`)
         .then(r => r.ok ? r.json() : [])
-        .then(data => {
+        .then(async (data) => {
           const list: Child[] = Array.isArray(data) ? data : []
           setChildren(list)
+
+          // Restore the previously selected child
           const savedId = localStorage.getItem('readquest_student_id')
-          const match = list.find(c => c.id === savedId) ?? null
+          const match = list.find(c => c.id === savedId) ?? list[0] ?? null
+
           if (match) {
-            setSelectedChild(match)
+            // Persist selection
             localStorage.setItem('readquest_student_id', match.id)
             localStorage.setItem('readquest_student_name', match.name)
+            setSelectedChild(match)
+
+            // Fetch data SCOPED to this child — never show another student's stories
+            setContentLoading(true)
+            try {
+              const [r, s] = await Promise.all([
+                fetchRewardsForStudent(match.id).catch(() => null),
+                fetchStoriesForStudent(match.id).catch(() => []),
+              ])
+              if (r) setRewards(prev => ({ ...prev, ...r }))
+              setStories(enrichWithLocalProgress(s as any[], match.id))
+            } catch { /* non-fatal */ } finally {
+              setContentLoading(false)
+            }
+          } else {
+            // No child profiles yet — show empty state
+            setStories([])
+            setRewards(MOCK_REWARDS)
           }
         })
-        .catch(() => setChildren([]))
+        .catch(() => { setChildren([]); setStories([]) })
         .finally(() => setChildrenLoading(false))
-
-      rewardsApi.getXP().then(r => setRewards(prev => ({ ...prev, ...r.data }))).catch(() => {})
-      storiesApi.list().then(r => {
-        const list = Array.isArray(r.data) ? r.data : r.data?.stories ?? []
-        setStories(enrichWithLocalProgress(list, session.user.id))
-      }).catch(() => {})
     })
   }, [])
 

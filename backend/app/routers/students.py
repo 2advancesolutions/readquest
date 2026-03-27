@@ -30,28 +30,30 @@ class StudentResponse(BaseModel):
 
 @router.post("", response_model=StudentResponse)
 async def create_student(req: CreateStudentRequest, db: AsyncSession = Depends(get_session)):
-    student = Student(
-        id=req.id if req.id else None,
-        parent_id=req.parent_id,
-        name=req.name,
-        grade_level=req.grade_level,
-        school=req.school
-    )
-    if not req.id:
-        import uuid
-        student.id = str(uuid.uuid4())
+    try:
+        student = Student(
+            id=req.id if req.id else str(__import__('uuid').uuid4()),
+            parent_id=req.parent_id,
+            name=req.name,
+            grade_level=req.grade_level,
+            school=req.school
+        )
 
-    db.add(student)
-    await db.commit()
-    await db.refresh(student)
-    return StudentResponse(
-        id=student.id,
-        parent_id=student.parent_id,
-        name=student.name,
-        grade_level=student.grade_level,
-        school=student.school,
-        created_at=str(student.created_at)
-    )
+        db.add(student)
+        await db.commit()
+        await db.refresh(student)
+        return StudentResponse(
+            id=student.id,
+            parent_id=student.parent_id,
+            name=student.name,
+            grade_level=student.grade_level,
+            school=student.school,
+            avatar_url=student.avatar_url,
+            created_at=str(student.created_at)
+        )
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=f"Failed to create student: {str(e)}")
 
 @router.get("/parent/{parent_id}", response_model=List[StudentResponse])
 async def get_students_by_parent(parent_id: str, db: AsyncSession = Depends(get_session)):

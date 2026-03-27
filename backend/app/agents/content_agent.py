@@ -12,10 +12,8 @@ import httpx
 from langgraph.graph import StateGraph, START, END
 from app.config import settings
 
-STATIC_DIR   = Path("static/images")
-OPENROUTER_URL        = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_IMAGE_MODEL = "google/gemini-3.1-flash-image-preview"
-OPENROUTER_TEXT_MODEL  = "google/gemini-2.0-flash-001"
+STATIC_DIR = Path("static/images")
+GEMINI_TEXT_MODEL = "gemini-2.5-flash"  # direct SDK — gemini-2.0-flash deprecated
 
 # ── Supabase Storage config ──────────────────────────────────────────────────
 SUPABASE_URL     = "https://nspehtlzknfbiwvjswge.supabase.co"
@@ -55,9 +53,7 @@ async def _upload_to_supabase(img_bytes: bytes, filename: str) -> Optional[str]:
         return None
 
 
-OPENROUTER_URL        = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_IMAGE_MODEL = "google/gemini-3.1-flash-image-preview"
-OPENROUTER_TEXT_MODEL  = "google/gemini-2.0-flash-001"
+
 
 # ── State Schema ────────────────────────────────────────────────────────────
 class ContentState(TypedDict):
@@ -125,28 +121,24 @@ GRADE_VOCAB = {
 }
 
 
-async def _call_openrouter_text(system: str, user: str, temperature: float = 0.8) -> str:
-    """Call OpenRouter for text/JSON generation using google/gemini-2.0-flash."""
-    headers = {
-        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://readquest.app",
-        "X-Title": "ReadQuest",
-    }
-    # Combine into one user message — most compatible across all OpenRouter models
+async def _call_gemini_text(system: str, user: str, temperature: float = 0.8) -> str:
+    """Call Gemini directly via google-genai SDK for text/JSON generation."""
+    from google import genai as _genai
+    from google.genai import types as _gtypes
+
     combined = f"{system}\n\n{user}" if system else user
-    payload = {
-        "model": OPENROUTER_TEXT_MODEL,
-        "temperature": temperature,
-        "messages": [{"role": "user", "content": combined}],
-    }
-    print(f"[OpenRouter text] model={OPENROUTER_TEXT_MODEL}, len={len(combined)}")
-    async with httpx.AsyncClient(timeout=90.0) as client:
-        resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
-        if not resp.is_success:
-            print(f"[OpenRouter text] ERROR {resp.status_code}: {resp.text[:800]}")
-            resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
+    print(f"[Gemini text] model={GEMINI_TEXT_MODEL}, len={len(combined)}")
+    client = _genai.Client(api_key=settings.GEMINI_API_KEY)
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=GEMINI_TEXT_MODEL,
+        contents=combined,
+        config=_gtypes.GenerateContentConfig(
+            temperature=temperature,
+            response_modalities=["TEXT"],
+        ),
+    )
+    return response.candidates[0].content.parts[0].text.strip()
 
 
 
@@ -218,7 +210,7 @@ CRITICAL — CHARACTER NAME RULES (MUST FOLLOW):
 - Do NOT translate, expand, or creatively rename the character
 - Every reference to the character in the story must use exactly "{char}"
 """
-    raw = await _call_openrouter_text(
+    raw = await _call_gemini_text(
         system="You are a creative children's book author. Always respond with valid JSON only. Follow ALL grade level and character name instructions exactly.",
         user=prompt,
         temperature=0.7,
@@ -228,24 +220,54 @@ CRITICAL — CHARACTER NAME RULES (MUST FOLLOW):
 
 
 async def parse_story_node(state: ContentState) -> ContentState:
-    """Parse and validate the story JSON."""
+    """Parse and validate the story JSON — robust against Gemini formatting quirks."""
     raw = state["story_raw"]
-    # Strip markdown code fences if present
-    if "```" in raw:
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+
+    def _try_parse(text: str):
+        return json.loads(text.strip())
+
+    parsed = None
+    last_err = None
+
+    # Strategy 1: raw text directly
     try:
-        parsed = json.loads(raw.strip())
+        parsed = _try_parse(raw)
+    except Exception as e:
+        last_err = e
+
+    # Strategy 2: strip markdown code fences (```json ... ``` or ``` ... ```)
+    if parsed is None:
+        try:
+            import re as _re
+            fence_match = _re.search(r'```(?:json)?\s*([\s\S]+?)\s*```', raw)
+            if fence_match:
+                parsed = _try_parse(fence_match.group(1))
+        except Exception as e:
+            last_err = e
+
+    # Strategy 3: extract first { ... } block (handles leading Gemini "thinking" text)
+    if parsed is None:
+        try:
+            import re as _re
+            json_match = _re.search(r'\{[\s\S]+\}', raw)
+            if json_match:
+                parsed = _try_parse(json_match.group(0))
+        except Exception as e:
+            last_err = e
+
+    if parsed and "pages" in parsed and len(parsed["pages"]) > 0:
         state["story_parsed"] = parsed
-        state["quality_score"] = 0.8  # basic pass
-    except Exception:
+        state["quality_score"] = 0.8
+    else:
+        print(f"[parse_story_node] FAILED to parse story JSON. err={last_err}")
+        print(f"[parse_story_node] raw (first 500 chars): {raw[:500]}")
         state["story_parsed"] = {
             "title": f"{state['character_name']}'s Big Adventure",
             "pages": [{"page_number": i, "content": f"Page {i} content..."} for i in range(1, 6)],
         }
         state["quality_score"] = 0.3
     return state
+
 
 
 async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
@@ -420,7 +442,7 @@ Output ONLY valid JSON — an array of objects:
 ]
 """
     try:
-        raw = await _call_openrouter_text(system="You generate quiz questions. Respond with valid JSON only.", user=prompt)
+        raw = await _call_gemini_text(system="You generate quiz questions. Respond with valid JSON only.", user=prompt)
         if "```" in raw:
             raw = raw.split("```")[1]
             if raw.startswith("json"): raw = raw[4:]

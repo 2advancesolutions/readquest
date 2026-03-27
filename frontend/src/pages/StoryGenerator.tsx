@@ -6,9 +6,10 @@ import { supabase } from '../lib/supabase'
 import api from '../services/api'
 import CharacterGallery from '../components/CharacterGallery'
 import HeroCharDisplay from '../components/HeroCharDisplay'
-import WelcomeVoice from '../components/WelcomeVoice'
+import WelcomeVoice, { STEP2_SCRIPTS } from '../components/WelcomeVoice'
 import { ALL_CHARACTERS } from '../components/CharacterGallery'
 import '../styles/generator.css'
+import '../styles/imm-steps.css'
 
 type Child = { id: string; name: string; grade_level: number }
 
@@ -160,6 +161,10 @@ export default function StoryGenerator() {
     () => ALL_CHARACTERS[Math.floor(Math.random() * ALL_CHARACTERS.length)]
   )
   const [hoveredHeroSrc, setHoveredHeroSrc] = useState<string | null>(null)
+  // Stable random Step 2 script — picked once on mount
+  const [step2VoiceText] = useState<string>(
+    () => STEP2_SCRIPTS[Math.floor(Math.random() * STEP2_SCRIPTS.length)]
+  )
 
   const [isDictating, setIsDictating] = useState(false)
   const [dictationStatus, setDictationStatus] = useState('')
@@ -242,6 +247,31 @@ export default function StoryGenerator() {
     }
   }
 
+  // ── Regenerate portrait only (keeps char name/universe/description) ────────
+  const handleRegeneratePortrait = async () => {
+    if (!characterData || charLoading) return
+    setCharLoading(true)
+    setCharacterData(prev => prev ? { ...prev, character_media_url: null } : prev)
+    let msgIdx = 0
+    charMsgIntervalRef.current = setInterval(() => {
+      msgIdx = (msgIdx + 1) % CHAR_LOADING_MSGS.length
+      setCharLoadingMsg(CHAR_LOADING_MSGS[msgIdx])
+    }, 5000)
+    try {
+      const res = await storiesApi.analyzeCharacter(characterData.character_name)
+      const d = res.data
+      setCharacterData(prev => prev ? {
+        ...prev,
+        character_media_url: d.character_image_url ?? d.character_media_url ?? null,
+      } : prev)
+    } catch {
+      // Keep existing data, just clear the image
+    } finally {
+      if (charMsgIntervalRef.current) clearInterval(charMsgIntervalRef.current)
+      setCharLoading(false)
+    }
+  }
+
   useEffect(() => () => { if (charMsgIntervalRef.current) clearInterval(charMsgIntervalRef.current) }, [])
 
   const handleSceneContinue = () => {
@@ -283,7 +313,7 @@ export default function StoryGenerator() {
     <div className="gen-root">
 
       {/* ── Top Header ── */}
-      <header className="gen-header">
+      <header className={`gen-header${['character','scene','language','artStyle','generating'].includes(step) ? ' gen-header-dark' : ''}`}>
         <div>
           <div className="gen-header-logo">ReadQuest ✨</div>
           <div className="gen-header-subtitle">Story Creator</div>
@@ -301,8 +331,8 @@ export default function StoryGenerator() {
       {/* ── Body ── */}
       <div className="gen-body">
 
-        {/* ══ LEFT STEP NAV ══ */}
-        {step !== 'generating' && step !== 'preview' && step !== 'scene' && step !== 'character' && (
+        {/* ══ LEFT STEP NAV — hidden on all 4 immersive steps ══ */}
+        {step !== 'generating' && step !== 'preview' && !['character','scene','language','artStyle'].includes(step) && (
           <aside className="gen-step-nav">
             <div className="gen-step-nav-title">Story Wizard</div>
             {STEP_LABELS.slice(0, 4).map((s, i) => {
@@ -344,7 +374,7 @@ export default function StoryGenerator() {
         )}
 
         {/* ══ CENTER CONTENT ══ */}
-        <div className={`gen-center${step === 'scene' || step === 'character' ? ' gen-center-immersive' : ''}`}>
+        <div className={`gen-center${['character','scene','language','artStyle','generating'].includes(step) ? ' gen-center-immersive' : ''}`}>
           <AnimatePresence mode="wait">
 
             {/* ── Step 1: Character — AI Art Generator Canvas ── */}
@@ -501,14 +531,15 @@ export default function StoryGenerator() {
                 {/* ── LEFT floating glass panel: Theme Picker ── */}
                 <div className="scene2-left-panel">
                   <div className="scene2-panel-title">🌍 Choose Your Theme</div>
-                  <div className="scene2-theme-grid">
+                  {/* Theme Picker — circular icon bubbles, 3 per row */}
+                  <div className="scene2-theme-circles">
                     {THEME_OPTIONS.map(t => (
                       <motion.button key={t.id}
-                        className={`scene2-theme-chip ${selectedTheme === t.id ? 'selected' : ''}`}
-                        whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.95 }}
+                        className={`scene2-theme-circle ${selectedTheme === t.id ? 'selected' : ''}`}
+                        whileHover={{ scale: 1.1, y: -3 }} whileTap={{ scale: 0.92 }}
                         onClick={() => { setSelectedTheme(t.id); setSceneDescription(''); setSceneError('') }}>
-                        <span className="scene2-theme-emoji">{t.emoji}</span>
-                        <span className="scene2-theme-label">{t.label}</span>
+                        <span className="scene2-circle-emoji">{t.emoji}</span>
+                        <span className="scene2-circle-label">{t.label}</span>
                       </motion.button>
                     ))}
                   </div>
@@ -589,6 +620,17 @@ export default function StoryGenerator() {
                         <div className="scene2-char-badge">
                           🌟 {characterData.character_name} · {characterData.universe}
                         </div>
+                        {/* Regenerate portrait button */}
+                        <motion.button
+                          className="scene2-regen-btn"
+                          onClick={handleRegeneratePortrait}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          type="button"
+                          title="Generate a different portrait"
+                        >
+                          <span>🎨</span> Regenerate Portrait
+                        </motion.button>
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
@@ -635,6 +677,9 @@ export default function StoryGenerator() {
                     </div>
                   </div>
                 </div>
+                 {/* Step 2 voice instructions — Aoede narrates theme picker */}
+                 <WelcomeVoice text={step2VoiceText} delayMs={600} />
+
 
               </motion.div>
             )}
@@ -642,129 +687,147 @@ export default function StoryGenerator() {
 
             {/* ── Step 3: Language ── */}
             {step === 'language' && (
-              <motion.div key="language"
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.3 }}>
-                <div className="gen-step-header">
-                  <div className="gen-step-eyebrow">🗺️ Step 3 of 4</div>
-                  <h1 className="gen-step-title">What Language?</h1>
-                  <p className="gen-step-sub">Which language should the story be written in?</p>
-                </div>
-                <div className="lang-grid">
-                  {LANGUAGES.map(l => (
-                    <motion.button key={l.id} className={`lang-card ${selectedLanguage === l.id ? 'selected' : ''}`}
-                      whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
-                      onClick={() => setSelectedLanguage(l.id)}>
-                      <div className="lang-header">
-                        <span style={{ fontSize: '2rem' }}>{l.emoji}</span>
-                        {selectedLanguage === l.id && (
-                          <span className="lang-check">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          </span>
-                        )}
-                      </div>
-                      <div className="lang-label">{l.label}</div>
-                      <div className="lang-desc">{l.desc}</div>
-                    </motion.button>
-                  ))}
+              <motion.div key="language" className="imm-canvas"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
+                <div className="imm-bg-glow" />
+                <div className="imm-content">
+                  <div className="imm-eyebrow">🗺️ Step 3 of 4</div>
+                  <h1 className="imm-title">What Language?</h1>
+                  <p className="imm-sub">Which language should the story be written in?</p>
+                  <div className="imm-circle-grid">
+                    {LANGUAGES.map(l => (
+                      <motion.button key={l.id}
+                        className={`imm-circle-btn ${selectedLanguage === l.id ? 'selected' : ''}`}
+                        whileHover={{ scale: 1.08, y: -4 }} whileTap={{ scale: 0.94 }}
+                        onClick={() => setSelectedLanguage(l.id)}>
+                        <span className="imm-circle-icon">{l.emoji}</span>
+                        <span className="imm-circle-name">{l.label}</span>
+                        {selectedLanguage === l.id && <span className="imm-circle-check">✓</span>}
+                      </motion.button>
+                    ))}
+                  </div>
                 </div>
               </motion.div>
             )}
 
             {/* ── Step 4: Art Style ── */}
             {step === 'artStyle' && (
-              <motion.div key="artStyle"
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.3 }}>
-                <div className="gen-step-header">
-                  <div className="gen-step-eyebrow">🎨 Step 4 of 4</div>
-                  <h1 className="gen-step-title">Pick an Art Style!</h1>
-                  <p className="gen-step-sub">How should the pictures in your story look?</p>
+              <motion.div key="artStyle" className="imm-canvas"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
+                <div className="imm-bg-glow imm-bg-glow-teal" />
+                <div className="imm-content">
+                  <div className="imm-eyebrow">🎨 Step 4 of 4</div>
+                  <h1 className="imm-title">Pick an Art Style!</h1>
+                  <p className="imm-sub">How should the pictures in your story look?</p>
+                  <div className="imm-circle-grid">
+                    {ART_STYLES.map(a => (
+                      <motion.button key={a.id}
+                        className={`imm-circle-btn imm-circle-art ${selectedArtStyle === a.id ? 'selected' : ''}`}
+                        whileHover={{ scale: 1.08, y: -4 }} whileTap={{ scale: 0.94 }}
+                        onClick={() => { setSelectedArtStyle(a.id); setGenerateError('') }}>
+                        <span className="imm-circle-icon">{a.emoji}</span>
+                        <span className="imm-circle-name">{a.label}</span>
+                        <span className="imm-circle-desc">{a.desc}</span>
+                        {selectedArtStyle === a.id && <span className="imm-circle-check">✓</span>}
+                      </motion.button>
+                    ))}
+                  </div>
+                  {generateError && <p className="gen-error" style={{ marginTop: 16, textAlign: 'center' }}>{generateError}</p>}
                 </div>
-                <div className="art-grid">
-                  {ART_STYLES.map(a => (
-                    <motion.button key={a.id} className={`art-card ${selectedArtStyle === a.id ? 'selected' : ''}`}
-                      whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
-                      onClick={() => { setSelectedArtStyle(a.id); setGenerateError('') }}>
-                      <div className="art-emoji">{a.emoji}</div>
-                      <div className="art-header">
-                        <div className="art-label">{a.label}</div>
-                        {selectedArtStyle === a.id && (
-                          <span className="art-check">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          </span>
-                        )}
-                      </div>
-                      <div className="art-desc">{a.desc}</div>
-                    </motion.button>
-                  ))}
-                </div>
-                {generateError && <p className="gen-error" style={{ marginTop: 16, textAlign: 'center' }}>{generateError}</p>}
               </motion.div>
             )}
 
-            {/* ── Generating ── */}
+            {/* ── Generating screen ── */}
             {step === 'generating' && (
-              <motion.div key="generating"
-                initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
-                <div className="gen-generating-wrap">
-                  <div className="magic-portal-container">
-                    <div className="magic-portal-ring" />
-                    <div className="magic-portal-ring-outer" />
-                    <div className="magic-portal-center">
-                      <AnimatePresence mode="wait">
-                        <motion.span key={tipIndex % MAGIC_EMOJIS.length} className="magic-emoji"
-                          initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
-                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                          exit={{ opacity: 0, scale: 1.5, rotate: 45 }}
-                          transition={{ duration: 0.5 }}>
-                          {MAGIC_EMOJIS[tipIndex % MAGIC_EMOJIS.length]}
-                        </motion.span>
-                      </AnimatePresence>
-                    </div>
+              <motion.div key="generating" className="gscreen-canvas"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+
+                {/* Ambient glow */}
+                <div className="gscreen-glow" />
+                {/* Twinkling stars */}
+                <div className="step1-stars" aria-hidden>
+                  {[...Array(30)].map((_, i) => (
+                    <div key={i} className="step1-star" style={{
+                      left: `${(i * 13 + 5) % 97}%`, top: `${(i * 19 + 7) % 91}%`,
+                      animationDelay: `${(i * 0.28) % 3}s`,
+                      width: `${(i % 3) + 1}px`, height: `${(i % 3) + 1}px`,
+                    }} />
+                  ))}
+                </div>
+
+                <div className="gscreen-content">
+
+                  {/* ── Cycling character portraits ── */}
+                  <div className="gscreen-char-row">
+                    {[-2,-1,0,1,2].map(offset => {
+                      const idx = (tipIndex + offset + ALL_CHARACTERS.length * 5) % ALL_CHARACTERS.length
+                      const char = ALL_CHARACTERS[idx]
+                      const isCenter = offset === 0
+                      return (
+                        <motion.div key={`${char.name}-${tipIndex}`}
+                          className={`gscreen-char-bubble ${isCenter ? 'center' : ''}`}
+                          style={{ opacity: 1 - Math.abs(offset) * 0.3, scale: 1 - Math.abs(offset) * 0.15 }}
+                          animate={{ opacity: 1 - Math.abs(offset) * 0.3 }}
+                        >
+                          <img src={char.img} alt={char.name}
+                            className="gscreen-char-img"
+                            loading="eager"
+                            onError={e => { (e.target as HTMLImageElement).style.display='none' }}
+                          />
+                          {/* Fallback shown behind img when it fails to load */}
+                          <span className="gscreen-char-fallback">⭐</span>
+                          {isCenter && (
+                            <div className="gscreen-char-glow" />
+                          )}
+                        </motion.div>
+                      )
+                    })}
                   </div>
 
-                  <h2 className="gen-generating-title">🌟 Building your amazing adventure...</h2>
-
-                  <div className="magic-recipe-card">
-                    <div className="recipe-header">📜 Story Ingredients</div>
-                    <div className="gen-summary-list">
-                      <div className="summary-item">
-                        <span className="summary-key">Hero</span>
-                        <span className="summary-val">{characterData?.character_name || characterInput}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="summary-key">Adventure</span>
-                        <span className="summary-val">{(selectedTheme ?? sceneDescription).slice(0, 28)}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="summary-key">Language</span>
-                        <span className="summary-val">{LANGUAGES.find(l => l.id === selectedLanguage)?.label}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="summary-key">Art Style</span>
-                        <span className="summary-val">{ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="generating-status">
+                  {/* ── Main heading ── */}
+                  <div className="gscreen-title-row">
                     <AnimatePresence mode="wait">
-                      <motion.p key={tipIndex} className="gen-tip"
-                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
-                        {WRITING_TIPS[tipIndex]}
-                      </motion.p>
+                      <motion.h1 key={tipIndex} className="gscreen-title"
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.5 }}>
+                        {WRITING_TIPS[tipIndex % WRITING_TIPS.length]}
+                      </motion.h1>
                     </AnimatePresence>
-                    <div className="generating-bar-wrap">
-                      <motion.div className="generating-bar"
-                        animate={{ width: ['0%', '100%'] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                      />
-                    </div>
+                    <p className="gscreen-sub">Crafting <strong>{characterData?.character_name || characterInput}'s</strong> adventure…</p>
                   </div>
-                  <p className="magic-hint">The magic is happening! Your story will be ready in a moment... 🌟</p>
+
+                  {/* ── Progress steps ── */}
+                  <div className="gscreen-steps">
+                    {[
+                      { label: 'Writing story', emoji: '✍️' },
+                      { label: 'Creating illustrations', emoji: '🎨' },
+                      { label: 'Crafting quiz', emoji: '🧠' },
+                    ].map((s, i) => {
+                      const prog = tipIndex % WRITING_TIPS.length
+                      const done = prog > i * 2
+                      const active = !done && prog >= i * 2
+                      return (
+                        <div key={s.label} className={`gscreen-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
+                          <span className="gscreen-step-icon">{done ? '✓' : s.emoji}</span>
+                          <span className="gscreen-step-label">{s.label}</span>
+                          {active && <span className="gscreen-step-pulse" />}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+
+                  {/* ── Sweeping progress bar ── */}
+                  <div className="gscreen-bar-wrap">
+                    <motion.div className="gscreen-bar"
+                      animate={{ width: ['5%', '90%'] }}
+                      transition={{ duration: 45, ease: 'easeOut' }}
+                    />
+                  </div>
+
                 </div>
               </motion.div>
             )}
@@ -829,7 +892,7 @@ export default function StoryGenerator() {
 
       {/* ══ BOTTOM ACTION BAR ══ */}
       {step !== 'generating' && step !== 'preview' && step !== 'character' && (
-        <div className="gen-bottom-bar">
+        <div className={`gen-bottom-bar${['scene','language','artStyle'].includes(step) ? ' gen-bottom-bar-dark' : ''}`}>
           <div className="gen-bottom-bar-left">
             <button className="gen-btn-ghost" onClick={() => {
               if (step === 'scene') setStep('character')
