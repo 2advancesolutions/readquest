@@ -259,3 +259,25 @@ export interface SELData {
   character_guide: string;
 }
 
+// ── Recordings ───────────────────────────────────────────────────────────────
+
+export type WordStatus = 'idle' | 'correct' | 'wrong' | 'current'
+
+export interface Recording {
+  id?: number                // auto-increment IndexedDB key
+  studentId: string
+  studentName: string
+  bookId: string
+  bookTitle: string
+  bookCover?: string         // cover URL for display
+  gradeLevel: number
+  pageNumber: number
+  pageText: string           // original story page text
+  transcript: string         // what the child actually said
+  wordStatuses: WordStatus[] // ['correct','wrong','correct',...]
+  accuracy: number           // percentage 0-100
+  audioBlob: Blob            // WebM audio from MediaRecorder
+  duration: number           // seconds
+  createdAt: string          // ISO timestamp
+}
+

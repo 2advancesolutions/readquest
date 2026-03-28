@@ -8,7 +8,7 @@ declare global {
 }
 
 export interface SpeechRecognitionHook {
-  startListening: () => Promise<void>
+  startListening: () => void   // SYNC — must be called directly from a user gesture
   stopListening: () => void
   transcript: string
   interimTranscript: string
@@ -23,13 +23,11 @@ function getSRClass(): typeof SpeechRecognition | null {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null
 }
 
-// iOS Safari fires onend after each pause — we must restart manually
+// iOS Safari fires onend after every pause; we restart to simulate continuous
 const isIOS = (() => {
   if (typeof navigator === 'undefined') return false
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 })()
-
-const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 export function useSpeechRecognition(): SpeechRecognitionHook {
   const [isListening, setIsListening]             = useState(false)
@@ -37,12 +35,12 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const [interimTranscript, setInterimTranscript] = useState('')
   const [permissionError, setPermissionError]     = useState('')
 
-  const recognitionRef = useRef<any>(null)
-  const shouldListenRef = useRef(false)  // intention flag, survives iOS onend restarts
-  const transcriptRef  = useRef('')      // accumulates across iOS restarts
+  const recognitionRef  = useRef<any>(null)
+  const shouldKeepRef   = useRef(false)  // true while user wants listening active
+  const transcriptRef   = useRef('')     // accumulates across iOS restarts
 
   useEffect(() => () => {
-    shouldListenRef.current = false
+    shouldKeepRef.current = false
     if (recognitionRef.current) {
       try { recognitionRef.current.onend = null; recognitionRef.current.abort() } catch { /**/ }
       recognitionRef.current = null
@@ -51,73 +49,11 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
 
   const isSupported = !!getSRClass()
 
-  // ── Ensure mic permission is granted ───────────────────────────────────────
-  // Returns true if we can proceed, false if denied.
-  const ensurePermission = async (): Promise<boolean> => {
-    // 1. Check if already granted — skip the dialog entirely
-    if (typeof navigator.permissions !== 'undefined') {
-      try {
-        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-        if (status.state === 'granted') return true
-        if (status.state === 'denied') {
-          setPermissionError('Microphone blocked. Go to browser Settings > Site Settings and allow microphone.')
-          return false
-        }
-      } catch { /* Permissions API not supported — fall through */ }
-    }
-
-    // 2. Show the permission dialog via getUserMedia
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setPermissionError('This browser does not support microphone access.')
-      return false
-    }
-
-    let stream: MediaStream | null = null
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch (err: any) {
-      const n = err?.name ?? ''
-      if (n === 'NotAllowedError' || n === 'PermissionDeniedError' || n === 'SecurityError') {
-        setPermissionError('Microphone blocked. Tap the address bar lock icon and allow Microphone.')
-      } else if (n === 'NotFoundError' || n === 'DevicesNotFoundError') {
-        setPermissionError('No microphone found on this device.')
-      } else {
-        setPermissionError(`Microphone error: ${err?.message ?? n}`)
-      }
-      return false
-    }
-
-    // IMPORTANT: Stop the stream tracks SYNCHRONOUSLY and IMMEDIATELY.
-    // We must fully release the mic before SpeechRecognition tries to grab it.
-    // If we delay this, recognition.start() races with the open stream and gets a
-    // "not-allowed" error even though permission was granted.
-    try { stream.getTracks().forEach(t => t.stop()) } catch { /**/ }
-
-    // Give the OS a moment to release the audio device before recognition grabs it
-    await delay(isIOS ? 250 : 100)
-    return true
-  }
-
-  // ── Create a fresh recognition instance and start it ──────────────────────
-  const createAndStart = useCallback(() => {
-    const SRClass = getSRClass()
-    if (!SRClass || !shouldListenRef.current) return
-
-    // Abort any lingering instance first
-    if (recognitionRef.current) {
-      try { recognitionRef.current.onend = null; recognitionRef.current.abort() } catch { /**/ }
-      recognitionRef.current = null
-    }
-
-    const rec = new SRClass()
-    rec.continuous      = !isIOS   // continuous=true breaks iOS Safari
-    rec.interimResults  = true
-    rec.lang            = 'en-US'
-    rec.maxAlternatives = 1
-
+  // ── Attach events and start an instance ──────────────────────────────────
+  const attachAndStart = useCallback((rec: any) => {
     rec.onstart = () => {
-      // Clear any stale permission error the moment the mic is actually live
-      setPermissionError('')
+      setIsListening(true)
+      setPermissionError('')   // clear any stale error once the mic is live
     }
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
@@ -137,18 +73,18 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
 
     rec.onend = () => {
       setInterimTranscript('')
-      if (shouldListenRef.current) {
-        if (isIOS) {
-          // iOS Safari stops after every pause — restart immediately
-          try { rec.start() } catch { /**/ }
-        } else {
-          // Non-iOS: recognition ended unexpectedly while we still wanted it
-          // (e.g. silence timeout) — just reflect the stopped state
-          shouldListenRef.current = false
-          setIsListening(false)
-          recognitionRef.current = null
-        }
+      if (shouldKeepRef.current && isIOS) {
+        // iOS stops after every utterance — restart silently
+        try {
+          const next = new (getSRClass()!)()
+          next.continuous     = false
+          next.interimResults = true
+          next.lang           = 'en-US'
+          recognitionRef.current = next
+          attachAndStart(next)
+        } catch { /**/ }
       } else {
+        shouldKeepRef.current = false
         setIsListening(false)
         recognitionRef.current = null
       }
@@ -157,51 +93,79 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       setInterimTranscript('')
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        setPermissionError('Microphone blocked. Allow access in browser settings and try again.')
-        shouldListenRef.current = false
+        setPermissionError(
+          'Microphone blocked. Tap the 🔒 lock icon in the address bar, ' +
+          'select Site Settings, and set Microphone to Allow.'
+        )
+        shouldKeepRef.current = false
+        setIsListening(false)
+      } else if (e.error === 'network') {
+        setPermissionError('Network error. Make sure you have an internet connection.')
+        shouldKeepRef.current = false
         setIsListening(false)
       }
-      // 'no-speech', 'aborted', 'network' are non-fatal — don't stop listening
+      // 'no-speech', 'aborted' are non-fatal — ignore
     }
 
-    recognitionRef.current = rec
     try {
       rec.start()
-    } catch (err) {
-      console.warn('[SpeechRec] start() threw:', err)
-      shouldListenRef.current = false
-      setIsListening(false)
+    } catch (err: any) {
+      // InvalidStateError = already started (ignore), anything else = real failure
+      if (err?.name !== 'InvalidStateError') {
+        setIsListening(false)
+        shouldKeepRef.current = false
+        console.warn('[SpeechRec] start() failed:', err)
+      }
     }
   }, [])
 
-  const startListening = useCallback(async () => {
-    if (!getSRClass()) {
-      setPermissionError('Speech recognition is not supported in this browser.')
+  /**
+   * startListening MUST be called synchronously from a user gesture (button click).
+   * Do NOT put any await before calling this — it will break the browser's
+   * permission chain on iOS Safari and Android Chrome.
+   */
+  const startListening = useCallback(() => {
+    const SRClass = getSRClass()
+    if (!SRClass) {
+      setPermissionError('Speech recognition is not supported in this browser. Try Chrome.')
       return
     }
-    // Clear previous errors
+    if (shouldKeepRef.current) return  // already running
+
+    // Clear previous error and state
     setPermissionError('')
-
-    const ok = await ensurePermission()
-    if (!ok) return
-
-    // Set intent BEFORE calling createAndStart
-    shouldListenRef.current = true
-    transcriptRef.current   = ''
     setTranscript('')
     setInterimTranscript('')
-    setIsListening(true)
-    createAndStart()
-  }, [createAndStart])  // eslint-disable-line react-hooks/exhaustive-deps
+    transcriptRef.current = ''
+
+    // Abort any lingering instance
+    if (recognitionRef.current) {
+      try { recognitionRef.current.onend = null; recognitionRef.current.abort() } catch { /**/ }
+      recognitionRef.current = null
+    }
+
+    const rec = new SRClass()
+    rec.continuous     = !isIOS  // continuous=true breaks iOS Safari
+    rec.interimResults = true
+    rec.lang           = 'en-US'
+    rec.maxAlternatives = 1
+
+    shouldKeepRef.current  = true
+    recognitionRef.current = rec
+
+    // Calling start() directly from the click handler lets the browser
+    // show its own "Allow microphone?" dialog without us needing getUserMedia.
+    attachAndStart(rec)
+  }, [attachAndStart])
 
   const stopListening = useCallback(() => {
-    shouldListenRef.current = false
+    shouldKeepRef.current = false
     setIsListening(false)
     setInterimTranscript('')
     if (recognitionRef.current) {
       const rec = recognitionRef.current
       recognitionRef.current = null
-      rec.onend = null  // prevent auto-restart on iOS
+      rec.onend = null   // prevent iOS auto-restart
       try { rec.stop() } catch { /**/ }
     }
   }, [])

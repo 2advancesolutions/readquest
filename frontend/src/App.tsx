@@ -16,6 +16,9 @@ import Profile from './pages/Profile'
 import QuestMode from './pages/QuestMode'
 import Assignments from './pages/Assignments'
 import ParentDashboard from './pages/ParentDashboard'
+import RecordingsLibrary from './pages/RecordingsLibrary'
+import BookRecordings from './pages/BookRecordings'
+import RecordingPlayback from './pages/RecordingPlayback'
 
 function App() {
   const [session, setSession] = useState<any>(null)
@@ -89,6 +92,11 @@ function App() {
         <Route path="/quest" element={session ? <QuestMode /> : <Navigate to="/login" replace />} />
         <Route path="/assignments" element={session ? <Assignments /> : <Navigate to="/login" replace />} />
         <Route path="/parent-dashboard" element={session ? <ParentDashboard /> : <Navigate to="/login" replace />} />
+
+        {/* Recordings routes */}
+        <Route path="/recordings" element={session ? <RecordingsLibrary /> : <Navigate to="/login" replace />} />
+        <Route path="/recordings/:bookId" element={session ? <BookRecordings /> : <Navigate to="/login" replace />} />
+        <Route path="/recordings/:bookId/:recordingId" element={session ? <RecordingPlayback /> : <Navigate to="/login" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

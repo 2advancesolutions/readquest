@@ -37,10 +37,133 @@ def _normalize(text: str) -> list[str]:
     return re.findall(r"[a-z']+", text.lower())
 
 
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein edit distance between two strings."""
+    if len(a) < len(b):
+        return _edit_distance(b, a)
+    if len(b) == 0:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            curr.append(min(
+                prev[j + 1] + 1,      # deletion
+                curr[j] + 1,           # insertion
+                prev[j] + (ca != cb),  # substitution
+            ))
+        prev = curr
+    return prev[-1]
+
+
+# Common homophones / speech-recognition substitutions
+_HOMOPHONES: set[frozenset[str]] = {
+    frozenset({"would", "wood"}),
+    frozenset({"their", "there", "they're"}),
+    frozenset({"your", "you're"}),
+    frozenset({"its", "it's"}),
+    frozenset({"to", "too", "two"}),
+    frozenset({"no", "know"}),
+    frozenset({"new", "knew"}),
+    frozenset({"right", "write"}),
+    frozenset({"read", "red"}),
+    frozenset({"sea", "see"}),
+    frozenset({"hear", "here"}),
+    frozenset({"one", "won"}),
+    frozenset({"for", "four"}),
+    frozenset({"be", "bee"}),
+    frozenset({"by", "buy", "bye"}),
+    frozenset({"sun", "son"}),
+    frozenset({"some", "sum"}),
+    frozenset({"I", "eye"}),
+    frozenset({"night", "knight"}),
+    frozenset({"flower", "flour"}),
+    frozenset({"not", "knot"}),
+    frozenset({"ate", "eight"}),
+    frozenset({"wait", "weight"}),
+    frozenset({"wear", "where"}),
+    frozenset({"tail", "tale"}),
+    frozenset({"knows", "nose"}),
+    frozenset({"made", "maid"}),
+    frozenset({"pair", "pear", "pare"}),
+    frozenset({"blue", "blew"}),
+    frozenset({"road", "rode"}),
+    frozenset({"way", "weigh"}),
+    frozenset({"whole", "hole"}),
+}
+
+
+def _are_homophones(a: str, b: str) -> bool:
+    """Check if two words are known homophones."""
+    for group in _HOMOPHONES:
+        if a in group and b in group:
+            return True
+    return False
+
+
+# Common English suffixes the Speech API tends to drop or add
+_SUFFIXES = ("ed", "s", "es", "ing", "ly", "er", "est", "d", "'s", "n't", "'t")
+
+
+def _strip_suffix(word: str) -> str:
+    """Return the stem after stripping the longest matching common suffix."""
+    for sfx in sorted(_SUFFIXES, key=len, reverse=True):
+        if word.endswith(sfx) and len(word) > len(sfx) + 1:
+            return word[:-len(sfx)]
+    return word
+
+
+def _words_match(expected: str, spoken: str) -> bool:
+    """
+    Fuzzy word comparison that compensates for Web Speech API quirks.
+    Returns True if the spoken word is "close enough" to the expected word.
+    """
+    if expected == spoken:
+        return True
+
+    # 1. Homophones (would/wood, their/there, etc.)
+    if _are_homophones(expected, spoken):
+        return True
+
+    # 2. Stem / suffix match (wished ↔ wish, hoped ↔ hope, etc.)
+    stem_e = _strip_suffix(expected)
+    stem_s = _strip_suffix(spoken)
+    if stem_e == stem_s:
+        return True
+    if expected == stem_s or spoken == stem_e:
+        return True
+
+    # 3. One word is a prefix of the other (≥3 chars) — catches truncations
+    min_len = min(len(expected), len(spoken))
+    if min_len >= 3:
+        shorter = expected if len(expected) <= len(spoken) else spoken
+        longer = spoken if len(expected) <= len(spoken) else expected
+        if longer.startswith(shorter) and (len(longer) - len(shorter)) <= 3:
+            return True
+
+    # 4. Edit distance tolerance
+    #    Short words (≤4 chars): allow 1 edit
+    #    Longer words: allow up to 2 edits
+    dist = _edit_distance(expected, spoken)
+    max_len = max(len(expected), len(spoken))
+    if max_len <= 4 and dist <= 1:
+        return True
+    if max_len > 4 and dist <= 2:
+        return True
+
+    # 5. High character-level similarity ratio (catches reordering, e.g. "form"/"from")
+    ratio = SequenceMatcher(None, expected, spoken).ratio()
+    if ratio >= 0.80 and min_len >= 4:
+        return True
+
+    return False
+
+
 async def compare_words_node(state: FluencyState) -> FluencyState:
     """
     Diff transcript against source text using SequenceMatcher.
-    Produces word_errors list with error type per missed/changed word.
+    Uses fuzzy word matching to avoid false positives from speech recognition
+    artifacts (dropped suffixes, homophones, minor transcription drift).
     """
     source_words = _normalize(state["source_text"])
     transcript_words = _normalize(state["transcript"])
@@ -56,18 +179,22 @@ async def compare_words_node(state: FluencyState) -> FluencyState:
         if tag == "equal":
             correct += (i2 - i1)
         elif tag == "replace":
-            # Words that were said differently than expected
-            for idx, (expected, spoken) in enumerate(
-                zip(source_words[i1:i2], transcript_words[j1:j2])
-            ):
-                errors.append({
-                    "word": expected,
-                    "spoken_word": spoken,
-                    "error_type": "mispronounced",
-                    "word_index": i1 + idx,
-                })
+            # Check each replaced pair with fuzzy matching — speech
+            # recognition often produces close-but-not-exact transcriptions
+            paired = list(zip(source_words[i1:i2], transcript_words[j1:j2]))
+            for idx, (expected, spoken) in enumerate(paired):
+                if _words_match(expected, spoken):
+                    # Close enough — count as correct
+                    correct += 1
+                else:
+                    errors.append({
+                        "word": expected,
+                        "spoken_word": spoken,
+                        "error_type": "mispronounced",
+                        "word_index": i1 + idx,
+                    })
             # If source has more words than transcript chunk, mark as skipped
-            for idx in range(len(transcript_words[j1:j2]), i2 - i1):
+            for idx in range(len(paired), i2 - i1):
                 errors.append({
                     "word": source_words[i1 + idx],
                     "spoken_word": None,
