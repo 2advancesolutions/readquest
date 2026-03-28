@@ -360,15 +360,15 @@ export default function BookReader() {
     return () => clearTimeout(t)
   }, [phase, reviewIdx, reviewStarted, missedWords])  // eslint-disable-line
 
-  // Called when student taps the "I'm Ready!" mic button
-  const handleReviewMicPress = useCallback(() => {
+  // Called when student taps the "I'm Ready!" mic button in review phase
+  const handleReviewMicPress = useCallback(async () => {
     if (mic.isListening) {
       mic.stopListening()
       return
     }
-    tts.stop()  // stop TTS if still playing
+    tts.stop()
     mic.resetTranscript()
-    mic.startListening()
+    await mic.startListening()  // async on mobile to trigger permission prompt
   }, [mic, tts])
 
   // Called when student wants to hear the word again
@@ -606,17 +606,20 @@ export default function BookReader() {
   }
 
   // ── Mic toggle ────────────────────────────────────────────────────────────
-  const toggleMic = () => {
-    sfx.playClick()
+  const toggleMic = async () => {
     if (mic.isListening) {
+      sfx.playClick()
       mic.stopListening()
     } else {
       tts.stop()
       mic.resetTranscript()
       accTranscriptRef.current = ''
       wasReadingRef.current = false
-      setWordStatuses(pageWordsRef.current.map(() => 'idle'))  // reset all to grey
-      mic.startListening()
+      setWordStatuses(pageWordsRef.current.map(() => 'idle'))
+      // IMPORTANT: await the async permission + start flow
+      // Don't play click sound BEFORE mic starts — on iOS it steals audio focus
+      await mic.startListening()
+      sfx.playClick()
     }
   }
 
@@ -632,7 +635,8 @@ export default function BookReader() {
     let gradedScore = 50
     let gradedFeedback = 'Great effort reading this story!'
     try {
-      const res = await fetch('http://localhost:8000/api/stories/grade-comprehension', {
+      const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+      const res = await fetch(`${API}/api/stories/grade-comprehension`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1261,10 +1265,33 @@ export default function BookReader() {
           </div>
 
           {mic.isSupported && (
-            <button className={`reader-mic-btn ${mic.isListening ? 'listening' : ''}`} onClick={toggleMic}
-              title={mic.isListening ? 'Stop' : 'Read aloud'}>
-              {mic.isListening ? '⏹' : '🎤'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
+              <button className={`reader-mic-btn ${mic.isListening ? 'listening' : ''}`} onClick={toggleMic}
+                title={mic.isListening ? 'Stop reading' : 'Tap to read aloud'}>
+                {mic.isListening ? (
+                  /* Stop square */
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                  </svg>
+                ) : (
+                  /* Microphone SVG */
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="9" y="2" width="6" height="11" rx="3"/>
+                    <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+                    <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="8" y1="22" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </button>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: mic.isListening ? '#fca5a5' : 'rgba(178,140,255,0.8)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                {mic.isListening ? 'Listening…' : 'Read Aloud'}
+              </span>
+              {mic.permissionError && (
+                <span style={{ fontSize: '9px', color: '#f87171', textAlign: 'center', maxWidth: '70px', lineHeight: 1.3 }}>
+                  🔒 Allow mic
+                </span>
+              )}
+            </div>
           )}
         </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 
 interface CharEntry {
@@ -108,15 +108,6 @@ export const ALL_CHARACTERS: CharEntry[] = [
   { name: 'Chihiro',         img: WE('d/d5/Spirited_Away_%28Sen_to_Chihiro%29.png') },
 ]
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
-
 interface Props {
   onSelect: (name: string) => void
   onHoverChar?: (img: string) => void
@@ -124,56 +115,17 @@ interface Props {
   onVerified?: (chars: CharEntry[]) => void
 }
 
-// Probe a URL — resolves true only if it loads successfully
-function probeImg(src: string): Promise<boolean> {
-  return new Promise(resolve => {
-    const img = new Image()
-    img.onload  = () => resolve(true)
-    img.onerror = () => resolve(false)
-    img.src = src
-  })
-}
-
 export default function CharacterGallery({ onSelect, onHoverChar, onHoverLeave, onVerified }: Props) {
-  const [verified, setVerified] = useState<CharEntry[]>([])
-  const [checking, setChecking] = useState(true)
+  // Track which characters failed to load so we can hide them
+  const [failedimgs, setFailedImgs] = useState<Set<string>>(new Set())
 
-  // One-time parallel probe — results are browser-cached, never re-fetched
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const results = await Promise.all(
-        ALL_CHARACTERS.map(async char => {
-          const ok = await probeImg(char.img)
-          return ok ? char : null
-        })
-      )
-      if (!cancelled) {
-        const good = shuffleArray(results.filter(Boolean) as CharEntry[])
-        setVerified(good)
-        setChecking(false)
-        onVerified?.(good)
-      }
-    })()
-    return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (checking) {
-    return (
-      <div className="cgal-section">
-        <div className="cgal-skeleton-grid">
-          {Array.from({ length: 16 }).map((_, i) => (
-            <div key={i} className="cgal-skeleton-item">
-              <div className="cgal-skeleton-circle" />
-              <div className="cgal-skeleton-name" />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
+  const handleError = (name: string) => {
+    setFailedImgs(prev => new Set(prev).add(name))
   }
 
-  if (verified.length === 0) return null
+  // Inform parent of all visible characters immediately (those not yet failed)
+  // We call onVerified once on mount with the full list — parent can filter later
+  const visibleChars = ALL_CHARACTERS.filter(c => !failedimgs.has(c.name))
 
   return (
     <div className="cgal-section">
@@ -183,21 +135,27 @@ export default function CharacterGallery({ onSelect, onHoverChar, onHoverLeave, 
         </span>
       </div>
 
-      {/* Static grid — all verified images shown at once, no rotation */}
+      {/* All characters shown immediately; broken ones hide via CSS */}
       <div className="cgal-grid">
-        {verified.map(char => (
+        {ALL_CHARACTERS.map(char => (
           <motion.button
             key={char.name}
             className="cgal-circle-wrap"
+            style={{ display: failedimgs.has(char.name) ? 'none' : undefined }}
             whileHover={{ scale: 1.12, y: -4 }}
             whileTap={{ scale: 0.94 }}
-            onClick={() => onSelect(char.name)}
+            onClick={() => { onVerified?.(visibleChars); onSelect(char.name) }}
             onMouseEnter={() => onHoverChar?.(char.img)}
             onMouseLeave={() => onHoverLeave?.()}
             title={`Use ${char.name} as your hero`}
           >
             <div className="cgal-circle">
-              <img src={char.img} alt={char.name} className="cgal-circle-img" />
+              <img
+                src={char.img}
+                alt={char.name}
+                className="cgal-circle-img"
+                onError={() => handleError(char.name)}
+              />
             </div>
             <span className="cgal-circle-name">{char.name}</span>
           </motion.button>

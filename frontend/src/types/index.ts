@@ -148,3 +148,114 @@ export const THEME_META: Record<Theme, { emoji: string; label: string; color: st
   ocean:     { emoji: '🐠', label: 'Ocean',       color: '#0EA5E9' },
   dinosaurs: { emoji: '🦕', label: 'Dinosaurs',   color: '#84CC16' },
 };
+
+// ── Phase 1 — AI Tutor Types ────────────────────────────────────────────────
+
+export interface WordError {
+  word: string;
+  spoken_word?: string;
+  error_type: 'mispronounced' | 'skipped' | 'repeated';
+  word_index: number;
+}
+
+export interface FluencySession {
+  session_id: string;
+  student_id: string;
+  story_id: string;
+  page_number: number;
+  accuracy_pct: number;
+  words_per_minute: number | null;
+  correct_words: number;
+  total_words: number;
+  word_errors: WordError[];
+  feedback: string;
+  recorded_at: string;
+}
+
+export interface VocabularyWord {
+  id: string;
+  word: string;
+  definition: string;
+  example_sentence: string;
+  pronunciation_url?: string;
+  grade_level: number;
+  story_id: string;
+  student_id: string;
+  is_saved: boolean;
+}
+
+export type AssignmentType = 'vocabulary' | 'fluency' | 'comprehension' | 'mixed';
+export type AssignmentStatus = 'pending' | 'completed' | 'reviewed';
+
+export interface AssignmentTask {
+  type: string;
+  prompt: string;
+  options?: string[];
+  correct_answer?: string;
+  hint?: string;
+}
+
+export interface Assignment {
+  id: string;
+  student_id: string;
+  title: string;
+  description: string;
+  assignment_type: AssignmentType;
+  status: AssignmentStatus;
+  content: AssignmentTask[];
+  difficulty_level: number;
+  source: 'ai_generated' | 'parent';
+  created_at: string;
+}
+
+export interface QuestLevel {
+  id: string;
+  level_number: number;
+  name: string;
+  description: string;
+  required_stories: number;
+  min_accuracy_pct: number;
+  min_quiz_pct: number;
+  min_assignment_score: number;
+  xp_reward: number;
+  badge_slug?: string;
+}
+
+export interface QuestProgress {
+  student_id: string;
+  current_level: number;
+  level_name: string;
+  stories_completed: number;
+  stories_required: number;
+  avg_accuracy: number;
+  min_accuracy_required: number;
+  avg_quiz_score: number;
+  min_quiz_required: number;
+  avg_assignment_score: number;
+  min_assignment_required: number;
+}
+
+export interface ParentReview {
+  id: string;
+  parent_id: string;
+  student_id: string;
+  star_grade: number;   // 1-5
+  comment?: string;
+  assignment_id?: string;
+  fluency_session_id?: string;
+  reviewed_at: string;
+}
+
+export interface SELReflectionPrompt {
+  question: string;
+  hint_1: string;
+  hint_2: string;
+  hint_3: string;
+}
+
+export interface SELData {
+  sel_tags: string[];
+  reflection_prompts: SELReflectionPrompt[];
+  character_guide: string;
+}
+

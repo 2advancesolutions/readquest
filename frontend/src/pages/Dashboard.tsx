@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { storiesApi, rewardsApi } from '../services/api'
 import { supabase } from '../lib/supabase'
+import { preloadWelcomeVoice } from '../components/WelcomeVoice'
 import type { Story, StudentRewards } from '../types'
 import '../styles/dashboard.css'
 
@@ -224,6 +225,18 @@ export default function Dashboard() {
 
   return (
     <div className="dash-root">
+      {/* ── Starfield ── */}
+      <div className="dash-stars" aria-hidden>
+        {[...Array(24)].map((_, i) => (
+          <div key={i} className="dash-star" style={{
+            left: `${(i * 17 + 7) % 97}%`,
+            top: `${(i * 23 + 3) % 91}%`,
+            animationDelay: `${(i * 0.37) % 3}s`,
+            width: `${(i % 3) + 1}px`, height: `${(i % 3) + 1}px`,
+          }} />
+        ))}
+      </div>
+
       {/* ════ LEFT SIDEBAR ════ */}
       <aside className="dash-sidebar">
         <div>
@@ -249,7 +262,7 @@ export default function Dashboard() {
           </button>
 
           <div className="dash-nav-section-label">Manage</div>
-          <button className="dash-nav-link" onClick={() => navigate('/generate')} id="nav-generate">
+          <button className="dash-nav-link" onClick={() => { preloadWelcomeVoice(); navigate('/generate') }} id="nav-generate">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             <span>Generate Story</span>
           </button>
@@ -297,7 +310,7 @@ export default function Dashboard() {
             <motion.button
               className="dash-create-btn"
               whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-              onClick={() => navigate('/generate')}
+              onClick={() => { preloadWelcomeVoice(); navigate('/generate') }}
               id="btn-generate"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -390,7 +403,7 @@ export default function Dashboard() {
                   <motion.div key="empty" className="dash-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <div className="dash-empty-icon">📖</div>
                     <p>{selectedChild ? `No stories for ${selectedChild.name} yet.` : 'No stories yet — generate the first one!'}</p>
-                    <button className="dash-empty-btn" onClick={() => navigate('/generate')}>Generate a Story ✨</button>
+                    <button className="dash-empty-btn" onClick={() => { preloadWelcomeVoice(); navigate('/generate') }}>Generate a Story ✨</button>
                   </motion.div>
                 ) : (
                   <motion.div key="stories" className="story-grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

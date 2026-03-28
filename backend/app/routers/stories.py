@@ -19,6 +19,10 @@ class GenerateRequest(BaseModel):
     character_name: str
     language: str = "english"
     art_style: str = "cartoon"
+    # Phase 1 AI Tutor additions
+    sel_theme: Optional[str] = None       # e.g. 'bullying', 'empathy', 'kindness'
+    story_mode: str = "free_play"         # 'free_play' | 'quest'
+
 
 
 class AnalyzeCharacterRequest(BaseModel):
@@ -61,21 +65,28 @@ async def analyze_character(req: AnalyzeCharacterRequest):
     import json
     from app.agents.content_agent import _call_gemini_text
 
-    # ── Task 1: Gemini text — character analysis ──────────────────────────────
+    # ── Task 1: Gemini text — extract visual description ──────────────────────
     async def analyze():
-        prompt = f"""You are a creative children's story assistant.
+        prompt = f"""You are a creative children's story assistant helping generate an ORIGINAL illustration.
 
-The child said their favorite character is: "{req.character}"
+The child's favorite character is: "{req.character}"
 
-Analyze this character and respond ONLY with valid JSON in this exact format:
+Your job:
+1. Identify the character
+2. Describe exactly what they LOOK LIKE in detail (colors, shape, clothing, accessories)
+3. Build an image generation prompt that describes the character visually WITHOUT using their copyrighted name
+
+Respond ONLY with valid JSON:
 {{
   "character_name": "{req.character}",
-  "universe": "which franchise/universe (e.g. Marvel, Disney, Pixar, etc.)",
+  "universe": "which franchise/universe (e.g. Nickelodeon, Disney, Pixar, etc.)",
   "description": "1-sentence kid-friendly description of {req.character}",
-  "image_prompt": "A vibrant full-body portrait illustration of {req.character}, [brief visual description matching the character's look], white background, clean edges, Disney/Pixar style, bright colors, high detail, no text"
+  "visual_description": "detailed visual description: body shape, skin/fur color, eye color, clothing colors and style, accessories, hair — enough to draw them from scratch",
+  "image_prompt": "An original children's book cartoon illustration of [paste visual_description here as a fresh character description, e.g. 'a small round pink pig girl with a big round head, tiny pink ears, wearing a bright red dress and black shoes, friendly smile, simple flat cartoon style'], full body pose, arms slightly out, centered on a PLAIN WHITE background, clean cartoon line art, bright flat colors, no shadows, no gradients, no text, no logos, no watermarks, kid-friendly"
 }}
 
-CRITICAL: character_name must be EXACTLY "{req.character}" — do NOT expand, add a surname, or rename it."""
+CRITICAL: The image_prompt must describe the character VISUALLY (colors, shape, clothing) — do NOT use their name or franchise name inside the image_prompt field.
+CRITICAL: character_name must be EXACTLY "{req.character}"."""
         raw = await _call_gemini_text(
             system="You are a creative children's assistant. Reply with valid JSON only.",
             user=prompt,
@@ -86,10 +97,46 @@ CRITICAL: character_name must be EXACTLY "{req.character}" — do NOT expand, ad
             if raw.startswith("json"): raw = raw[4:]
         return json.loads(raw.strip())
 
-    # ── Task 2: Generate character portrait — direct Gemini SDK ───────────────
+    # ── Task 2: Generate character portrait with transparent background ────────
     async def generate_portrait(image_prompt: str) -> Optional[str]:
-        from app.agents.content_agent import _generate_image_nano_banana2
-        return await _generate_image_nano_banana2(image_prompt)
+        from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes
+        import httpx as _httpx
+
+        # Step 1: generate the raw portrait image
+        raw_url = await _generate_image_nano_banana2(image_prompt)
+        if not raw_url:
+            return None
+
+        # Step 2: fetch the raw bytes (from Supabase URL or local path)
+        try:
+            if raw_url.startswith("http"):
+                async with _httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(raw_url)
+                    img_bytes = resp.content
+            else:
+                # local static file path
+                from pathlib import Path
+                img_bytes = Path(raw_url.lstrip("/")).read_bytes()
+        except Exception as e:
+            print(f"[generate_portrait] Could not fetch raw bytes: {e}")
+            return raw_url  # return as-is if we can't fetch
+
+        # Step 3: remove background → transparent PNG
+        transparent_bytes = await remove_background_from_bytes(img_bytes)
+
+        # Step 4: re-upload the transparent version
+        from app.agents.content_agent import _upload_to_supabase
+        import uuid as _uuid2
+        filename = f"portrait_{_uuid2.uuid4().hex}.png"
+        public_url = await _upload_to_supabase(transparent_bytes, filename)
+        if public_url:
+            return public_url
+
+        # Fallback: save locally
+        from pathlib import Path as _Path
+        _Path("static/images").mkdir(parents=True, exist_ok=True)
+        _Path(f"static/images/{filename}").write_bytes(transparent_bytes)
+        return f"/static/images/{filename}"
 
 
     # Run both in parallel: LLM analysis + image generation
@@ -102,15 +149,19 @@ CRITICAL: character_name must be EXACTLY "{req.character}" — do NOT expand, ad
             "universe": "Original",
             "description": f"The amazing {req.character} — ready for a great adventure!",
             "image_prompt": (
-                f"A vibrant full-body portrait illustration of {req.character}, "
-                "white background, Disney/Pixar cartoon style, bright colors, high detail, no text"
+                f"An original children's book cartoon illustration of a beloved children's cartoon character "
+                f"inspired by {req.character}, full body pose, arms slightly out, centered, "
+                "PLAIN WHITE background, clean cartoon line art, bright flat colors, "
+                "no shadows, no gradients, no text, no logos, kid-friendly"
             ),
         }
 
     image_prompt = char_data.get(
         "image_prompt",
-        f"A vibrant full-body portrait illustration of {char_data['character_name']}, "
-        "white background, Disney/Pixar cartoon style, bright colors, high detail, no text"
+        f"An original children's book cartoon illustration of a beloved children's cartoon character "
+        f"inspired by {char_data['character_name']}, full body pose, arms slightly out, centered, "
+        "PLAIN WHITE background, clean cartoon line art, bright flat colors, "
+        "no shadows, no gradients, no text, no logos, kid-friendly"
     )
 
     portrait_url = await generate_portrait(image_prompt)
@@ -170,12 +221,21 @@ async def generate_story(
     # ─────────────────────────────────────────────────────────────────────────
 
     try:
+        # ── Sanitize inputs — prevent "no context" Gemini errors on mobile ───
+        safe_character = (req.character_name or "").strip()
+        safe_theme     = (req.theme or "").strip()
+
+        if not safe_character:
+            safe_character = "a brave young hero"
+        if not safe_theme:
+            safe_theme = "an exciting magical adventure"
+
         story_data = await generate_story_with_ai(
             grade=req.grade,
-            theme=req.theme,
-            character_name=req.character_name,
-            language=req.language,
-            art_style=req.art_style,
+            theme=safe_theme,
+            character_name=safe_character,
+            language=req.language or "english",
+            art_style=req.art_style or "cartoon",
         )
     except Exception as e:
         raise HTTPException(500, detail=f"Story generation failed: {str(e)}")
@@ -186,7 +246,7 @@ async def generate_story(
     story_id = None
     db_pages: list = []
     db_quiz: list = []
-    db_cover: str | None = story_data.get("cover_image_url")
+    db_cover: Optional[str] = story_data.get("cover_image_url")
 
     try:
         story = Story(
@@ -195,6 +255,8 @@ async def generate_story(
             grade_level=req.grade,
             theme=req.theme,
             cover_media_url=story_data.get("cover_image_url"),
+            is_sel_story=bool(req.sel_theme),
+            story_mode=req.story_mode,
         )
         db.add(story)
         await db.flush()
@@ -244,6 +306,29 @@ async def generate_story(
         await db.commit()
         await db.refresh(story)
         story_id = story.id
+
+        # ── Post-generation: run SEL agent if sel_theme was requested ────────
+        if req.sel_theme:
+            try:
+                from app.agents.sel_agent import run_sel_agent
+                full_story_text = " ".join(
+                    p["content"] for p in story_data.get("pages", [])
+                )
+                sel_result = await run_sel_agent(
+                    story_text=full_story_text,
+                    story_title=story_data["title"],
+                    grade_level=req.grade,
+                    requested_theme=req.sel_theme,
+                )
+                story.sel_tags = sel_result["sel_tags"]
+                story.sel_reflections = [
+                    {"reflection_prompts": sel_result["reflection_prompts"],
+                     "character_guide": sel_result["character_guide"]}
+                ]
+                await db.commit()
+                await db.refresh(story)
+            except Exception as sel_err:
+                print(f"[generate_story] SEL agent failed (non-fatal): {sel_err}")
 
     except Exception as db_err:
         # DB unavailable (e.g. SQLite not configured in production) — still return the story
@@ -523,6 +608,58 @@ async def save_reading_progress(
     except Exception as e:
         print(f"[save_progress] failed: {e}")
     return {"ok": True}
+
+
+class GenerateBackgroundRequest(BaseModel):
+    theme: str
+    character_name: Optional[str] = None      # when set, portrait is also generated
+    scene_description: Optional[str] = None   # user-typed scene detail, woven into portrait
+
+
+@router.post("/generate-background")
+async def generate_theme_background(req: GenerateBackgroundRequest):
+    """
+    Generate a wide cinematic background + optional combined character portrait.
+    Portrait is only generated when character_name is provided.
+    Returns { background_url: str | None, portrait_url: str | None }
+    """
+    import asyncio
+    from app.agents.content_agent import _generate_image_nano_banana2
+
+    bg_prompt = (
+        "Ultra-wide cinematic panoramic children's book background illustration. "
+        "No characters, no text, no people. "
+        f"Theme: {req.theme}. "
+        "Lush, vibrant colors, dreamy atmosphere, Pixar storybook art style, "
+        "highly detailed, magical lighting, golden hour, volumetric light rays, "
+        "safe for kids, whimsical and enchanting."
+    )
+
+    portrait_prompt: Optional[str] = None
+    if req.character_name:
+        # Combine all three inputs into one rich prompt
+        scene_detail = f" The scene: {req.scene_description.strip()}." if req.scene_description else ""
+        portrait_prompt = (
+            f"Full-body children's book illustration of {req.character_name} "
+            f"fully immersed inside a {req.theme} world.{scene_detail} "
+            f"{req.character_name} interacts with the environment — surrounded by "
+            f"{req.theme} elements, creatures, and details. "
+            "Vibrant Pixar/Disney art style, dynamic expressive pose, "
+            "rich background scenery matching the theme, magical cinematic lighting, "
+            "kid-friendly, safe for children, no text, no logos."
+        )
+
+    # Fire both in parallel — portrait only when character_name given
+    if portrait_prompt:
+        bg_url, portrait_url = await asyncio.gather(
+            _generate_image_nano_banana2(bg_prompt),
+            _generate_image_nano_banana2(portrait_prompt),
+        )
+    else:
+        bg_url = await _generate_image_nano_banana2(bg_prompt)
+        portrait_url = None
+
+    return {"background_url": bg_url, "portrait_url": portrait_url}
 
 
 class ComprehensionGradeRequest(BaseModel):

@@ -311,3 +311,144 @@
   .auth-card { padding: 36px 24px; }
   .auth-row { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Character Hero Panel
+   ═══════════════════════════════════════════════════════════════ */
+.char-hero {
+  position: relative;
+  overflow: hidden;
+  transition: background 0.6s ease;
+}
+
+/* Ambient glow orb */
+.char-glow-orb {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 340px; height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--char-glow, rgba(155,94,255,0.45)) 0%, transparent 70%);
+  filter: blur(48px);
+  pointer-events: none;
+  z-index: 0;
+  animation: charOrbPulse 4s ease-in-out infinite;
+}
+@keyframes charOrbPulse {
+  0%,100% { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
+  50%      { transform: translate(-50%,-50%) scale(1.2); opacity: 1; }
+}
+
+/* Floating stars/particles */
+.char-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: white;
+  opacity: 0;
+  animation: charParticleTwinkle var(--dur, 3s) var(--delay, 0s) ease-in-out infinite;
+  z-index: 0;
+}
+@keyframes charParticleTwinkle {
+  0%,100% { opacity: 0; transform: scale(0.5); }
+  50%     { opacity: 0.55; transform: scale(1); }
+}
+
+/* The centered character card */
+.char-card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s cubic-bezier(0.34,1.56,0.64,1), transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+}
+.char-card--in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Emoji wrapper with ring */
+.char-emoji-wrap {
+  position: relative;
+  width: 120px; height: 120px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 8px;
+}
+.char-emoji-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--char-accent, rgba(255,255,255,0.3));
+  opacity: 0.5;
+  animation: charRingPulse 2.5s ease-in-out infinite;
+}
+@keyframes charRingPulse {
+  0%,100% { transform: scale(1); opacity: 0.5; }
+  50%     { transform: scale(1.12); opacity: 0.15; }
+}
+.char-emoji {
+  font-size: 5.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 8px 28px var(--char-glow, rgba(0,0,0,0.4)));
+  animation: charEmojiFloat 3.5s ease-in-out infinite;
+}
+@keyframes charEmojiFloat {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-10px); }
+}
+
+/* Text */
+.char-name {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.char-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.5);
+}
+.char-desc {
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.75);
+  max-width: 260px;
+  line-height: 1.55;
+  margin-top: 4px;
+}
+
+/* Dot indicators */
+.char-dots {
+  display: flex;
+  gap: 7px;
+  margin-top: 20px;
+}
+.char-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  transition: background 0.3s, transform 0.3s;
+}
+.char-dot--active {
+  transform: scale(1.4);
+}
+
+/* Brand watermark at bottom */
+.char-brand {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: -0.02em;
+  z-index: 2;
+  white-space: nowrap;
+}

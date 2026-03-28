@@ -21,13 +21,13 @@
   --rq-green-light:    #6DFE9C;
 
   /* ── Surface Hierarchy (no borders — depth through tone) ── */
-  --rq-bg:                  #FCF4FF;   /* Base level 0 */
-  --rq-surface-low:         #F7EDFF;   /* Level 1 sections */
-  --rq-surface:             #EFE3FE;   /* Level 2 interactive zones */
-  --rq-surface-high:        #EAD9FA;   /* Level 3 popped-out */
-  --rq-surface-highest:     #E4D7F6;   /* Level 4 badges/chips */
+  --rq-bg:                  #FFFFFF;   /* Base level 0 */
+  --rq-surface-low:         #F9F9FB;   /* Level 1 sections */
+  --rq-surface:             #F3F0FA;   /* Level 2 interactive zones */
+  --rq-surface-high:        #EDE9F6;   /* Level 3 popped-out */
+  --rq-surface-highest:     #E7E2F2;   /* Level 4 badges/chips */
   --rq-card:                #FFFFFF;   /* Floating cards */
-  --rq-card-alt:            #F7EDFF;
+  --rq-card-alt:            #F7F3FF;
 
   /* ── Text ── */
   --rq-text:          #322C3D;
@@ -59,7 +59,7 @@
 
   /* ── Gradients ── */
   --rq-gradient-primary: linear-gradient(135deg, #702AE1, #6411D5);
-  --rq-gradient-bg:      linear-gradient(160deg, #FCF4FF 0%, #F0E6FF 100%);
+  --rq-gradient-bg:      linear-gradient(160deg, #FFFFFF 0%, #F3F0FA 100%);
   --rq-gradient-gold:    linear-gradient(135deg, #FFD709, #FFB623);
 
   /* ── Typography ── */

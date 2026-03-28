@@ -11,27 +11,126 @@ import { ALL_CHARACTERS } from '../components/CharacterGallery'
 import '../styles/generator.css'
 import '../styles/imm-steps.css'
 
+/* ── Wizard Fill Loader — outline fills with color from the bottom up ── */
+const HAT_CONE  = 'M75,3 L46,46 L104,46 Z'
+const HAT_BRIM  = 'M38,46 L112,46 Q112,56 75,58 Q38,56 38,46 Z'
+const BODY      = 'M56,92 C40,100 25,122 21,158 L17,206 L133,206 L129,158 C125,122 110,100 94,92 Z'
+const ARM_L     = 'M56,106 L20,136 L26,148 L60,120 Z'
+const ARM_R     = 'M94,106 L128,84 L134,94 L98,120 Z'
+const LEGS      = 'M50,200 L46,215 L59,215 L75,204 L91,215 L104,215 L100,200 Z'
+const STAR_PTS  = '147,28 149.4,35.6 157.4,35.6 151,40.4 153.4,48 147,43.2 140.6,48 143,40.4 136.6,35.6 144.6,35.6'
+
+function WizardFillLoader() {
+  return (
+    <div className="wiz-loader-wrap">
+      {/* Layer 1: gradient fill revealed from bottom */}
+      <div className="wiz-fill-reveal">
+        <svg viewBox="0 0 160 215" className="wiz-fill-svg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="wiz-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor="#f0abfc" />
+              <stop offset="40%"  stopColor="#a855f7" />
+              <stop offset="100%" stopColor="#3b0764" />
+            </linearGradient>
+          </defs>
+          <g fill="url(#wiz-grad)" stroke="none">
+            <polygon points={HAT_CONE} />
+            <path d={HAT_BRIM} />
+            <circle cx="75" cy="72" r="22" />
+            <path d={BODY} />
+            <path d={ARM_L} />
+            <rect x="4" y="134" width="30" height="22" rx="2" />
+            <path d={ARM_R} />
+            <line x1="127" y1="58" x2="147" y2="38" strokeWidth="3" strokeLinecap="round" stroke="url(#wiz-grad)" />
+            <polygon points={STAR_PTS} />
+            <path d={LEGS} />
+          </g>
+        </svg>
+        <div className="wiz-surface-line" />
+      </div>
+
+      {/* Layer 2: outline always on top */}
+      <svg viewBox="0 0 160 215" className="wiz-outline-svg" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="rgba(192,132,252,0.45)" strokeWidth="1.8"
+           strokeLinejoin="round" strokeLinecap="round">
+          <polygon points={HAT_CONE} />
+          <path d={HAT_BRIM} />
+          <circle cx="75" cy="72" r="22" />
+          <path d={BODY} />
+          <path d={ARM_L} />
+          <rect x="4" y="134" width="30" height="22" rx="2" />
+          <path d={ARM_R} />
+          <path d={LEGS} />
+          {/* face */}
+          <circle cx="67" cy="70" r="3" fill="rgba(192,132,252,0.3)" stroke="rgba(192,132,252,0.5)" strokeWidth="1" />
+          <circle cx="83" cy="70" r="3" fill="rgba(192,132,252,0.3)" stroke="rgba(192,132,252,0.5)" strokeWidth="1" />
+          <path d="M67,80 Q75,87 83,80" strokeWidth="1.5" />
+          {/* robe center dash */}
+          <path d="M75,92 L75,206" strokeDasharray="3 5" strokeOpacity="0.2" strokeWidth="1" />
+          {/* book spine */}
+          <line x1="19" y1="134" x2="19" y2="156" strokeWidth="1" />
+          {/* wand + star gold */}
+          <line x1="127" y1="58" x2="147" y2="38" stroke="rgba(251,191,36,0.75)" strokeWidth="2.5" />
+          <polygon points={STAR_PTS} stroke="rgba(251,191,36,0.85)" strokeWidth="1.3" />
+        </g>
+      </svg>
+
+      {/* Sparkles */}
+      <span className="wiz-spark wsp1">✦</span>
+      <span className="wiz-spark wsp2">✦</span>
+      <span className="wiz-spark wsp3">★</span>
+      <span className="wiz-spark wsp4">✦</span>
+    </div>
+  )
+}
+
 type Child = { id: string; name: string; grade_level: number }
 
 const LANGUAGES = [
-  { id: 'english', label: 'English', emoji: '🇺🇸', desc: 'Read in English' },
-  { id: 'spanish', label: 'Spanish', emoji: '🇪🇸', desc: 'Lee en Español' },
+  { id: 'english',    label: 'English',    emoji: '🇺🇸', desc: 'Read in English' },
+  { id: 'spanish',    label: 'Spanish',    emoji: '🇪🇸', desc: 'Lee en Español' },
+  { id: 'french',     label: 'French',     emoji: '🇫🇷', desc: 'Lire en Français' },
+  { id: 'portuguese', label: 'Portuguese', emoji: '🇧🇷', desc: 'Ler em Português' },
+  { id: 'german',     label: 'German',     emoji: '🇩🇪', desc: 'Auf Deutsch lesen' },
+  { id: 'japanese',   label: 'Japanese',   emoji: '🇯🇵', desc: '日本語で読む' },
+  { id: 'arabic',     label: 'Arabic',     emoji: '🇸🇦', desc: 'اقرأ بالعربية' },
+  { id: 'mandarin',   label: 'Mandarin',   emoji: '🇨🇳', desc: '用中文阅读' },
+  { id: 'hindi',      label: 'Hindi',      emoji: '🇮🇳', desc: 'हिंदी में पढ़ें' },
+  { id: 'italian',    label: 'Italian',    emoji: '🇮🇹', desc: 'Leggi in Italiano' },
 ]
 
 const ART_STYLES = [
-  { id: 'cartoon',    label: 'Cartoon',    emoji: '🎨', desc: 'Fun illustrated look' },
-  { id: 'real',       label: 'Realistic',  emoji: '📸', desc: 'Lifelike photos & scenes' },
-  { id: 'watercolor', label: 'Watercolor', emoji: '🖌️', desc: 'Soft painted brushstrokes' },
-  { id: 'pixar',      label: 'Pixar 3D',   emoji: '🦄', desc: 'Cinematic 3D animation' },
+  { id: 'cartoon',    label: 'Cartoon',     emoji: '🎨', desc: 'Fun 2D illustrated look' },
+  { id: 'pixar',      label: 'Pixar 3D',    emoji: '🦄', desc: 'Cinematic 3D animation' },
+  { id: 'real',       label: 'Realistic',   emoji: '📸', desc: 'Lifelike photos & scenes' },
+  { id: 'watercolor', label: 'Watercolor',  emoji: '🖌️', desc: 'Soft painted brushstrokes' },
+  { id: 'manga',      label: 'Manga/Anime', emoji: '⚡', desc: 'Japanese anime style' },
+  { id: 'sketch',     label: 'Sketch',      emoji: '✏️', desc: 'Hand-drawn pencil art' },
+  { id: 'storybook',  label: 'Classic Book',emoji: '📖', desc: 'Golden-age storybook feel' },
+  { id: 'neon',       label: 'Neon Glow',   emoji: '✨', desc: 'Electric glow & dark magic' },
 ]
 
 const THEME_OPTIONS = [
-  { id: 'magical rainbow forest', label: 'Magical Forest',    emoji: '🌲' },
-  { id: 'outer space adventure',  label: 'Space Explorer',    emoji: '🚀' },
-  { id: 'under the ocean',        label: 'Ocean Adventure',   emoji: '🌊' },
-  { id: 'friendly dinosaur park', label: 'Dino Park',         emoji: '🦕' },
-  { id: 'fantasy kingdom castle', label: 'Fantasy Kingdom',   emoji: '🏰' },
-  { id: 'jungle with lions',      label: 'Jungle Friends',    emoji: '🦁' },
+  { id: 'magical rainbow forest',          label: 'Magic Forest',      emoji: '🌲' },
+  { id: 'outer space adventure',           label: 'Space Explorer',    emoji: '🚀' },
+  { id: 'under the ocean',                 label: 'Ocean Deep',        emoji: '🌊' },
+  { id: 'friendly dinosaur park',          label: 'Dino World',        emoji: '🦕' },
+  { id: 'fantasy kingdom castle',          label: 'Fantasy Castle',    emoji: '🏰' },
+  { id: 'jungle with wild animals',        label: 'Wild Jungle',       emoji: '🦁' },
+  { id: 'pirate treasure hunt',            label: 'Pirate Quest',      emoji: '🏴‍☠️' },
+  { id: 'superhero city rescue',           label: 'Superhero City',    emoji: '🦸' },
+  { id: 'enchanted candy land',            label: 'Candy Kingdom',     emoji: '🍭' },
+  { id: 'icy arctic polar bears',          label: 'Arctic Ice',        emoji: '🐻‍❄️' },
+  { id: 'time travel history adventure',   label: 'Time Travel',       emoji: '⏰' },
+  { id: 'robot factory future world',      label: 'Robot World',       emoji: '🤖' },
+  { id: 'underwater mermaid kingdom',     label: 'Mermaid Cove',      emoji: '🧜' },
+  { id: 'haunted friendly ghost town',     label: 'Ghost Town',        emoji: '👻' },
+  { id: 'safari africa animals',           label: 'Safari Trek',       emoji: '🦒' },
+  { id: 'cloud kingdom sky adventure',     label: 'Sky Kingdom',       emoji: '☁️' },
+  { id: 'racing cars championship',        label: 'Race Day',          emoji: '🏎️' },
+  { id: 'fairy garden magic flowers',      label: 'Fairy Garden',      emoji: '🧚' },
+  { id: 'underwater treasure cave',        label: 'Treasure Dive',     emoji: '💎' },
+  { id: 'volcano island lava adventure',   label: 'Volcano Isle',      emoji: '🌋' },
 ]
 
 const CHILD_COLORS = ['#702AE1','#F59E0B','#10B981','#3B82F6','#EC4899','#F97316']
@@ -45,9 +144,20 @@ const CHAR_LOADING_MSGS = [
   '🌟 Nearly ready!',
 ]
 
-const WRITING_TIPS = [
-  '✍️ Writing your story...', '🎨 Creating illustrations...', '🧠 Crafting quiz questions...',
-  '✨ Adding finishing touches...', '📖 Binding your book...', '🖼️ Painting illustrations...',
+// Dynamic tips — personalized to the selected character
+const getCharacterTips = (charName: string) => [
+  `✍️ Writing ${charName}'s story...`,
+  `🎨 Painting ${charName}'s world...`,
+  `🧠 Crafting a quiz just for you...`,
+  `✨ ${charName} is getting ready for an adventure!`,
+  `📖 Binding your book...`,
+  `🌟 Did you know? ${charName} loves going on adventures!`,
+  `🚀 ${charName} is excited to meet you on every page!`,
+  `🎉 Almost done — your story is going to be amazing!`,
+  `🦁 Every great reader started with one book. This is yours!`,
+  `💫 Keep reading — the more you read, the smarter you get!`,
+  `🌈 ${charName}'s adventure is almost ready — get excited!`,
+  `📚 Great readers become great dreamers. You've got this!`,
 ]
 
 const MAGIC_EMOJIS = ['🪄', '✨', '🧙‍♂️', '🐉', '🏰', '🦄', '🌈', '🚀', '🐱', '🤖']
@@ -100,20 +210,88 @@ function PortraitImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="portrait-img-wrap">
       {!loaded && (
-        <div className="portrait-img-shimmer">
-          <div className="shimmer-spinner">
-            <div className="portrait-spinner-ring" />
-            <span className="portrait-spinner-emoji">🎨</span>
+        <div className="pov-overlay">
+          {/* ambient glow */}
+          <div className="pov-glow" />
+          {/* scattered sparkle dots */}
+          {[
+            { x:'12%', y:'18%', s:6,  c:'rgba(255,255,255,0.7)', d:'0s'   },
+            { x:'80%', y:'12%', s:4,  c:'rgba(236,72,153,0.8)',  d:'0.4s' },
+            { x:'88%', y:'55%', s:5,  c:'rgba(255,255,255,0.5)', d:'1s'   },
+            { x:'6%',  y:'65%', s:4,  c:'rgba(192,132,252,0.7)', d:'0.7s' },
+            { x:'75%', y:'80%', s:6,  c:'rgba(255,255,255,0.4)', d:'1.3s' },
+            { x:'22%', y:'76%', s:3,  c:'rgba(236,72,153,0.6)',  d:'0.2s' },
+            { x:'55%', y:'8%',  s:5,  c:'rgba(192,132,252,0.5)', d:'0.9s' },
+            { x:'40%', y:'88%', s:4,  c:'rgba(255,255,255,0.4)', d:'1.6s' },
+          ].map((p, i) => (
+            <span key={i} className="pov-star" style={{
+              left: p.x, top: p.y, width: p.s, height: p.s,
+              background: p.c, animationDelay: p.d,
+            }} />
+          ))}
+
+          {/* ── Wizard graduate character outline ── */}
+          <svg viewBox="0 0 200 230" className="pov-char-svg" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* platform / monitor base */}
+            <rect x="62" y="192" width="76" height="12" rx="6"
+              stroke="rgba(167,139,250,0.6)" strokeWidth="2" />
+            <rect x="82" y="204" width="36" height="8" rx="4"
+              stroke="rgba(167,139,250,0.6)" strokeWidth="2" />
+
+            {/* grad hat */}
+            <rect x="60" y="52" width="80" height="8" rx="2"
+              stroke="rgba(167,139,250,0.85)" strokeWidth="2" />
+            <polygon points="100,20 60,60 140,60"
+              stroke="rgba(167,139,250,0.85)" strokeWidth="2" strokeLinejoin="round" />
+            {/* hat tassel */}
+            <line x1="140" y1="56" x2="150" y2="76" stroke="rgba(251,191,36,0.7)" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="150" cy="78" r="3" fill="rgba(251,191,36,0.7)" />
+
+            {/* head */}
+            <circle cx="100" cy="85" r="24"
+              stroke="rgba(167,139,250,0.75)" strokeWidth="2" />
+            {/* smile */}
+            <path d="M90,92 Q100,100 110,92" stroke="rgba(167,139,250,0.6)" strokeWidth="1.8" strokeLinecap="round" />
+            {/* eyes */}
+            <circle cx="91" cy="83" r="3" fill="rgba(167,139,250,0.35)" stroke="rgba(167,139,250,0.6)" strokeWidth="1.5" />
+            <circle cx="109" cy="83" r="3" fill="rgba(167,139,250,0.35)" stroke="rgba(167,139,250,0.6)" strokeWidth="1.5" />
+
+            {/* body / robe */}
+            <path d="M74,109 C60,116 50,138 48,165 L48,192 L152,192 L152,165 C150,138 140,116 126,109 Z"
+              stroke="rgba(167,139,250,0.7)" strokeWidth="2" strokeLinejoin="round" />
+
+            {/* left arm — holding book */}
+            <path d="M74,120 L42,148 L48,158 L78,134 Z"
+              stroke="rgba(167,139,250,0.65)" strokeWidth="2" strokeLinejoin="round" />
+            <rect x="24" y="143" width="30" height="22" rx="3"
+              stroke="rgba(167,139,250,0.7)" strokeWidth="2" />
+            <line x1="39" y1="143" x2="39" y2="165" stroke="rgba(167,139,250,0.4)" strokeWidth="1" />
+
+            {/* right arm — holding wand */}
+            <path d="M126,120 L158,98 L164,108 L136,132 Z"
+              stroke="rgba(167,139,250,0.65)" strokeWidth="2" strokeLinejoin="round" />
+            {/* wand */}
+            <line x1="158" y1="98" x2="178" y2="72"
+              stroke="rgba(251,191,36,0.8)" strokeWidth="2.5" strokeLinecap="round" />
+            {/* star at wand tip */}
+            <polygon points="178,60 180.4,67.6 188.4,67.6 182,72.4 184.4,80 178,75.2 171.6,80 174,72.4 167.6,67.6 175.6,67.6"
+              stroke="rgba(251,191,36,0.9)" strokeWidth="1.5" fill="rgba(251,191,36,0.15)" />
+          </svg>
+
+          {/* text block */}
+          <div className="pov-text">
+            <h2 className="pov-heading">✦ Painting your character…</h2>
+            <p className="pov-sub">Crafting <strong>{alt}'s</strong> portrait…</p>
           </div>
-          <p className="shimmer-label">Painting your character… ✨</p>
         </div>
       )}
       <img src={src} alt={alt} className="scene-portrait-img"
-        style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.5s ease' }}
+        style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.6s ease' }}
         onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />
     </div>
   )
 }
+
 
 export default function StoryGenerator() {
   const navigate = useNavigate()
@@ -150,16 +328,29 @@ export default function StoryGenerator() {
   const [sceneDescription, setSceneDescription] = useState('')
   const [sceneError, setSceneError] = useState('')
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
+  const [customTheme, setCustomTheme] = useState('')
+  const customThemeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const charDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selectedLanguage, setSelectedLanguage] = useState('english')
   const [selectedArtStyle, setSelectedArtStyle] = useState<string | null>(null)
   const [tipIndex, setTipIndex] = useState(0)
   const [generatedStory, setGeneratedStory] = useState<{ id: string; title: string } | null>(null)
   const [generateError, setGenerateError] = useState('')
 
-  // Hero character — one random pick on mount (name + img); never auto-rotates
-  const [heroChar, setHeroChar] = useState(
-    () => ALL_CHARACTERS[Math.floor(Math.random() * ALL_CHARACTERS.length)]
-  )
+  // ── Theme Background — AI-generated live background for Step 2 ────────────
+  const [themeBackground, setThemeBackground] = useState<string | null>(null)
+  const [bgLoading, setBgLoading] = useState(false)   // background landscape generating
+  const [portraitLoading, setPortraitLoading] = useState(false) // character scene portrait generating
+  const bgAbortRef = useRef<AbortController | null>(null)
+  const portraitAbortRef = useRef<AbortController | null>(null)
+
+  // Hero character — pick from a small curated seed pool of reliable images on mount
+  // (Gallery hover or onVerified will update this dynamically)
+  const RELIABLE_SEEDS = ['SpongeBob', 'Mickey Mouse', 'Pikachu', 'Mario', 'Stitch', 'Elsa', 'Simba']
+  const [heroChar, setHeroChar] = useState(() => {
+    const seed = RELIABLE_SEEDS[Math.floor(Math.random() * RELIABLE_SEEDS.length)]
+    return ALL_CHARACTERS.find(c => c.name === seed) ?? ALL_CHARACTERS[0]
+  })
   const [hoveredHeroSrc, setHoveredHeroSrc] = useState<string | null>(null)
   // Stable random Step 2 script — picked once on mount
   const [step2VoiceText] = useState<string>(
@@ -168,43 +359,103 @@ export default function StoryGenerator() {
 
   const [isDictating, setIsDictating] = useState(false)
   const [dictationStatus, setDictationStatus] = useState('')
-  const dictRecognitionRef = useRef<SpeechRecognition | null>(null)
+  const [dictError, setDictError] = useState('')
+  const dictRecognitionRef = useRef<any>(null)
   const dictationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dictFinalTextRef = useRef('')
+
+  // Detect iOS Safari — it doesn't support continuous:true so we auto-restart instead
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+  const isMobileWebkit = isIOS || isSafari
 
   const startDictation = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) { alert('Voice input is not supported in this browser. Try Chrome!'); return }
-    const rec: SpeechRecognition = new SR()
-    rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true
+    if (!SR) {
+      setDictError('Voice input needs Chrome or Safari on iOS. Try those!')
+      return
+    }
+    // HTTPS required for mic on deployed apps
+    if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      setDictError('Voice input requires a secure (HTTPS) connection.')
+      return
+    }
+    setDictError('')
+    dictFinalTextRef.current = ''
+    const rec = new SR()
+    rec.lang = 'en-US'
+    // iOS Safari doesn't support continuous mode — we restart on `onend` instead
+    rec.continuous = !isMobileWebkit
+    rec.interimResults = !isMobileWebkit // interim results unstable on iOS
+    rec.maxAlternatives = 1
     dictRecognitionRef.current = rec
-    let finalText = ''
-    const resetTimeout = () => {
-      if (dictationTimeoutRef.current) clearTimeout(dictationTimeoutRef.current)
-      dictationTimeoutRef.current = setTimeout(() => setDictationStatus('Analyzing... ⏳'), 2500)
-    }
-    rec.onstart = () => { setIsDictating(true); setDictationStatus('Listening…'); resetTimeout() }
-    rec.onresult = (e: SpeechRecognitionEvent) => {
-      resetTimeout()
-      let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
-        else interim = e.results[i][0].transcript
-      }
-      setDictationStatus(interim || '🎵 Listening…')
-    }
-    rec.onerror = () => stopDictation(finalText)
-    rec.onend = () => stopDictation(finalText)
-    rec.start()
-  }, []) // eslint-disable-line
 
-  const stopDictation = useCallback((finalText?: string) => {
-    if (dictationTimeoutRef.current) clearTimeout(dictationTimeoutRef.current)
-    dictRecognitionRef.current?.stop()
-    dictRecognitionRef.current = null
-    setIsDictating(false); setDictationStatus('')
-    if (finalText?.trim()) {
-      setSceneDescription(prev => { const sep = prev.trim() ? ' ' : ''; return (prev + sep + finalText.trim()).trimStart() })
+    rec.onstart = () => {
+      setIsDictating(true)
+      setDictationStatus('Listening…')
     }
+
+    rec.onresult = (e: any) => {
+      if (dictationTimeoutRef.current) clearTimeout(dictationTimeoutRef.current)
+      let interimLabel = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          dictFinalTextRef.current += e.results[i][0].transcript + ' '
+        } else {
+          interimLabel = e.results[i][0].transcript
+        }
+      }
+      setDictationStatus(interimLabel || '🎵 Listening…')
+      // Auto-stop if silent for 3s (desktop only; iOS handles this itself)
+      if (!isMobileWebkit) {
+        dictationTimeoutRef.current = setTimeout(() => stopDictation(), 3000)
+      }
+    }
+
+    rec.onerror = (e: any) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setDictError('Microphone access denied. Please allow microphone in your browser settings.')
+        setIsDictating(false)
+      } else if (e.error === 'network') {
+        setDictError('No internet connection for voice. Type your idea instead!')
+        setIsDictating(false)
+      } else if (e.error !== 'no-speech') {
+        // no-speech is fine to ignore
+        stopDictation()
+      }
+    }
+
+    rec.onend = () => {
+      // On iOS, auto-restart if user hasn't tapped Done
+      if (isMobileWebkit && dictRecognitionRef.current) {
+        try { dictRecognitionRef.current.start() } catch { stopDictation() }
+      } else {
+        stopDictation()
+      }
+    }
+
+    try {
+      rec.start()
+    } catch (err) {
+      setDictError('Could not start microphone. Please try again.')
+    }
+  }, [isMobileWebkit]) // eslint-disable-line
+
+  const stopDictation = useCallback((explicitText?: string) => {
+    if (dictationTimeoutRef.current) clearTimeout(dictationTimeoutRef.current)
+    // Null out ref FIRST so onend doesn't trigger another restart
+    const rec = dictRecognitionRef.current
+    dictRecognitionRef.current = null
+    try { rec?.stop() } catch { /* ignore */ }
+    setIsDictating(false); setDictationStatus('')
+    const finalText = explicitText ?? dictFinalTextRef.current
+    if (finalText.trim()) {
+      setSceneDescription(prev => {
+        const sep = prev.trim() ? ' ' : ''
+        return (prev + sep + finalText.trim()).trimStart()
+      })
+    }
+    dictFinalTextRef.current = ''
   }, [])
 
   const toggleDictation = useCallback(() => {
@@ -214,6 +465,26 @@ export default function StoryGenerator() {
   useEffect(() => () => { dictRecognitionRef.current?.stop() }, [])
 
   const charMsgIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // ── Gallery quick-select: no LLM call, instant navigation ────────────────
+  const handleGallerySelect = useCallback((name: string) => {
+    const found = ALL_CHARACTERS.find(c => c.name === name)
+    setCharacterInput(name)
+    setAnalyzeError('')
+    // Immediately populate characterData from gallery without hitting the LLM
+    setCharacterData({
+      character_name: name,
+      universe: 'Adventure',
+      description: `${name} — ready for an epic adventure!`,
+      character_media_url: found?.img ?? null,
+      scenes: [],
+    })
+    if (found) { setHeroChar(found); setHoveredHeroSrc(null) }
+    setSceneDescription('')
+    setSelectedTheme(null)
+    setThemeBackground(null)
+    setStep('scene')
+  }, [])
 
   const handleAnalyzeCharacter = async () => {
     if (!characterInput.trim()) { setAnalyzeError('Tell us your favorite character! 😊'); return }
@@ -273,9 +544,124 @@ export default function StoryGenerator() {
   }
 
   useEffect(() => () => { if (charMsgIntervalRef.current) clearInterval(charMsgIntervalRef.current) }, [])
+  // Cleanup: abort any pending requests on unmount
+  useEffect(() => () => { bgAbortRef.current?.abort() }, [])
+  useEffect(() => () => { portraitAbortRef.current?.abort() }, [])
+
+
+  // ── Theme select: generate background ONLY (no portrait yet) ─────────────────
+  const handleThemeSelect = useCallback((themeId: string) => {
+    // On mobile a second tap on the same tile should NOT deselect — it's confusing.
+    // Only switch if a different theme is chosen.
+    setSelectedTheme(themeId)
+    setSceneError('')
+
+    // Cancel any in-flight background request
+    bgAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    bgAbortRef.current = ctrl
+    setBgLoading(true)
+    setThemeBackground(null)
+
+    const theme = THEME_OPTIONS.find(t => t.id === themeId)
+    const label = theme?.label ?? themeId
+
+    storiesApi.generateBackground(label)
+      .then(res => {
+        if (!ctrl.signal.aborted) setThemeBackground(res.data?.background_url ?? null)
+      })
+      .catch((err) => {
+        // Don't clear the selection on error — just leave background null.
+        // The user can still proceed; the story generator will generate its own bg.
+        if (!ctrl.signal.aborted) {
+          console.warn('[theme bg] background generation failed (non-fatal):', err?.message)
+          setThemeBackground(null)
+        }
+      })
+      .finally(() => { if (!ctrl.signal.aborted) setBgLoading(false) })
+  }, [])
+
+  // ── Custom theme input: debounced 3s API call ─────────────────────────────────
+  const handleCustomThemeChange = useCallback((value: string) => {
+    setCustomTheme(value)
+    // Clear any previous debounce
+    if (customThemeDebounceRef.current) clearTimeout(customThemeDebounceRef.current)
+    if (!value.trim()) {
+      // If cleared, revert to no custom background unless a preset is selected
+      if (selectedTheme === '__custom__') {
+        setSelectedTheme(null)
+        setThemeBackground(null)
+        setBgLoading(false)
+      }
+      return
+    }
+    customThemeDebounceRef.current = setTimeout(() => {
+      const blocked = validateContent(value)
+      if (blocked) return
+      // Deselect any preset tile
+      setSelectedTheme('__custom__')
+      bgAbortRef.current?.abort()
+      const ctrl = new AbortController()
+      bgAbortRef.current = ctrl
+      setBgLoading(true)
+      setThemeBackground(null)
+      storiesApi.generateBackground(value.trim())
+        .then(res => {
+          if (!ctrl.signal.aborted) setThemeBackground(res.data?.background_url ?? null)
+        })
+        .catch(() => {})
+        .finally(() => { if (!ctrl.signal.aborted) setBgLoading(false) })
+    }, 3000)
+  }, [selectedTheme])
+
+  // ── Generate Scene: fires when user clicks the button ───────────────────────
+  // Only requires a theme — scene description is optional bonus detail.
+  const handleGenerateScene = useCallback(() => {
+    if (!selectedTheme) { setSceneError('Pick a theme first!'); return }
+    const blocked = sceneDescription.trim() ? validateContent(sceneDescription) : null
+    if (blocked) { setSceneError(blocked); return }
+    setSceneError('')
+    // Cancel any previous portrait request
+    portraitAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    portraitAbortRef.current = ctrl
+    setPortraitLoading(true)
+    // Clear existing portrait so loader appears
+    setCharacterData(prev => prev ? { ...prev, character_media_url: null } : prev)
+    const theme = THEME_OPTIONS.find(t => t.id === selectedTheme)
+    const label = theme?.label ?? selectedTheme
+    const charName = (characterData?.character_name ?? characterInput.trim()) || undefined
+    // Use sceneDescription if filled, otherwise just the theme label drives the scene
+    const sceneDetail = sceneDescription.trim() || undefined
+    storiesApi.generateBackground(label, charName, sceneDetail)
+      .then(res => {
+        if (!ctrl.signal.aborted) {
+          if (res.data?.background_url) setThemeBackground(res.data.background_url)
+          if (res.data?.portrait_url) {
+            setCharacterData(prev => prev
+              ? { ...prev, character_media_url: res.data.portrait_url }
+              : prev
+            )
+          }
+        }
+      })
+      .catch((err) => {
+        if (!ctrl.signal.aborted) console.warn('[generate scene] failed (non-fatal):', err?.message)
+      })
+      .finally(() => { if (!ctrl.signal.aborted) setPortraitLoading(false) })
+  }, [selectedTheme, sceneDescription, characterData, characterInput])
+
+  // Build the effective theme by combining preset + custom description
+  const getEffectiveTheme = () => {
+    const baseTheme = selectedTheme === '__custom__' ? customTheme : selectedTheme
+    if (baseTheme && sceneDescription.trim()) {
+      return `${baseTheme} — ${sceneDescription.trim()}`
+    }
+    return baseTheme ?? sceneDescription
+  }
 
   const handleSceneContinue = () => {
-    const effectiveScene = selectedTheme ?? sceneDescription
+    const effectiveScene = getEffectiveTheme()
     const blocked = validateContent(effectiveScene)
     if (blocked) { setSceneError(blocked); return }
     if (!effectiveScene.trim()) { setSceneError('Pick a theme or describe a scene!'); return }
@@ -284,10 +670,12 @@ export default function StoryGenerator() {
 
   const handleGenerate = async () => {
     setStep('generating'); setGenerateError('')
+    const charName = characterData?.character_name || characterInput.trim() || 'Your Hero'
+    const tips = getCharacterTips(charName)
     let idx = 0
-    const tipInterval = setInterval(() => { idx = (idx + 1) % WRITING_TIPS.length; setTipIndex(idx) }, 2000)
+    const tipInterval = setInterval(() => { idx = (idx + 1) % tips.length; setTipIndex(idx) }, 2200)
     try {
-      const theme = (selectedTheme ?? sceneDescription).trim() || 'exciting adventure'
+      const theme = getEffectiveTheme().trim() || 'exciting adventure'
       const headers: Record<string, string> = {}
       if (selectedChild) headers['X-Student-ID'] = selectedChild.id
       const res = await api.post('/stories/generate',
@@ -423,15 +811,30 @@ export default function StoryGenerator() {
                     <span className="step1-right-label">Type a character name</span>
 
                     {/* Magic portal input */}
-                    <div className={`step1-portal-bar ${analyzeError ? 'step1-portal-error' : ''}`}>
+                    <div className={`step1-portal-bar ${analyzeError ? 'step1-portal-error' : ''} ${charLoading ? 'step1-portal-loading' : ''}`}>
                       <input
                         className="step1-portal-input"
                         placeholder="e.g. Luna, Spiderman, Dora, Pikachu..."
                         value={characterInput}
-                        onChange={e => { setCharacterInput(e.target.value); if (analyzeError) setAnalyzeError('') }}
+                        onChange={e => {
+                          const val = e.target.value
+                          setCharacterInput(val)
+                          if (analyzeError) setAnalyzeError('')
+                          // Clear any pending debounce
+                          if (charDebounceRef.current) clearTimeout(charDebounceRef.current)
+                          // Auto-call API 1.2s after user stops typing (≥2 chars)
+                          if (val.trim().length >= 2) {
+                            charDebounceRef.current = setTimeout(() => {
+                              handleAnalyzeCharacter()
+                            }, 1200)
+                          }
+                        }}
                         onKeyDown={e => e.key === 'Enter' && handleAnalyzeCharacter()}
                         autoFocus
                       />
+                      {charLoading && (
+                        <span className="step1-portal-spinner" title="Creating your character…">⏳</span>
+                      )}
                       <motion.button
                         className="step1-portal-btn"
                         disabled={children.length > 0 && !selectedChild}
@@ -491,13 +894,7 @@ export default function StoryGenerator() {
 
                 {/* ── GALLERY — full width below split ── */}
                 <CharacterGallery
-                  onSelect={(name) => {
-                    setCharacterInput(name)
-                    setAnalyzeError('')
-                    // Lock hero image on tap/click (works on mobile where hover never fires)
-                    const found = ALL_CHARACTERS.find(c => c.name === name)
-                    if (found) { setHeroChar(found); setHoveredHeroSrc(null) }
-                  }}
+                  onSelect={handleGallerySelect}
                   onHoverChar={(img) => setHoveredHeroSrc(img)}
                   onHoverLeave={() => setHoveredHeroSrc(null)}
                   onVerified={(chars) => { if (chars[0]) setHeroChar(chars[0]) }}
@@ -514,11 +911,29 @@ export default function StoryGenerator() {
             {step === 'scene' && (
               <motion.div key="scene" className="scene2-canvas"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
+                exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                style={themeBackground ? {
+                  backgroundImage: `url(${themeBackground})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                } : {}}>
 
-                {/* ── Ambient background glow ── */}
-                <div className="scene2-bg-glow" />
-                <div className="scene2-bg-stars">
+                {/* ── AI theme background overlay — dims the image for readability ── */}
+                <div className={`scene2-theme-overlay ${themeBackground ? 'scene2-theme-overlay-active' : ''}`} />
+
+                {/* ── Background loading shimmer ring ── */}
+                {bgLoading && (
+                  <div className="scene2-bg-loading">
+                    <div className="scene2-bg-ring" />
+                    <div className="scene2-bg-ring scene2-bg-ring-2" />
+                    <span className="scene2-bg-loading-text">🎨 AI painting your world…</span>
+                  </div>
+                )}
+
+                {/* ── Ambient background glow (hidden when bg image loaded) ── */}
+                {!themeBackground && <div className="scene2-bg-glow" />}
+                <div className="scene2-bg-stars" style={{ opacity: themeBackground ? 0 : 1, transition: 'opacity 1s ease' }}>
                   {[...Array(20)].map((_, i) => (
                     <div key={i} className="scene2-star" style={{
                       left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`,
@@ -530,21 +945,52 @@ export default function StoryGenerator() {
 
                 {/* ── LEFT floating glass panel: Theme Picker ── */}
                 <div className="scene2-left-panel">
-                  <div className="scene2-panel-title">🌍 Choose Your Theme</div>
-                  {/* Theme Picker — circular icon bubbles, 3 per row */}
-                  <div className="scene2-theme-circles">
+                  <div className="scene2-panel-title">✨ Choose Your Theme</div>
+
+                  {/* Theme Picker — compact 4-column scrollable grid */}
+                  <div className="scene2-theme-grid">
                     {THEME_OPTIONS.map(t => (
                       <motion.button key={t.id}
-                        className={`scene2-theme-circle ${selectedTheme === t.id ? 'selected' : ''}`}
-                        whileHover={{ scale: 1.1, y: -3 }} whileTap={{ scale: 0.92 }}
-                        onClick={() => { setSelectedTheme(t.id); setSceneDescription(''); setSceneError('') }}>
-                        <span className="scene2-circle-emoji">{t.emoji}</span>
-                        <span className="scene2-circle-label">{t.label}</span>
+                        className={`scene2-theme-tile ${selectedTheme === t.id ? 'selected' : ''} ${bgLoading && selectedTheme === t.id ? 'scene2-theme-tile-loading' : ''}`}
+                        whileHover={{ scale: 1.06, y: -2 }} whileTap={{ scale: 0.92 }}
+                        onClick={() => handleThemeSelect(t.id)}>
+                        <span className="scene2-tile-emoji">{t.emoji}</span>
+                        <span className="scene2-tile-label">{t.label}</span>
+                        {selectedTheme === t.id && !bgLoading && <span className="scene2-tile-check">✓</span>}
+                        {selectedTheme === t.id && bgLoading && <span className="scene2-tile-check scene2-tile-spinner">⏳</span>}
                       </motion.button>
                     ))}
                   </div>
 
-                  <div className="scene2-divider-label">✍️ Or describe your own...</div>
+                  {/* ── Custom theme input: type anything, auto-fires after 3s ── */}
+                  <div className="scene2-custom-theme-wrap">
+                    <label className="scene2-custom-theme-label">
+                      ✏️ Or type your own theme
+                      {bgLoading && selectedTheme === '__custom__' && (
+                        <span className="scene2-custom-theme-loading">AI painting…</span>
+                      )}
+                    </label>
+                    <div className={`scene2-custom-theme-bar ${selectedTheme === '__custom__' ? 'active' : ''}`}>
+                      <input
+                        className="scene2-custom-theme-input"
+                        placeholder='e.g. "Underwater volcano kingdom"…'
+                        value={customTheme}
+                        onChange={e => { handleCustomThemeChange(e.target.value); setSceneError('') }}
+                      />
+                      {customTheme.trim() && selectedTheme !== '__custom__' && (
+                        <span className="scene2-custom-theme-countdown">⏱ 3s</span>
+                      )}
+                      {selectedTheme === '__custom__' && !bgLoading && (
+                        <span className="scene2-custom-theme-check">✓</span>
+                      )}
+                    </div>
+                  </div>
+
+
+                  {/* Scene description — required before Generate button ↓ */}
+                  <div className="scene2-divider-label">
+                    ✍️ Describe the scene <span style={{ color: 'rgba(248,113,113,0.9)', fontSize: '0.7rem' }}>* required</span>
+                  </div>
                   <div className="scene2-dictation-row">
                     <div style={{ position: 'relative', flex: 1 }}>
                       <AnimatePresence>
@@ -559,82 +1005,154 @@ export default function StoryGenerator() {
                       </AnimatePresence>
                       <textarea
                         className={`scene2-textarea ${sceneError ? 'input-error' : ''} ${isDictating ? 'textarea-dictating' : ''}`}
-                        placeholder="e.g. A castle made of candy clouds..."
+                        placeholder={selectedTheme
+                          ? `e.g. "${characterData?.character_name ?? 'the hero'} running from a T-Rex"…`
+                          : 'e.g. "running through a magical forest"…'}
                         value={sceneDescription}
-                        onChange={e => { setSceneDescription(e.target.value); setSelectedTheme(null); if (sceneError) setSceneError('') }}
+                        onChange={e => { setSceneDescription(e.target.value); if (sceneError) setSceneError('') }}
                         rows={3}
                       />
                     </div>
-                    <motion.button className={`scene2-mic-btn ${isDictating ? 'dictating' : ''}`}
-                      onClick={toggleDictation} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.92 }} type="button">
-                      {isDictating ? <><span className="dictation-pulse" /><span>🎤</span></> : <span>🎤</span>}
+                    <motion.button
+                      className={`scene2-mic-btn ${isDictating ? 'dictating' : ''}`}
+                      onClick={toggleDictation}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.92 }}
+                      type="button"
+                      title={isDictating ? 'Stop recording' : 'Speak your idea'}
+                    >
+                      {isDictating && <span className="dictation-pulse" />}
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="mic-svg-icon">
+                        <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor" opacity="0.9" />
+                        <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        {isDictating && (
+                          <>
+                            <circle cx="12" cy="8" r="1.5" fill="white" opacity="0.6">
+                              <animate attributeName="r" values="1.5;2.5;1.5" dur="0.8s" repeatCount="indefinite" />
+                              <animate attributeName="opacity" values="0.6;1;0.6" dur="0.8s" repeatCount="indefinite" />
+                            </circle>
+                          </>
+                        )}
+                      </svg>
                     </motion.button>
                   </div>
+
+                  {/* Error messages */}
+                  {dictError && !isDictating && (
+                    <motion.p
+                      className="input-error-msg"
+                      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                      style={{ marginTop: 6, fontSize: '0.75rem' }}
+                    >
+                      🎤 {dictError}
+                    </motion.p>
+                  )}
                   {sceneError && (
                     <motion.p className="input-error-msg" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
                       {sceneError}
                     </motion.p>
                   )}
-                </div>
 
-                {/* ── CENTER: Character Stage ── */}
-                <div className="scene2-center-stage">
-                  {/* Glow ring behind portrait */}
-                  <div className="scene2-glow-ring" />
-                  <div className="scene2-glow-ring scene2-glow-ring-2" />
-
-                  {/* Portrait frame */}
-                  <div className="scene2-portrait-frame">
-                    {charLoading ? (
-                      <div className="scene2-portrait-loading">
-                        <div className="portrait-spinner-ring" />
-                        <span className="scene2-load-emoji">🎨</span>
-                        <p className="scene2-load-msg">{charLoadingMsg}</p>
-                      </div>
-                    ) : characterData?.character_media_url ? (
-                      <PortraitImage
-                        src={characterData.character_media_url.startsWith('http')
-                          ? characterData.character_media_url
-                          : `${import.meta.env.VITE_API_URL}${characterData.character_media_url}`}
-                        alt={characterData.character_name}
-                      />
+                  {/* ✨ Generate Scene button — fires the combined portrait call */}
+                  <motion.button
+                    className={`scene2-generate-btn ${
+                      !selectedTheme || portraitLoading ? 'scene2-generate-btn-disabled' : ''
+                    }`}
+                    onClick={handleGenerateScene}
+                    whileHover={selectedTheme && !portraitLoading ? { scale: 1.03, y: -2 } : {}}
+                    whileTap={selectedTheme && !portraitLoading ? { scale: 0.97 } : {}}
+                    type="button"
+                    disabled={!selectedTheme || portraitLoading}
+                  >
+                    {portraitLoading ? (
+                      <><span className="scene2-generate-spinner" />Generating…</>
                     ) : (
-                      <div className="scene2-portrait-placeholder">
-                        <span style={{ fontSize: '5rem', filter: 'drop-shadow(0 0 20px rgba(192,156,255,0.6))' }}>🦸</span>
-                      </div>
+                      <>✨ Generate Scene</>
                     )}
-                  </div>
-
-                  {/* Character info below portrait */}
-                  <AnimatePresence mode="wait">
-                    {charLoading ? (
-                      <motion.div key="loading-name" className="scene2-char-info"
-                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                        <div className="scene2-char-name loading-text">✨ Drawing your character…</div>
-                        <div className="scene2-char-badge">🎨 AI is working its magic...</div>
-                      </motion.div>
-                    ) : characterData ? (
-                      <motion.div key="char-name" className="scene2-char-info"
-                        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                        <div className="scene2-char-name">{characterData.character_name}</div>
-                        <div className="scene2-char-badge">
-                          🌟 {characterData.character_name} · {characterData.universe}
-                        </div>
-                        {/* Regenerate portrait button */}
-                        <motion.button
-                          className="scene2-regen-btn"
-                          onClick={handleRegeneratePortrait}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          type="button"
-                          title="Generate a different portrait"
-                        >
-                          <span>🎨</span> Regenerate Portrait
-                        </motion.button>
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
+                  </motion.button>
                 </div>
+
+                {/* ── CENTER: Character Stage — invite prompt until Generate is clicked ── */}
+                <AnimatePresence>
+                  {portraitLoading ? (
+                    // Portrait is generating — show loader in center stage
+                    <motion.div key="char-stage-loading" className="scene2-center-stage"
+                      initial={{ opacity: 0, scale: 0.85, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.85, y: 20 }}
+                      transition={{ duration: 0.4 }}>
+                      <div className="scene2-portrait-frame">
+                        <div className="scene2-char-inline-loader">
+                          <div className="scene2-char-loader-ring" />
+                          <div className="scene2-char-loader-ring scene2-char-loader-ring-2" />
+                          <div className="scene2-char-loader-core" />
+                          <div className="scene2-char-loader-text">
+                            <span className="scene2-char-loader-label">✦ Painting your scene…</span>
+                            <span className="scene2-char-loader-sub">
+                              {characterData?.character_name} · {THEME_OPTIONS.find(t => t.id === selectedTheme)?.label}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : characterData?.character_media_url ? (
+                    // Portrait ready — show it blended into background
+                    <motion.div key="char-stage" className="scene2-center-stage"
+                      initial={{ opacity: 0, scale: 0.85, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.85, y: 20 }}
+                      transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}>
+                      <div className="scene2-portrait-frame">
+                        <PortraitImage
+                          src={characterData.character_media_url.startsWith('http')
+                            ? characterData.character_media_url
+                            : `${import.meta.env.VITE_API_URL}${characterData.character_media_url}`}
+                          alt={characterData.character_name}
+                        />
+                      </div>
+                      <AnimatePresence mode="wait">
+                        <motion.div key="char-name" className="scene2-char-info"
+                          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+                          <div className="scene2-char-name">{characterData.character_name}</div>
+                          <div className="scene2-char-badge">
+                            🌟 {characterData.character_name} · {THEME_OPTIONS.find(t => t.id === selectedTheme)?.label ?? 'Adventure'}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    </motion.div>
+                  ) : (
+                    // Invite: character in orb, cue to pick theme + describe
+                    <motion.div key="invite" className="scene2-invite"
+                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
+                      <div className="scene2-invite-orb">
+                        {characterData?.character_media_url ? (
+                          <img src={characterData.character_media_url} alt={characterData.character_name}
+                            className="scene2-invite-char-img" />
+                        ) : (
+                          <span className="scene2-invite-emoji">🌍</span>
+                        )}
+                      </div>
+                      <div className="scene2-invite-text">
+                        <span className="scene2-invite-hero">{characterData?.character_name ?? 'Your Hero'}</span>
+                        <span className="scene2-invite-cue">
+                          {selectedTheme
+                            ? '✍️ Now describe your scene →'
+                            : '← Pick a theme to begin'}
+                        </span>
+                      </div>
+                      {!selectedTheme && (
+                        <div className="scene2-invite-arrows">
+                          {[0, 1, 2].map(i => (
+                            <div key={i} className="scene2-invite-arrow" style={{ animationDelay: `${i * 0.2}s` }}>❮</div>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* ── RIGHT floating glass panel: Story Settings ── */}
                 <div className="scene2-right-panel">
@@ -646,7 +1164,7 @@ export default function StoryGenerator() {
                   {/* Active pills */}
                   <div className="scene2-pills-row">
                     {characterData && <span className="scene2-pill scene2-pill-purple">{characterData.character_name}</span>}
-                    {selectedTheme && <span className="scene2-pill scene2-pill-gold">{THEME_OPTIONS.find(t => t.id === selectedTheme)?.label}</span>}
+                    {selectedTheme && <span className="scene2-pill scene2-pill-gold">{THEME_OPTIONS.find(t => t.id === selectedTheme)?.emoji} {THEME_OPTIONS.find(t => t.id === selectedTheme)?.label}</span>}
                     {selectedChild && <span className="scene2-pill scene2-pill-teal">Grade {selectedChild.grade_level}</span>}
                   </div>
 
@@ -657,11 +1175,13 @@ export default function StoryGenerator() {
                       {characterData?.character_name ? `${characterData.character_name}'s Adventure` : "Your Adventure"}
                     </div>
                     <div className="scene2-preview-sub">
-                      {selectedTheme
+                      {selectedTheme && sceneDescription.trim()
+                        ? `${THEME_OPTIONS.find(t => t.id === selectedTheme)?.label} + ${sceneDescription.trim().slice(0, 25)}…`
+                        : selectedTheme
                         ? THEME_OPTIONS.find(t => t.id === selectedTheme)?.label
                         : sceneDescription
-                          ? sceneDescription.slice(0, 40) + '...'
-                          : 'Choose a theme on the left...'}
+                          ? sceneDescription.slice(0, 40) + '…'
+                          : 'Choose a theme on the left…'}
                     </div>
                     {selectedChild && (
                       <div className="scene2-for-badge">For {selectedChild.name}</div>
@@ -722,17 +1242,23 @@ export default function StoryGenerator() {
                   <h1 className="imm-title">Pick an Art Style!</h1>
                   <p className="imm-sub">How should the pictures in your story look?</p>
                   <div className="imm-circle-grid">
-                    {ART_STYLES.map(a => (
-                      <motion.button key={a.id}
-                        className={`imm-circle-btn imm-circle-art ${selectedArtStyle === a.id ? 'selected' : ''}`}
-                        whileHover={{ scale: 1.08, y: -4 }} whileTap={{ scale: 0.94 }}
-                        onClick={() => { setSelectedArtStyle(a.id); setGenerateError('') }}>
-                        <span className="imm-circle-icon">{a.emoji}</span>
-                        <span className="imm-circle-name">{a.label}</span>
-                        <span className="imm-circle-desc">{a.desc}</span>
-                        {selectedArtStyle === a.id && <span className="imm-circle-check">✓</span>}
-                      </motion.button>
-                    ))}
+                    {ART_STYLES.map(a => {
+                      const isLive = a.id === 'cartoon'
+                      return (
+                        <motion.button key={a.id}
+                          className={`imm-circle-btn imm-circle-art ${selectedArtStyle === a.id ? 'selected' : ''} ${!isLive ? 'imm-circle-disabled' : ''}`}
+                          whileHover={isLive ? { scale: 1.08, y: -4 } : {}}
+                          whileTap={isLive ? { scale: 0.94 } : {}}
+                          disabled={!isLive}
+                          onClick={() => { if (isLive) { setSelectedArtStyle(a.id); setGenerateError('') } }}>
+                          <span className="imm-circle-icon">{a.emoji}</span>
+                          <span className="imm-circle-name">{a.label}</span>
+                          <span className="imm-circle-desc">{a.desc}</span>
+                          {isLive && selectedArtStyle === a.id && <span className="imm-circle-check">✓</span>}
+                          {!isLive && <span className="imm-coming-soon">Coming Soon</span>}
+                        </motion.button>
+                      )
+                    })}
                   </div>
                   {generateError && <p className="gen-error" style={{ marginTop: 16, textAlign: 'center' }}>{generateError}</p>}
                 </div>
@@ -760,53 +1286,29 @@ export default function StoryGenerator() {
 
                 <div className="gscreen-content">
 
-                  {/* ── Cycling character portraits ── */}
-                  <div className="gscreen-char-row">
-                    {[-2,-1,0,1,2].map(offset => {
-                      const idx = (tipIndex + offset + ALL_CHARACTERS.length * 5) % ALL_CHARACTERS.length
-                      const char = ALL_CHARACTERS[idx]
-                      const isCenter = offset === 0
-                      return (
-                        <motion.div key={`${char.name}-${tipIndex}`}
-                          className={`gscreen-char-bubble ${isCenter ? 'center' : ''}`}
-                          style={{ opacity: 1 - Math.abs(offset) * 0.3, scale: 1 - Math.abs(offset) * 0.15 }}
-                          animate={{ opacity: 1 - Math.abs(offset) * 0.3 }}
-                        >
-                          <img src={char.img} alt={char.name}
-                            className="gscreen-char-img"
-                            loading="eager"
-                            onError={e => { (e.target as HTMLImageElement).style.display='none' }}
-                          />
-                          {/* Fallback shown behind img when it fails to load */}
-                          <span className="gscreen-char-fallback">⭐</span>
-                          {isCenter && (
-                            <div className="gscreen-char-glow" />
-                          )}
-                        </motion.div>
-                      )
-                    })}
-                  </div>
+                  {/* ── Wizard Fill Loader ── */}
+                  <WizardFillLoader />
 
-                  {/* ── Main heading ── */}
                   <div className="gscreen-title-row">
                     <AnimatePresence mode="wait">
                       <motion.h1 key={tipIndex} className="gscreen-title"
-                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.5 }}>
-                        {WRITING_TIPS[tipIndex % WRITING_TIPS.length]}
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }}>
+                        {getCharacterTips(characterData?.character_name || characterInput || 'Your Hero')[tipIndex % getCharacterTips(characterData?.character_name || characterInput || 'Your Hero').length]}
                       </motion.h1>
                     </AnimatePresence>
-                    <p className="gscreen-sub">Crafting <strong>{characterData?.character_name || characterInput}'s</strong> adventure…</p>
+                    <p className="gscreen-sub">🌟 Keep reading — every page is a new adventure for <strong>{characterData?.character_name || characterInput || 'your hero'}</strong>!</p>
                   </div>
 
                   {/* ── Progress steps ── */}
                   <div className="gscreen-steps">
                     {[
-                      { label: 'Writing story', emoji: '✍️' },
+                      { label: 'Writing story',         emoji: '✍️' },
                       { label: 'Creating illustrations', emoji: '🎨' },
-                      { label: 'Crafting quiz', emoji: '🧠' },
+                      { label: 'Crafting quiz',          emoji: '🧠' },
                     ].map((s, i) => {
-                      const prog = tipIndex % WRITING_TIPS.length
+                      const charTips = getCharacterTips(characterData?.character_name || characterInput || 'Your Hero')
+                      const prog = tipIndex % charTips.length
                       const done = prog > i * 2
                       const active = !done && prog >= i * 2
                       return (
@@ -818,7 +1320,6 @@ export default function StoryGenerator() {
                       )
                     })}
                   </div>
-
 
                   {/* ── Sweeping progress bar ── */}
                   <div className="gscreen-bar-wrap">
@@ -833,30 +1334,108 @@ export default function StoryGenerator() {
             )}
 
             {/* ── Preview ── */}
-            {step === 'preview' && generatedStory && (
-              <motion.div key="preview" style={{ display: 'flex', justifyContent: 'center' }}
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-                <div className="gen-preview-card">
-                  <div className="preview-badge">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Generation Complete!
+            {step === 'preview' && generatedStory && (() => {
+              const theme = THEME_OPTIONS.find(t => t.id === selectedTheme)
+              const artStyle = ART_STYLES.find(a => a.id === selectedArtStyle)
+              const lang = LANGUAGES.find(l => l.id === selectedLanguage)
+              return (
+                <motion.div key="preview" className="prev-canvas"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}>
+
+                  {/* Blurred theme-emoji background tiles */}
+                  <div className="prev-bg-tiles" aria-hidden>
+                    {theme && [...Array(12)].map((_, i) => (
+                      <span key={i} className="prev-bg-emoji" style={{
+                        left: `${(i * 17 + 5) % 95}%`,
+                        top:  `${(i * 23 + 10) % 90}%`,
+                        fontSize: `${3 + (i % 3)}rem`,
+                        animationDelay: `${(i * 0.3) % 2.5}s`,
+                        opacity: 0.06 + (i % 4) * 0.02,
+                      }}>{theme.emoji}</span>
+                    ))}
                   </div>
-                  <div style={{ fontSize: '4rem', lineHeight: 1 }}>📖</div>
-                  <h3 className="preview-title">{generatedStory.title}</h3>
-                  <div className="preview-tags">
-                    <span className="preview-tag">Grade {grade}</span>
-                    <span className="preview-tag">{LANGUAGES.find(l => l.id === selectedLanguage)?.label}</span>
-                    <span className="preview-tag">{ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>
+
+                  {/* Dark gradient overlay */}
+                  <div className="prev-gradient-overlay" />
+
+                  {/* Confetti stars */}
+                  <div className="step1-stars" aria-hidden>
+                    {[...Array(24)].map((_, i) => (
+                      <div key={i} className="step1-star" style={{
+                        left: `${(i * 13 + 5) % 97}%`, top: `${(i * 19 + 7) % 91}%`,
+                        animationDelay: `${(i * 0.22) % 3}s`,
+                        width: `${(i % 3) + 1}px`, height: `${(i % 3) + 1}px`,
+                      }} />
+                    ))}
                   </div>
-                  <motion.button className="gen-btn" style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => navigate(`/read/${generatedStory.id}`)}>
-                    Start Reading! 📖
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </motion.button>
-                </div>
-              </motion.div>
-            )}
+
+                  {/* ── Main content row ── */}
+                  <div className="prev-content">
+
+                    {/* Left: character portrait */}
+                    {characterData?.character_media_url && (
+                      <motion.div className="prev-portrait-wrap"
+                        initial={{ opacity: 0, x: -40, scale: 0.9 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        transition={{ duration: 0.7, delay: 0.15, type: 'spring', stiffness: 100 }}>
+                        <div className="prev-portrait-ring" />
+                        <div className="prev-portrait-glow" />
+                        <img src={characterData.character_media_url}
+                          alt={characterData.character_name}
+                          className="prev-portrait-img" />
+                        <div className="prev-portrait-name">{characterData.character_name}</div>
+                      </motion.div>
+                    )}
+
+                    {/* Right: story info */}
+                    <motion.div className="prev-info"
+                      initial={{ opacity: 0, y: 30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, delay: 0.3 }}>
+
+                      {/* Done badge */}
+                      <div className="prev-done-badge">
+                        <svg viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
+                        Story Ready!
+                      </div>
+
+                      {/* Theme label */}
+                      {theme && (
+                        <div className="prev-theme-pill">
+                          {theme.emoji} {theme.label}
+                        </div>
+                      )}
+
+                      {/* Title */}
+                      <h1 className="prev-story-title">{generatedStory.title}</h1>
+
+                      {/* Tags */}
+                      <div className="prev-tags-row">
+                        <span className="prev-tag">📚 Grade {grade}</span>
+                        {lang && <span className="prev-tag">🌐 {lang.label}</span>}
+                        {artStyle && <span className="prev-tag">{artStyle.emoji} {artStyle.label}</span>}
+                        {selectedChild && <span className="prev-tag">👤 {selectedChild.name}</span>}
+                      </div>
+
+                      {/* CTA */}
+                      <motion.button className="prev-cta-btn"
+                        whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                        onClick={() => navigate(`/read/${generatedStory.id}`)}>
+                        <span>Start Reading!</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                      </motion.button>
+
+                      <button className="prev-dash-link" onClick={() => navigate('/dashboard')}>
+                        ← Back to Dashboard
+                      </button>
+                    </motion.div>
+
+                  </div>
+                </motion.div>
+              )
+            })()}
 
           </AnimatePresence>
         </div>
@@ -866,24 +1445,59 @@ export default function StoryGenerator() {
           <aside className="gen-preview-panel">
             <div className="gen-preview-panel-title">
               <span className="gen-preview-dot" />
-              Live Preview
+              Story Preview
             </div>
-            <div className="gen-preview-card-inner">
-              <div className="gen-preview-card-cover">
-                {previewEmoji}
+
+            {/* ── Cinematic scene card ── */}
+            <div className="gpv-scene-card">
+              {/* Background */}
+              <div
+                className="gpv-scene-bg"
+                style={themeBackground ? { backgroundImage: `url(${themeBackground})` } : {}}
+              >
+                {!themeBackground && <div className="gpv-scene-bg-default" />}
+                <div className="gpv-scene-overlay" />
               </div>
-              <div className="gen-preview-card-body">
-                <div className="gen-preview-card-title">
-                  {previewChar ? `${previewChar}'s Adventure` : 'Your Story Title'}
+
+              {/* Character portrait floating over bg */}
+              {characterData?.character_media_url ? (
+                <img
+                  className="gpv-char-img"
+                  src={characterData.character_media_url.startsWith('http')
+                    ? characterData.character_media_url
+                    : `${import.meta.env.VITE_API_URL}${characterData.character_media_url}`}
+                  alt={characterData.character_name}
+                />
+              ) : (
+                <div className="gpv-char-placeholder">
+                  <span>{previewEmoji}</span>
                 </div>
-                <div className="gen-preview-card-desc">
-                  {previewTheme
-                    ? `Your story will take place: ${previewTheme.slice(0, 60)}${previewTheme.length > 60 ? '...' : ''}`
-                    : 'Fill in the details to see your story preview here.'}
+              )}
+
+              {/* Character name badge */}
+              {characterData?.character_name && (
+                <div className="gpv-char-badge">{characterData.character_name}</div>
+              )}
+            </div>
+
+            {/* ── Story info ── */}
+            <div className="gpv-info">
+              <div className="gpv-title">
+                {previewChar ? `${previewChar}'s Adventure` : 'Your Story'}
+              </div>
+              {previewTheme && (
+                <div className="gpv-theme-line">
+                  🌍 {previewTheme.slice(0, 50)}{previewTheme.length > 50 ? '…' : ''}
                 </div>
-                {selectedChild && <span className="gen-preview-tag">For {selectedChild.name}</span>}
-                {selectedLanguage !== 'english' && <span className="gen-preview-tag">{LANGUAGES.find(l => l.id === selectedLanguage)?.label}</span>}
-                {selectedArtStyle && <span className="gen-preview-tag">{ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>}
+              )}
+              <div className="gpv-tags">
+                {selectedChild && <span className="gpv-tag">👤 {selectedChild.name}</span>}
+                <span className="gpv-tag">
+                  {LANGUAGES.find(l => l.id === selectedLanguage)?.emoji} {LANGUAGES.find(l => l.id === selectedLanguage)?.label}
+                </span>
+                {selectedArtStyle && (
+                  <span className="gpv-tag">{ART_STYLES.find(a => a.id === selectedArtStyle)?.emoji} {ART_STYLES.find(a => a.id === selectedArtStyle)?.label}</span>
+                )}
               </div>
             </div>
           </aside>

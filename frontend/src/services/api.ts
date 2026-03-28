@@ -57,6 +57,10 @@ export const storiesApi = {
       { grade, theme, character_name, language, art_style: artStyle },
       { timeout: 300000 }, // 5 min — story text + 5 images
     ),
+  generateBackground: (theme: string, characterName?: string, sceneDescription?: string) =>
+    api.post('/stories/generate-background',
+      { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null },
+      { timeout: 120000 }), // 2 min — allow for cold-start + image generation on mobile
   list: () => deduplicate('stories:list', () => api.get('/stories')),
   get: (id: string) => deduplicate(`stories:${id}`, () => api.get(`/stories/${id}`)),
   delete: (id: string) => api.delete(`/stories/${id}`),

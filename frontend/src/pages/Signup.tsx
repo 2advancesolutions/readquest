@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import CharacterHero, { CHARACTERS, SESSION_IDX } from '../components/CharacterHero';
 import '../styles/auth.css';
 import '../styles/signup-wizard.css';
 
@@ -196,15 +197,10 @@ const Signup = () => {
   if (step === 1) {
     return (
       <div className="auth-root">
-        <div className="auth-hero">
-          <div className="auth-hero-emoji animate-float">🦉</div>
-          <div className="auth-hero-title">ReadQuest ✨</div>
-          <div className="auth-hero-sub">Create your parent account and add your children to begin their reading adventure!</div>
-          <div className="auth-hero-dots"><span /><span /><span /><span /></div>
-        </div>
+        <CharacterHero />
         <div className="auth-form-side">
           <div className="auth-card sw-wide">
-            <div className="auth-mascot">🦉</div>
+            <div className="auth-mascot">{CHARACTERS[SESSION_IDX].emoji}</div>
             <div className="auth-logo" onClick={() => navigate('/')}>ReadQuest <span>✨</span></div>
             <StepIndicator />
 
@@ -260,15 +256,10 @@ const Signup = () => {
   if (step === 2) {
     return (
       <div className="auth-root">
-        <div className="auth-hero">
-          <div className="auth-hero-emoji animate-float">👶</div>
-          <div className="auth-hero-title">Add Your Kids 🌟</div>
-          <div className="auth-hero-sub">Each child gets their own reading adventure tailored to their grade level.</div>
-          <div className="auth-hero-dots"><span /><span /><span /><span /></div>
-        </div>
+        <CharacterHero />
         <div className="auth-form-side">
           <div className="auth-card sw-wide">
-            <div className="auth-mascot">👶</div>
+            <div className="auth-mascot">{CHARACTERS[SESSION_IDX].emoji}</div>
             <div className="auth-logo" onClick={() => navigate('/')}>ReadQuest <span>✨</span></div>
             <StepIndicator />
 
@@ -352,15 +343,10 @@ const Signup = () => {
   // ── Step 3 — Success ─────────────────────────────────────────────────────
   return (
     <div className="auth-root">
-      <div className="auth-hero">
-        <div className="auth-hero-emoji animate-float">🎉</div>
-        <div className="auth-hero-title">You're all set!</div>
-        <div className="auth-hero-sub">Welcome to ReadQuest — your reading adventure begins now!</div>
-        <div className="auth-hero-dots"><span /><span /><span /><span /></div>
-      </div>
+      <CharacterHero />
       <div className="auth-form-side">
         <div className="auth-card sw-wide" style={{ textAlign: 'center' }}>
-          <div className="auth-mascot">🎉</div>
+          <div className="auth-mascot">{CHARACTERS[SESSION_IDX].emoji}</div>
           <div className="auth-logo" onClick={() => navigate('/')}>ReadQuest <span>✨</span></div>
           <StepIndicator />
           <div className="sw-success-icon">🎉</div>

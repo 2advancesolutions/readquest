@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import CharacterHero, { CHARACTERS, SESSION_IDX } from '../components/CharacterHero';
 import '../styles/auth.css';
 
+// ─── Login page ────────────────────────────────────────────────────────────────
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,7 +20,6 @@ const Login = () => {
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) throw authError;
-      // Persist user identity for Dashboard / API calls
       if (data.user) {
         localStorage.setItem('readquest_student_id', data.user.id);
         const meta = data.user.user_metadata;
@@ -35,20 +36,11 @@ const Login = () => {
 
   return (
     <div className="auth-root">
-      {/* Left hero panel — visible desktop only via CSS */}
-      <div className="auth-hero">
-        <div className="auth-hero-emoji animate-float">🦉</div>
-        <div className="auth-hero-title">ReadQuest ✨</div>
-        <div className="auth-hero-sub">Where every child becomes a confident, joyful reader.</div>
-        <div className="auth-hero-dots">
-          <span /><span /><span /><span />
-        </div>
-      </div>
+      <CharacterHero />
 
-      {/* Right form side */}
       <div className="auth-form-side">
         <div className="auth-card">
-          <div className="auth-mascot">🦉</div>
+          <div className="auth-mascot">{CHARACTERS[SESSION_IDX].emoji}</div>
           <div className="auth-logo" onClick={() => navigate('/')}>ReadQuest <span>✨</span></div>
           <div className="auth-tagline">Your magical reading adventure awaits!</div>
 

@@ -300,24 +300,14 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
         import re as _re
         safe_scene = _re.sub(rf'\b{w}\w*\b', 'adventure', safe_scene, flags=_re.IGNORECASE)
 
-    image_prompt = (
-        "Create a beautiful children's book illustration. "
-        "Pixar-style 3D cartoon, bright vibrant colors, wholesome, cheerful, "
-        "safe for kids, no text. "
-        f"Scene: {safe_scene}"
-    )
+
+    image_prompt = safe_scene
 
     # Three varied safe fallbacks in case the sanitized prompt still triggers filters
     _SAFE_FALLBACKS = [
-        ("A beautiful Pixar-style 3D cartoon children's book illustration. "
-         "Colorful futuristic city with friendly round robots, glowing buildings, "
-         "rainbow sky, cheerful warm lighting. No text, no people, wholesome and bright."),
-        ("A beautiful Pixar-style 3D cartoon illustration. "
-         "Magical forest with friendly animals, sparkling fireflies, rainbow, "
-         "colorful flowers. Cheerful, bright, safe for children. No text."),
-        ("A beautiful Pixar-style 3D cartoon children's book illustration. "
-         "Sunny day in a friendly neighborhood. Colorful houses, fluffy clouds, "
-         "smiling sun, butterflies. No text, warm and happy."),
+        "A clean 2D cartoon illustration of a colorful futuristic city with friendly round robots, glowing buildings, rainbow sky, cheerful warm lighting, wholesome and bright, safe for kids, no text.",
+        "A clean 2D cartoon illustration of a magical forest with friendly animals, sparkling fireflies, rainbow, colorful flowers, cheerful and bright, safe for kids, no text.",
+        "A clean 2D cartoon illustration of a sunny friendly neighborhood with colorful houses, fluffy clouds, smiling sun and butterflies, warm and happy, safe for kids, no text.",
     ]
 
     try:
@@ -383,17 +373,96 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
         return None
 
 
+async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
+    """
+    Remove the background from image bytes using rembg (U2Net model).
+    Runs in a thread pool so the async event loop is never blocked.
+    Returns PNG bytes with a fully transparent background.
+    Falls back to the original bytes if rembg is unavailable or fails.
+    """
+    def _do_remove(data: bytes) -> bytes:
+        from rembg import remove as rembg_remove
+        from PIL import Image
+        import io
+        input_img = Image.open(io.BytesIO(data)).convert("RGBA")
+        output_img = rembg_remove(input_img)
+        buf = io.BytesIO()
+        output_img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    try:
+        print("[rembg] Removing background from portrait…")
+        result = await asyncio.to_thread(_do_remove, img_bytes)
+        print(f"[rembg] Done — transparent PNG {len(result)} bytes")
+        return result
+    except Exception as e:
+        print(f"[rembg] Failed (non-fatal, returning original): {e}")
+        return img_bytes
+
+
+
 async def image_prompt_node(state: ContentState) -> ContentState:
     """Generate per-page illustration prompts then call Nano Banana 2 concurrently for all 5 pages."""
     pages = state["story_parsed"].get("pages", [])
+    art_style = state.get('art_style', 'cartoon')
+
+    # ── Per-style full prompt templates ───────────────────────────────────────
+    ART_STYLE_PROMPTS = {
+        "cartoon": (
+            "A clean 2D cartoon illustration of [{scene}], "
+            "bold black outlines, flat design, bright saturated colors, "
+            "minimal shading, smooth vector style, modern cartoon aesthetic, "
+            "safe for kids, wholesome, no text, high resolution."
+        ),
+        "pixar": (
+            "A 3D Pixar-style render of [{scene}], "
+            "cinematic lighting, subsurface scattering, soft global illumination, "
+            "depth of field, highly detailed textures, expressive character design, "
+            "studio-quality render, wholesome, safe for kids, no text, 8k."
+        ),
+        "real": (
+            "A photorealistic image of [{scene}], "
+            "DSLR photography, 85mm lens, natural lighting, shallow depth of field, "
+            "ultra realistic textures, sharp focus, cinematic composition, "
+            "safe for kids, no text, 8k resolution."
+        ),
+        "watercolor": (
+            "A watercolor painting of [{scene}], "
+            "wet-on-wet technique, soft color bleeds, pastel washes, "
+            "textured paper grain, delicate brushstrokes, "
+            "light and airy composition, wholesome, safe for kids, no text."
+        ),
+        "manga": (
+            "An anime-style illustration of [{scene}], "
+            "clean ink linework, bold cel shading, expressive eyes, "
+            "dynamic pose, vibrant colors, studio anime quality, safe for kids, no text."
+        ),
+        "sketch": (
+            "A pencil sketch of [{scene}], "
+            "fine linework, cross-hatching, sepia tones, "
+            "light watercolor wash, textured paper, wholesome, safe for kids, no text."
+        ),
+        "storybook": (
+            "A vintage 1950s children's book illustration of [{scene}], "
+            "gouache and ink, soft muted colors, nostalgic charm, "
+            "hand-painted textures, warm lighting, wholesome, safe for kids, no text."
+        ),
+        "neon": (
+            "A glowing neon illustration of [{scene}], "
+            "luminous electric colors, vibrant neon highlights, glowing outlines, "
+            "dark background, soft bloom lighting, safe for kids, no text."
+        ),
+    }
+    style_template = ART_STYLE_PROMPTS.get(art_style, ART_STYLE_PROMPTS['cartoon'])
+
     prompts = []
     for page in pages:
-        prompt = (
+        scene = (
             f"{page['content'][:200]}. "
             f"Theme: {state['theme']}. Character: {state['character_name']}. "
-            f"Art style: {state.get('art_style', 'cartoon')}. "
             f"Grade {state['grade']} children's storybook."
         )
+        prompt = style_template.replace('[{scene}]', scene)
         prompts.append(prompt)
     state["image_prompts"] = prompts
 
