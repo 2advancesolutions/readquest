@@ -100,14 +100,60 @@ const LANGUAGES = [
 ]
 
 const ART_STYLES = [
-  { id: 'cartoon',    label: 'Cartoon',     emoji: '🎨', desc: 'Fun 2D illustrated look' },
-  { id: 'pixar',      label: 'Pixar 3D',    emoji: '🦄', desc: 'Cinematic 3D animation' },
-  { id: 'real',       label: 'Realistic',   emoji: '📸', desc: 'Lifelike photos & scenes' },
-  { id: 'watercolor', label: 'Watercolor',  emoji: '🖌️', desc: 'Soft painted brushstrokes' },
-  { id: 'manga',      label: 'Manga/Anime', emoji: '⚡', desc: 'Japanese anime style' },
-  { id: 'sketch',     label: 'Sketch',      emoji: '✏️', desc: 'Hand-drawn pencil art' },
-  { id: 'storybook',  label: 'Classic Book',emoji: '📖', desc: 'Golden-age storybook feel' },
-  { id: 'neon',       label: 'Neon Glow',   emoji: '✨', desc: 'Electric glow & dark magic' },
+  {
+    id: 'cartoon',
+    label: 'Cartoon',
+    emoji: '🎨',
+    img: '/icon_cartoon.png',
+    desc: 'Fun 2D illustrated look',
+    flavor: 'Bright colors, bold outlines, playful & wholesome',
+    badge: '⭐ Most Popular',
+  },
+  {
+    id: 'cinematic',
+    label: 'Cinematic',
+    emoji: '🎬',
+    img: '/icon_cinematic.png',
+    desc: 'Ultra-realistic cinematic action',
+    flavor: 'Dramatic lighting, slow-motion moments, movie-quality',
+    badge: '🔥 Action',
+  },
+  {
+    id: 'pixar',
+    label: 'Pixar / Animated',
+    emoji: '🦄',
+    img: '/icon_pixar.png',
+    desc: 'Stylized Pixar 3D animation',
+    flavor: 'Heart + humor + emotion, exaggerated expressive motion',
+    badge: '✨ Family',
+  },
+  {
+    id: 'real',
+    label: 'Realistic',
+    emoji: '📸',
+    img: '/icon_realistic.png',
+    desc: 'Gritty, photorealistic live-action',
+    flavor: 'Rain, sparks, real stakes — every win is earned',
+    badge: '💪 Intense',
+  },
+  {
+    id: 'comic',
+    label: 'Comic Book Style',
+    emoji: '💥',
+    img: '/icon_comic.png',
+    desc: 'Bold Marvel/DC comic book art',
+    flavor: 'WHAM! ZZAP! Halftone dots, speed lines, iconic panels',
+    badge: '🦸 Hero',
+  },
+  {
+    id: 'epic',
+    label: 'Epic Blockbuster',
+    emoji: '⚡',
+    img: '/icon_epic.png',
+    desc: 'Blockbuster trailer-style key art',
+    flavor: 'Massive scale, explosions, bio-electric finale, sunset',
+    badge: '🏆 Epic',
+  },
 ]
 
 const THEME_OPTIONS = [
@@ -162,18 +208,19 @@ const getCharacterTips = (charName: string) => [
 
 const MAGIC_EMOJIS = ['🪄', '✨', '🧙‍♂️', '🐉', '🏰', '🦄', '🌈', '🚀', '🐱', '🤖']
 
-type Step = 'character' | 'scene' | 'language' | 'artStyle' | 'generating' | 'preview'
+type Step = 'character' | 'scene' | 'language' | 'artStyle' | 'preview'
 
 interface CharacterData {
   character_name: string
   universe: string
   description: string
+  visual_appearance: string   // precise visual string for image generation
   character_media_url: string | null
   scenes: { id: string; label: string; emoji: string; description: string; color: string }[]
 }
 
 const STEP_NUMS: Record<Step, number> = {
-  character: 1, scene: 2, language: 3, artStyle: 4, generating: 5, preview: 5,
+  character: 1, scene: 2, language: 3, artStyle: 4, preview: 5,
 }
 
 const STEP_LABELS = [
@@ -334,6 +381,7 @@ export default function StoryGenerator() {
   const [selectedLanguage, setSelectedLanguage] = useState('english')
   const [selectedArtStyle, setSelectedArtStyle] = useState<string | null>(null)
   const [tipIndex, setTipIndex] = useState(0)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [generatedStory, setGeneratedStory] = useState<{ id: string; title: string } | null>(null)
   const [generateError, setGenerateError] = useState('')
 
@@ -466,16 +514,17 @@ export default function StoryGenerator() {
 
   const charMsgIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Gallery quick-select: no LLM call, instant navigation ────────────────
+  // ── Gallery quick-select: shows loader while calling analyze to get real visual data ────────────
   const handleGallerySelect = useCallback((name: string) => {
     const found = ALL_CHARACTERS.find(c => c.name === name)
     setCharacterInput(name)
     setAnalyzeError('')
-    // Immediately populate characterData from gallery without hitting the LLM
+    // Pre-populate with gallery image immediately so the scene step shows something
     setCharacterData({
       character_name: name,
       universe: 'Adventure',
       description: `${name} — ready for an epic adventure!`,
+      visual_appearance: name,
       character_media_url: found?.img ?? null,
       scenes: [],
     })
@@ -484,6 +533,20 @@ export default function StoryGenerator() {
     setSelectedTheme(null)
     setThemeBackground(null)
     setStep('scene')
+    // Fire analyze in background to enrich the character data with real visual info
+    storiesApi.analyzeCharacter(name)
+      .then(res => {
+        const d = res.data
+        setCharacterData(prev => ({
+          character_name: d.character_name ?? name,
+          universe: d.universe ?? prev?.universe ?? 'Adventure',
+          description: d.description ?? prev?.description ?? `${name} — ready for adventure!`,
+          visual_appearance: d.visual_appearance ?? name,
+          character_media_url: d.character_image_url ?? d.character_media_url ?? prev?.character_media_url ?? null,
+          scenes: d.scenes ?? [],
+        }))
+      })
+      .catch(() => { /* keep pre-populated data */ })
   }, [])
 
   const handleAnalyzeCharacter = async () => {
@@ -491,9 +554,11 @@ export default function StoryGenerator() {
     const blocked = validateContent(characterInput)
     if (blocked) { setAnalyzeError(blocked); return }
     setAnalyzeError(''); setCharLoading(true); setCharacterData(null)
-    setSceneDescription(''); setStep('scene')
+    setSceneDescription('')
+    // Stay on Step 1 — show the full-screen loader while character generates.
+    // Only advance to Step 2 AFTER the API returns.
     let msgIdx = 0
-    charMsgIntervalRef.current = setInterval(() => { msgIdx = (msgIdx + 1) % CHAR_LOADING_MSGS.length; setCharLoadingMsg(CHAR_LOADING_MSGS[msgIdx]) }, 5000)
+    charMsgIntervalRef.current = setInterval(() => { msgIdx = (msgIdx + 1) % CHAR_LOADING_MSGS.length; setCharLoadingMsg(CHAR_LOADING_MSGS[msgIdx]) }, 3000)
     try {
       const res = await storiesApi.analyzeCharacter(characterInput.trim())
       const d = res.data
@@ -501,6 +566,7 @@ export default function StoryGenerator() {
         character_name: d.character_name ?? characterInput.trim(),
         universe: d.universe ?? 'Original Story',
         description: d.description ?? `The amazing ${characterInput.trim()}!`,
+        visual_appearance: d.visual_appearance ?? characterInput.trim(),
         character_media_url: d.character_image_url ?? d.character_media_url ?? null,
         scenes: d.scenes ?? [],
       })
@@ -509,12 +575,15 @@ export default function StoryGenerator() {
         character_name: characterInput.trim(),
         universe: 'Original Story',
         description: `The amazing ${characterInput.trim()} — ready for a great adventure!`,
+        visual_appearance: characterInput.trim(),
         character_media_url: null,
         scenes: [],
       })
     } finally {
       if (charMsgIntervalRef.current) clearInterval(charMsgIntervalRef.current)
       setCharLoading(false)
+      // Now that character is ready, navigate to Step 2
+      setStep('scene')
     }
   }
 
@@ -547,6 +616,12 @@ export default function StoryGenerator() {
   // Cleanup: abort any pending requests on unmount
   useEffect(() => () => { bgAbortRef.current?.abort() }, [])
   useEffect(() => () => { portraitAbortRef.current?.abort() }, [])
+
+  // Hide floating XP badge on this page — the header has its own logo
+  useEffect(() => {
+    document.body.classList.add('generator-active')
+    return () => document.body.classList.remove('generator-active')
+  }, [])
 
 
   // ── Theme select: generate background ONLY (no portrait yet) ─────────────────
@@ -664,12 +739,12 @@ export default function StoryGenerator() {
     const effectiveScene = getEffectiveTheme()
     const blocked = validateContent(effectiveScene)
     if (blocked) { setSceneError(blocked); return }
-    if (!effectiveScene.trim()) { setSceneError('Pick a theme or describe a scene!'); return }
+    if (!selectedTheme && !sceneDescription.trim()) { setSceneError('Pick a theme or describe a scene!'); return }
     setSceneError(''); setStep('language')
   }
 
   const handleGenerate = async () => {
-    setStep('generating'); setGenerateError('')
+    setIsGenerating(true); setGenerateError('')
     const charName = characterData?.character_name || characterInput.trim() || 'Your Hero'
     const tips = getCharacterTips(charName)
     let idx = 0
@@ -679,14 +754,22 @@ export default function StoryGenerator() {
       const headers: Record<string, string> = {}
       if (selectedChild) headers['X-Student-ID'] = selectedChild.id
       const res = await api.post('/stories/generate',
-        { grade, theme, character_name: characterData?.character_name ?? characterInput, language: selectedLanguage, art_style: selectedArtStyle ?? 'cartoon' },
+        {
+          grade,
+          theme,
+          character_name: characterData?.character_name ?? characterInput,
+          language: selectedLanguage,
+          art_style: selectedArtStyle ?? 'cartoon',
+          character_description: characterData?.visual_appearance ?? characterData?.description ?? undefined,
+          character_universe: characterData?.universe ?? undefined,
+        },
         { timeout: 300000, headers },
       )
-      clearInterval(tipInterval); setGeneratedStory(res.data); setStep('preview')
+      clearInterval(tipInterval); setGeneratedStory(res.data); setIsGenerating(false); setStep('preview')
     } catch (err: unknown) {
       clearInterval(tipInterval)
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Story generation failed. Please try again.'
-      setGenerateError(msg); setStep('artStyle')
+      setGenerateError(msg); setIsGenerating(false)
     }
   }
 
@@ -700,7 +783,7 @@ export default function StoryGenerator() {
   return (
     <div className="gen-root">
 
-      <header className={`gen-header${['character','scene','language','artStyle','generating','done','preview'].includes(step) ? ' gen-header-dark' : ''}`}>
+      <header className={`gen-header${['character','scene','language','artStyle','done','preview'].includes(step) ? ' gen-header-dark' : ''}`}>
         {/* Col 1 — left: back button */}
         <button className="gen-back-btn" onClick={() => navigate('/dashboard')}>
           ← Dashboard
@@ -708,9 +791,9 @@ export default function StoryGenerator() {
 
         {/* Col 2 — center: step progress */}
         <div className="gen-header-title">
-          {step !== 'generating' && step !== 'preview'
+          {step !== 'preview'
             ? `Step ${currentNum} of 4`
-            : step === 'generating' ? '✨ Generating...' : '🎉 Done!'}
+            : '🎉 Done!'}
         </div>
 
         {/* Col 3 — right: brand logo */}
@@ -724,7 +807,7 @@ export default function StoryGenerator() {
       <div className="gen-body">
 
         {/* ══ LEFT STEP NAV — hidden on all 4 immersive steps ══ */}
-        {step !== 'generating' && step !== 'preview' && !['character','scene','language','artStyle'].includes(step) && (
+        {step !== 'preview' && !['character','scene','language','artStyle'].includes(step) && (
           <aside className="gen-step-nav">
             <div className="gen-step-nav-title">Story Wizard</div>
             {STEP_LABELS.slice(0, 4).map((s, i) => {
@@ -766,7 +849,7 @@ export default function StoryGenerator() {
         )}
 
         {/* ══ CENTER CONTENT ══ */}
-        <div className={`gen-center${['character','scene','language','artStyle','generating'].includes(step) ? ' gen-center-immersive' : ''}`}>
+        <div className={`gen-center${['character','scene','language','artStyle'].includes(step) ? ' gen-center-immersive' : ''}`}>
           <AnimatePresence mode="wait">
 
             {/* ── Step 1: Character — AI Art Generator Canvas ── */}
@@ -824,14 +907,6 @@ export default function StoryGenerator() {
                           const val = e.target.value
                           setCharacterInput(val)
                           if (analyzeError) setAnalyzeError('')
-                          // Clear any pending debounce
-                          if (charDebounceRef.current) clearTimeout(charDebounceRef.current)
-                          // Auto-call API 1.2s after user stops typing (≥2 chars)
-                          if (val.trim().length >= 2) {
-                            charDebounceRef.current = setTimeout(() => {
-                              handleAnalyzeCharacter()
-                            }, 1200)
-                          }
                         }}
                         onKeyDown={e => e.key === 'Enter' && handleAnalyzeCharacter()}
                         autoFocus
@@ -907,6 +982,51 @@ export default function StoryGenerator() {
                 {/* Welcome voice — plays once on load, references the hero's name */}
                 <WelcomeVoice charName={heroChar.name} />
 
+                {/* ── Full-screen character creation loader ── */}
+                {charLoading && (
+                  <motion.div
+                    key="char-loader"
+                    className="step1-char-loader"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    {/* Spinning magic portal rings */}
+                    <div className="step1-loader-rings">
+                      <div className="step1-loader-ring step1-loader-ring-1" />
+                      <div className="step1-loader-ring step1-loader-ring-2" />
+                      <div className="step1-loader-ring step1-loader-ring-3" />
+                      <div className="step1-loader-center">
+                        <span style={{ fontSize: '2.8rem' }}>🌟</span>
+                      </div>
+                    </div>
+
+                    {/* Character name */}
+                    <div className="step1-loader-name">
+                      Creating <span className="step1-loader-charname">{characterInput}</span>…
+                    </div>
+
+                    {/* Rotating status messages */}
+                    <motion.div
+                      key={charLoadingMsg}
+                      className="step1-loader-msg"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.4 }}
+                    >
+                      {charLoadingMsg}
+                    </motion.div>
+
+                    {/* Progress dots */}
+                    <div className="step1-loader-dots">
+                      {[0, 1, 2, 3, 4].map(i => (
+                        <div key={i} className="step1-loader-dot" style={{ animationDelay: `${i * 0.18}s` }} />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
               </motion.div>
             )}
 
@@ -951,6 +1071,22 @@ export default function StoryGenerator() {
                 <div className="scene2-left-panel">
                   <div className="scene2-panel-title">✨ Choose Your Theme</div>
 
+                  {/* Mobile-only: show generated background as a thumbnail banner */}
+                  {selectedTheme && (
+                    bgLoading ? (
+                      <div className="scene2-mobile-bg-loading">
+                        <span style={{ fontSize: '1.1rem' }}>🎨</span>
+                        AI painting your world…
+                      </div>
+                    ) : themeBackground ? (
+                      <img
+                        src={themeBackground}
+                        alt="Theme background preview"
+                        className="scene2-mobile-bg-preview"
+                      />
+                    ) : null
+                  )}
+
                   {/* Theme Picker — compact 4-column scrollable grid */}
                   <div className="scene2-theme-grid">
                     {THEME_OPTIONS.map(t => (
@@ -991,9 +1127,9 @@ export default function StoryGenerator() {
                   </div>
 
 
-                  {/* Scene description — required before Generate button ↓ */}
+                  {/* Scene description — optional extra detail */}
                   <div className="scene2-divider-label">
-                    ✍️ Describe the scene <span style={{ color: 'rgba(248,113,113,0.9)', fontSize: '0.7rem' }}>* required</span>
+                    ✍️ Describe the scene <span style={{ color: 'rgba(167,139,250,0.7)', fontSize: '0.7rem' }}>optional</span>
                   </div>
                   <div className="scene2-dictation-row">
                     <div style={{ position: 'relative', flex: 1 }}>
@@ -1080,28 +1216,7 @@ export default function StoryGenerator() {
 
                 {/* ── CENTER: Character Stage — invite prompt until Generate is clicked ── */}
                 <AnimatePresence>
-                  {portraitLoading ? (
-                    // Portrait is generating — show loader in center stage
-                    <motion.div key="char-stage-loading" className="scene2-center-stage"
-                      initial={{ opacity: 0, scale: 0.85, y: 20 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.85, y: 20 }}
-                      transition={{ duration: 0.4 }}>
-                      <div className="scene2-portrait-frame">
-                        <div className="scene2-char-inline-loader">
-                          <div className="scene2-char-loader-ring" />
-                          <div className="scene2-char-loader-ring scene2-char-loader-ring-2" />
-                          <div className="scene2-char-loader-core" />
-                          <div className="scene2-char-loader-text">
-                            <span className="scene2-char-loader-label">✦ Painting your scene…</span>
-                            <span className="scene2-char-loader-sub">
-                              {characterData?.character_name} · {THEME_OPTIONS.find(t => t.id === selectedTheme)?.label}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ) : characterData?.character_media_url ? (
+                  {characterData?.character_media_url ? (
                     // Portrait ready — show it blended into background
                     <motion.div key="char-stage" className="scene2-center-stage"
                       initial={{ opacity: 0, scale: 0.85, y: 20 }}
@@ -1132,12 +1247,7 @@ export default function StoryGenerator() {
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
                       <div className="scene2-invite-orb">
-                        {characterData?.character_media_url ? (
-                          <img src={characterData.character_media_url} alt={characterData.character_name}
-                            className="scene2-invite-char-img" />
-                        ) : (
-                          <span className="scene2-invite-emoji">🌍</span>
-                        )}
+                        <span className="scene2-invite-emoji">🌍</span>
                       </div>
                       <div className="scene2-invite-text">
                         <span className="scene2-invite-hero">{characterData?.character_name ?? 'Your Hero'}</span>
@@ -1244,25 +1354,24 @@ export default function StoryGenerator() {
                 <div className="imm-content">
                   <div className="imm-eyebrow">🎨 Step 4 of 4</div>
                   <h1 className="imm-title">Pick an Art Style!</h1>
-                  <p className="imm-sub">How should the pictures in your story look?</p>
+                  <p className="imm-sub">Choose how your story looks AND reads</p>
                   <div className="imm-circle-grid">
-                    {ART_STYLES.map(a => {
-                      const isLive = a.id === 'cartoon'
-                      return (
-                        <motion.button key={a.id}
-                          className={`imm-circle-btn imm-circle-art ${selectedArtStyle === a.id ? 'selected' : ''} ${!isLive ? 'imm-circle-disabled' : ''}`}
-                          whileHover={isLive ? { scale: 1.08, y: -4 } : {}}
-                          whileTap={isLive ? { scale: 0.94 } : {}}
-                          disabled={!isLive}
-                          onClick={() => { if (isLive) { setSelectedArtStyle(a.id); setGenerateError('') } }}>
-                          <span className="imm-circle-icon">{a.emoji}</span>
-                          <span className="imm-circle-name">{a.label}</span>
-                          <span className="imm-circle-desc">{a.desc}</span>
-                          {isLive && selectedArtStyle === a.id && <span className="imm-circle-check">✓</span>}
-                          {!isLive && <span className="imm-coming-soon">Coming Soon</span>}
-                        </motion.button>
-                      )
-                    })}
+                    {ART_STYLES.map(a => (
+                      <motion.button key={a.id}
+                        className={`imm-circle-btn imm-circle-art ${selectedArtStyle === a.id ? 'selected' : ''}`}
+                        whileHover={{ scale: 1.08, y: -4 }}
+                        whileTap={{ scale: 0.94 }}
+                        onClick={() => { setSelectedArtStyle(a.id); setGenerateError('') }}>
+                        <span className="imm-circle-icon imm-circle-img-wrap">
+                          <img src={a.img} alt={a.label} className="imm-style-img" onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                          <span className="imm-style-img-fallback">{a.emoji}</span>
+                        </span>
+                        <span className="imm-circle-name">{a.label}</span>
+                        <span className="imm-circle-desc">{a.flavor}</span>
+                        <span className="imm-style-badge">{a.badge}</span>
+                        {selectedArtStyle === a.id && <span className="imm-circle-check">✓</span>}
+                      </motion.button>
+                    ))}
                   </div>
                   {generateError && <p className="gen-error" style={{ marginTop: 16, textAlign: 'center' }}>{generateError}</p>}
                 </div>
@@ -1445,7 +1554,7 @@ export default function StoryGenerator() {
         </div>
 
         {/* ══ RIGHT PREVIEW PANEL ══ */}
-        {step !== 'generating' && step !== 'preview' && step !== 'scene' && step !== 'character' && (
+        {step !== 'preview' && step !== 'scene' && step !== 'character' && (
           <aside className="gen-preview-panel">
             <div className="gen-preview-panel-title">
               <span className="gen-preview-dot" />
@@ -1509,7 +1618,7 @@ export default function StoryGenerator() {
       </div>
 
       {/* ══ BOTTOM ACTION BAR ══ */}
-      {step !== 'generating' && step !== 'preview' && step !== 'character' && (
+      {step !== 'preview' && step !== 'character' && (
         <div className={`gen-bottom-bar${['scene','language','artStyle'].includes(step) ? ' gen-bottom-bar-dark' : ''}`}>
           <div className="gen-bottom-bar-left">
             <button className="gen-btn-ghost" onClick={() => {
@@ -1531,7 +1640,9 @@ export default function StoryGenerator() {
               whileHover={(!charLoading && (selectedTheme || sceneDescription.trim())) ? { scale: 1.02 } : {}}
               whileTap={{ scale: 0.98 }}
               onClick={handleSceneContinue}>
-              {charLoading ? '⏳ Generating character…' : 'Next: Language →'}
+              {isGenerating ? (
+                <><span className="scene2-generate-spinner" /> Creating your story…</>
+              ) : 'Next: Language →'}
               {!charLoading && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
             </motion.button>
           )}
@@ -1545,12 +1656,17 @@ export default function StoryGenerator() {
           )}
 
           {step === 'artStyle' && (
-            <motion.button className="gen-btn" disabled={!selectedArtStyle}
-              style={{ opacity: !selectedArtStyle ? 0.55 : 1 }}
-              whileHover={selectedArtStyle ? { scale: 1.02 } : {}} whileTap={{ scale: 0.98 }}
+            <motion.button className="gen-btn" disabled={!selectedArtStyle || isGenerating}
+              style={{ opacity: (!selectedArtStyle || isGenerating) ? 0.75 : 1 }}
+              whileHover={selectedArtStyle && !isGenerating ? { scale: 1.02 } : {}} whileTap={{ scale: 0.98 }}
               onClick={handleGenerate}>
-              🚀 Generate My Story!
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              {isGenerating ? (
+                <><span className="scene2-generate-spinner" /> Creating your story…</>
+              ) : (
+                <>🚀 Generate My Story!
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </>
+              )}
             </motion.button>
           )}
         </div>

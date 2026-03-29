@@ -19,6 +19,8 @@ class GenerateRequest(BaseModel):
     character_name: str
     language: str = "english"
     art_style: str = "cartoon"
+    character_description: Optional[str] = None   # e.g. "blonde braided hair, ice-blue dress"
+    character_universe: Optional[str] = None       # e.g. "Frozen (Disney)"
     # Phase 1 AI Tutor additions
     sel_theme: Optional[str] = None       # e.g. 'bullying', 'empathy', 'kindness'
     story_mode: str = "free_play"         # 'free_play' | 'quest'
@@ -58,122 +60,116 @@ class StoryResponse(BaseModel):
     quiz_questions: list[QuizResponse] = []
     created_at: str
 
-
 @router.post("/analyze-character")
 async def analyze_character(req: AnalyzeCharacterRequest):
-    """Use Gemini SDK directly to identify character + generate portrait — no OpenRouter."""
-    import json
-    from app.agents.content_agent import _call_gemini_text
+    """Generate a character portrait — uses Gemini to enrich the character first, then FLUX Dev for the image."""
+    import asyncio
+    from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes, _call_gemini_text
 
-    # ── Task 1: Gemini text — extract visual description ──────────────────────
-    async def analyze():
-        prompt = f"""You are a creative children's story assistant helping generate an ORIGINAL illustration.
+    char = req.character.strip()
 
-The child's favorite character is: "{req.character}"
+    # ── Step 1: Use Gemini to identify the character and get their real visual description ──
+    char_info = {
+        "universe": "Adventure",
+        "description": f"{char} — a brave and adventurous hero",
+        "visual_appearance": char,
+    }
+    try:
+        gemini_prompt = f"""You are a character identification expert for children's media.
 
-Your job:
-1. Identify the character
-2. Describe exactly what they LOOK LIKE in detail (colors, shape, clothing, accessories)
-3. Build an image generation prompt that describes the character visually WITHOUT using their copyrighted name
+The user typed: "{char}"
 
-Respond ONLY with valid JSON:
+Identify this character and respond with ONLY valid JSON (no markdown, no explanation):
 {{
-  "character_name": "{req.character}",
-  "universe": "which franchise/universe (e.g. Nickelodeon, Disney, Pixar, etc.)",
-  "description": "1-sentence kid-friendly description of {req.character}",
-  "visual_description": "detailed visual description: body shape, skin/fur color, eye color, clothing colors and style, accessories, hair — enough to draw them from scratch",
-  "image_prompt": "An original children's book cartoon illustration of [paste visual_description here as a fresh character description, e.g. 'a small round pink pig girl with a big round head, tiny pink ears, wearing a bright red dress and black shoes, friendly smile, simple flat cartoon style'], full body pose, arms slightly out, centered on a PLAIN WHITE background, clean cartoon line art, bright flat colors, no shadows, no gradients, no text, no logos, no watermarks, kid-friendly"
+  "canonical_name": "<full canonical character name>",
+  "universe": "<franchise/show/movie name, e.g. 'DC Comics', 'Frozen (Disney)', 'Marvel Comics'>",
+  "description": "<1-2 sentence engaging description of who this character is>",
+  "visual_appearance": "<precise visual description: hair color+style, costume/outfit colors and details, any signature features like cape, mask, weapon, etc. Be very specific for image generation.>"
 }}
 
-CRITICAL: The image_prompt must describe the character VISUALLY (colors, shape, clothing) — do NOT use their name or franchise name inside the image_prompt field.
-CRITICAL: character_name must be EXACTLY "{req.character}"."""
+If the character is not well-known, make up a reasonable children's story character appearance.
+Reply with only valid JSON."""
+
         raw = await _call_gemini_text(
-            system="You are a creative children's assistant. Reply with valid JSON only.",
-            user=prompt,
-            temperature=0.7,
+            system="You are a character identification expert. Always respond with valid JSON only.",
+            user=gemini_prompt,
+            temperature=0.1
         )
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"): raw = raw[4:]
-        return json.loads(raw.strip())
+        # Parse the JSON
+        import json, re
+        # Strip markdown if present
+        clean = raw.strip()
+        if "```" in clean:
+            clean = re.sub(r"```(?:json)?", "", clean).strip().rstrip("`").strip()
+        data = json.loads(clean)
+        char_info = {
+            "universe": data.get("universe", "Adventure"),
+            "description": data.get("description", f"{char} — a brave hero"),
+            "visual_appearance": data.get("visual_appearance", char),
+            "canonical_name": data.get("canonical_name", char),
+        }
+        print(f"[analyze-character] Gemini enriched: {char_info}")
+    except Exception as e:
+        print(f"[analyze-character] Gemini enrichment failed (using defaults): {e}")
 
-    # ── Task 2: Generate character portrait with transparent background ────────
-    async def generate_portrait(image_prompt: str) -> Optional[str]:
-        from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes
-        import httpx as _httpx
+    visual = char_info.get("visual_appearance", char)
+    canonical = char_info.get("canonical_name", char)
 
-        # Step 1: generate the raw portrait image
-        raw_url = await _generate_image_nano_banana2(image_prompt)
-        if not raw_url:
-            return None
+    # ── Step 2: Build a high-quality portrait prompt using the real visual description ──
+    image_prompt = (
+        f"A high-quality children's book illustration of {canonical}. "
+        f"Visual description: {visual}. "
+        f"Full body pose, arms slightly at sides, confident heroic stance, character ISOLATED and CENTERED. "
+        f"PURE WHITE background with NO scenery, NO other characters, NO shadows behind the character. "
+        f"Clean bold cartoon line art, bright vivid colors, HARD black outlines, flat cel-shaded style, "
+        f"highly detailed costume and face matching the character's iconic look, "
+        f"kid-friendly, sticker-style illustration, high resolution, no text, no logos, no watermarks."
+    )
 
-        # Step 2: fetch the raw bytes (from Supabase URL or local path)
+    # ── Step 3: Generate portrait with FLUX Dev ──
+    raw_url = await _generate_image_nano_banana2(image_prompt)
+    portrait_url = raw_url
+
+    if raw_url:
+        # Fetch bytes and remove background → transparent PNG
         try:
+            import httpx as _httpx
             if raw_url.startswith("http"):
                 async with _httpx.AsyncClient(timeout=30) as client:
                     resp = await client.get(raw_url)
                     img_bytes = resp.content
             else:
-                # local static file path
                 from pathlib import Path
                 img_bytes = Path(raw_url.lstrip("/")).read_bytes()
+
+            transparent_bytes = await remove_background_from_bytes(img_bytes)
+
+            from app.agents.content_agent import _upload_to_supabase
+            import uuid as _uuid2
+            filename = f"portrait_{_uuid2.uuid4().hex}.png"
+            public_url = await _upload_to_supabase(transparent_bytes, filename)
+            if public_url:
+                portrait_url = public_url
+            else:
+                from pathlib import Path as _Path
+                _Path("static/images").mkdir(parents=True, exist_ok=True)
+                _Path(f"static/images/{filename}").write_bytes(transparent_bytes)
+                portrait_url = f"http://localhost:8000/static/images/{filename}"
         except Exception as e:
-            print(f"[generate_portrait] Could not fetch raw bytes: {e}")
-            return raw_url  # return as-is if we can't fetch
+            print(f"[analyze-character] Background removal failed (using raw): {e}")
 
-        # Step 3: remove background → transparent PNG
-        transparent_bytes = await remove_background_from_bytes(img_bytes)
-
-        # Step 4: re-upload the transparent version
-        from app.agents.content_agent import _upload_to_supabase
-        import uuid as _uuid2
-        filename = f"portrait_{_uuid2.uuid4().hex}.png"
-        public_url = await _upload_to_supabase(transparent_bytes, filename)
-        if public_url:
-            return public_url
-
-        # Fallback: save locally
-        from pathlib import Path as _Path
-        _Path("static/images").mkdir(parents=True, exist_ok=True)
-        _Path(f"static/images/{filename}").write_bytes(transparent_bytes)
-        return f"/static/images/{filename}"
-
-
-    # Run both in parallel: LLM analysis + image generation
-    try:
-        char_data = await analyze()
-    except Exception as e:
-        print(f"[analyze-character] LLM failed: {e}")
-        char_data = {
-            "character_name": req.character,
-            "universe": "Original",
-            "description": f"The amazing {req.character} — ready for a great adventure!",
-            "image_prompt": (
-                f"An original children's book cartoon illustration of a beloved children's cartoon character "
-                f"inspired by {req.character}, full body pose, arms slightly out, centered, "
-                "PLAIN WHITE background, clean cartoon line art, bright flat colors, "
-                "no shadows, no gradients, no text, no logos, kid-friendly"
-            ),
-        }
-
-    image_prompt = char_data.get(
-        "image_prompt",
-        f"An original children's book cartoon illustration of a beloved children's cartoon character "
-        f"inspired by {char_data['character_name']}, full body pose, arms slightly out, centered, "
-        "PLAIN WHITE background, clean cartoon line art, bright flat colors, "
-        "no shadows, no gradients, no text, no logos, kid-friendly"
-    )
-
-    portrait_url = await generate_portrait(image_prompt)
-    print(f"[analyze-character] portrait saved: {portrait_url}")
+    print(f"[analyze-character] portrait ready: {portrait_url}")
 
     return {
-        "character_name": req.character,  # always use the exact name the child typed
-        "universe": char_data.get("universe", "Original"),
-        "description": char_data.get("description", f"The amazing {req.character}!"),
+        "character_name": canonical,
+        "universe": char_info["universe"],
+        "description": char_info["description"],
+        "visual_appearance": char_info.get("visual_appearance", ""),
         "character_image_url": portrait_url,
         "scenes": [],
+
     }
+
 
 
 @router.post("/generate")
@@ -236,6 +232,8 @@ async def generate_story(
             character_name=safe_character,
             language=req.language or "english",
             art_style=req.art_style or "cartoon",
+            character_description=req.character_description or None,
+            character_universe=req.character_universe or None,
         )
     except Exception as e:
         raise HTTPException(500, detail=f"Story generation failed: {str(e)}")

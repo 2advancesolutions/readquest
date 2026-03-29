@@ -23,11 +23,20 @@ function getSRClass(): typeof SpeechRecognition | null {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null
 }
 
-// iOS Safari fires onend after every pause; we restart to simulate continuous
+// Detect iOS Safari — requires special handling
 const isIOS = (() => {
   if (typeof navigator === 'undefined') return false
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 })()
+
+// Detect Android Chrome
+const isAndroid = (() => {
+  if (typeof navigator === 'undefined') return false
+  return /Android/i.test(navigator.userAgent)
+})()
+
+// Use non-continuous mode on iOS and some Android browsers
+const useNonContinuous = isIOS
 
 export function useSpeechRecognition(): SpeechRecognitionHook {
   const [isListening, setIsListening]             = useState(false)
@@ -36,9 +45,10 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const [permissionError, setPermissionError]     = useState('')
 
   const recognitionRef  = useRef<any>(null)
-  const shouldKeepRef   = useRef(false)  // true while user wants listening active
-  const transcriptRef   = useRef('')     // accumulates across iOS restarts
+  const shouldKeepRef   = useRef(false)
+  const transcriptRef   = useRef('')
 
+  // Cleanup on unmount
   useEffect(() => () => {
     shouldKeepRef.current = false
     if (recognitionRef.current) {
@@ -49,11 +59,43 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
 
   const isSupported = !!getSRClass()
 
-  // ── Attach events and start an instance ──────────────────────────────────
-  const attachAndStart = useCallback((rec: any) => {
+  // ── Create and start one recognition session ──────────────────────────────
+  // On iOS: one session per user tap (non-continuous). When it ends, isListening
+  // goes false and the user taps again. This is the ONLY reliable pattern on iOS.
+  // On Desktop Chrome: continuous mode runs indefinitely until stopListening().
+  const startSession = useCallback(() => {
+    const SRClass = getSRClass()
+    if (!SRClass) return
+
+    // Abort any lingering instance
+    if (recognitionRef.current) {
+      try { recognitionRef.current.onend = null; recognitionRef.current.abort() } catch { /**/ }
+      recognitionRef.current = null
+    }
+
+    const rec = new SRClass()
+
+    if (useNonContinuous) {
+      // iOS: single-shot mode
+      // - continuous: false — iOS requires this
+      // - interimResults: false — interim results are unreliable on iOS and
+      //   cause empty onresult events that swallow final transcripts
+      rec.continuous     = false
+      rec.interimResults = false
+    } else {
+      // Desktop Chrome / Android: full continuous mode
+      rec.continuous     = true
+      rec.interimResults = true
+    }
+
+    rec.lang            = 'en-US'
+    rec.maxAlternatives = 1
+
+    recognitionRef.current = rec
+
     rec.onstart = () => {
       setIsListening(true)
-      setPermissionError('')   // clear any stale error once the mic is live
+      setPermissionError('')
     }
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
@@ -68,56 +110,79 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         transcriptRef.current = (transcriptRef.current + ' ' + finalChunk).trim()
         setTranscript(transcriptRef.current)
       }
-      setInterimTranscript(interim)
+      if (!useNonContinuous) {
+        setInterimTranscript(interim)
+      }
     }
 
     rec.onend = () => {
       setInterimTranscript('')
-      if (shouldKeepRef.current && isIOS) {
-        // iOS stops after every utterance — restart silently
-        try {
-          const next = new (getSRClass()!)()
-          next.continuous     = false
-          next.interimResults = true
-          next.lang           = 'en-US'
-          recognitionRef.current = next
-          attachAndStart(next)
-        } catch { /**/ }
-      } else {
+      recognitionRef.current = null
+
+      if (useNonContinuous) {
+        // iOS: session ended naturally (silence, or done speaking).
+        // Set isListening false — the user must tap again to continue.
+        // Do NOT restart here — that would be outside a user gesture and fail silently.
         shouldKeepRef.current = false
         setIsListening(false)
-        recognitionRef.current = null
+      } else {
+        // Desktop: restart if user hasn't stopped
+        if (shouldKeepRef.current) {
+          try {
+            startSession()
+          } catch { /**/ }
+        } else {
+          setIsListening(false)
+        }
       }
     }
 
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       setInterimTranscript('')
+      recognitionRef.current = null
+
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        setPermissionError(
-          'Microphone blocked. Tap the 🔒 lock icon in the address bar, ' +
-          'select Site Settings, and set Microphone to Allow.'
-        )
+        let msg = 'Microphone access denied.'
+        if (isIOS) {
+          msg = 'Microphone blocked. Go to Settings → Safari → Microphone and set it to Allow.'
+        } else if (isAndroid) {
+          msg = 'Microphone blocked. Tap the 🔒 lock in the address bar → Site Settings → Microphone → Allow.'
+        } else {
+          msg = 'Microphone blocked. Tap the 🔒 lock in the address bar and set Microphone to Allow.'
+        }
+        setPermissionError(msg)
         shouldKeepRef.current = false
         setIsListening(false)
       } else if (e.error === 'network') {
-        setPermissionError('Network error. Make sure you have an internet connection.')
+        setPermissionError('Network error — check your internet connection and try again.')
+        shouldKeepRef.current = false
+        setIsListening(false)
+      } else if (e.error === 'no-speech') {
+        // iOS fires this after silence — just stop cleanly
+        shouldKeepRef.current = false
+        setIsListening(false)
+      } else if (e.error === 'aborted') {
+        // Intentionally stopped — ignore
+        if (!shouldKeepRef.current) setIsListening(false)
+      }
+      // All other errors: stop cleanly
+      else {
         shouldKeepRef.current = false
         setIsListening(false)
       }
-      // 'no-speech', 'aborted' are non-fatal — ignore
     }
 
     try {
       rec.start()
     } catch (err: any) {
-      // InvalidStateError = already started (ignore), anything else = real failure
       if (err?.name !== 'InvalidStateError') {
         setIsListening(false)
         shouldKeepRef.current = false
+        recognitionRef.current = null
         console.warn('[SpeechRec] start() failed:', err)
       }
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * startListening MUST be called synchronously from a user gesture (button click).
@@ -127,36 +192,27 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const startListening = useCallback(() => {
     const SRClass = getSRClass()
     if (!SRClass) {
-      setPermissionError('Speech recognition is not supported in this browser. Try Chrome.')
+      setPermissionError(
+        isIOS
+          ? 'Voice input requires Safari on iOS 14.5+. Make sure you are using Safari.'
+          : 'Speech recognition is not supported in this browser. Try Chrome or Safari.'
+      )
       return
     }
     if (shouldKeepRef.current) return  // already running
 
-    // Clear previous error and state
     setPermissionError('')
-    setTranscript('')
-    setInterimTranscript('')
-    transcriptRef.current = ''
-
-    // Abort any lingering instance
-    if (recognitionRef.current) {
-      try { recognitionRef.current.onend = null; recognitionRef.current.abort() } catch { /**/ }
-      recognitionRef.current = null
+    // On iOS we DON'T clear the transcript between sessions so text accumulates
+    // across multiple taps (one tap = one iOS session)
+    if (!useNonContinuous) {
+      setTranscript('')
+      setInterimTranscript('')
+      transcriptRef.current = ''
     }
 
-    const rec = new SRClass()
-    rec.continuous     = !isIOS  // continuous=true breaks iOS Safari
-    rec.interimResults = true
-    rec.lang           = 'en-US'
-    rec.maxAlternatives = 1
-
-    shouldKeepRef.current  = true
-    recognitionRef.current = rec
-
-    // Calling start() directly from the click handler lets the browser
-    // show its own "Allow microphone?" dialog without us needing getUserMedia.
-    attachAndStart(rec)
-  }, [attachAndStart])
+    shouldKeepRef.current = true
+    startSession()
+  }, [startSession])
 
   const stopListening = useCallback(() => {
     shouldKeepRef.current = false
@@ -165,7 +221,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     if (recognitionRef.current) {
       const rec = recognitionRef.current
       recognitionRef.current = null
-      rec.onend = null   // prevent iOS auto-restart
+      rec.onend = null   // prevent any restart logic
       try { rec.stop() } catch { /**/ }
     }
   }, [])

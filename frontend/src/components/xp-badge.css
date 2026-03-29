@@ -26,6 +26,12 @@ body.exam-active #xp-badge-global {
   display: none;
 }
 
+/* Hide XP badge on story generator — the header has its own logo/brand */
+body.generator-active #xp-badge-global,
+body.generator-active #global-mute-btn {
+  display: none;
+}
+
 .xp-badge:hover {
   border-color: rgba(192, 132, 252, 0.7);
 }

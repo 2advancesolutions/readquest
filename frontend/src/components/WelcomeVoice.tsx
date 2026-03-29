@@ -40,15 +40,8 @@ export const STEP2_SCRIPTS = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRELOAD CACHE
-// Dashboard calls preloadWelcomeVoice() the moment the user clicks "Create Story".
-// The TTS fetch starts immediately — by the time the page loads and WelcomeVoice
-// mounts, the audio blob is ready and plays with zero delay.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Same seed pool as StoryGenerator so the preloaded voice matches what plays
 const PRELOAD_SEEDS = ['SpongeBob', 'Mickey Mouse', 'Pikachu', 'Mario', 'Stitch', 'Elsa', 'Simba']
-
-// key → Promise<blob URL string | null>
 const preloadCache = new Map<string, Promise<string | null>>()
 
 /** Call this before navigating to /generate. Fires TTS in the background. */
@@ -56,13 +49,12 @@ export function preloadWelcomeVoice() {
   const apiBase = (typeof import.meta !== 'undefined'
     ? (import.meta as any).env?.VITE_API_URL
     : '') || ''
-  // Pick the same random character the generator will use
   const charName = PRELOAD_SEEDS[Math.floor(Math.random() * PRELOAD_SEEDS.length)]
   const script   = CHAR_SCRIPTS[Math.floor(Math.random() * CHAR_SCRIPTS.length)]
   const speech   = script(charName)
   const cacheKey = speech
 
-  if (preloadCache.has(cacheKey)) return // already in flight or done
+  if (preloadCache.has(cacheKey)) return
 
   const promise = fetch(`${apiBase}/api/tts/speak`, {
     method: 'POST',
@@ -74,16 +66,12 @@ export function preloadWelcomeVoice() {
     .catch(() => null)
 
   preloadCache.set(cacheKey, promise)
-
-  // Stash the resolved text so WelcomeVoice can look it up by charName
   preloadCache.set(`__char__${charName}`, Promise.resolve(speech))
   preloadCache.set(`__url__${charName}`, promise)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODULE-LEVEL GLOBAL VOICE SINGLETON
-// Only one audio element + one pending timer can exist at a time across ALL
-// WelcomeVoice instances. Any new instance calls stopGlobalVoice() first.
+// MODULE-LEVEL GLOBAL VOICE SINGLETON + MUTE STATE
 // ─────────────────────────────────────────────────────────────────────────────
 const globalVoice = {
   audio: null as HTMLAudioElement | null,
@@ -92,43 +80,45 @@ const globalVoice = {
   setSpeaking: null as ((v: boolean) => void) | null,
 }
 
-function stopGlobalVoice() {
-  // Clear pending timer (voice hasn't started speaking yet)
+/** Read mute preference from localStorage */
+function isMuted(): boolean {
+  try { return localStorage.getItem('readquest_muted') === 'true' } catch { return false }
+}
+
+/** Stop any currently playing voice and optionally cancel the pending timer */
+export function stopGlobalVoice() {
   if (globalVoice.timer !== null) {
     clearTimeout(globalVoice.timer)
     globalVoice.timer = null
   }
-  // Stop & tear down the audio element
   if (globalVoice.audio) {
     globalVoice.audio.pause()
     globalVoice.audio.src = ''
     globalVoice.audio = null
   }
-  // Revoke blob URL to free memory
   if (globalVoice.blobUrl) {
     URL.revokeObjectURL(globalVoice.blobUrl)
     globalVoice.blobUrl = null
   }
-  // Tell the previous owner's React state to update
   globalVoice.setSpeaking?.(false)
   globalVoice.setSpeaking = null
 }
 
 export default function WelcomeVoice({ charName, text, delayMs = 800 }: Props) {
   const [speaking, setSpeaking] = useState(false)
-  // Track whether this instance is the current "owner" of the global voice
   const isOwnerRef = useRef(false)
 
-  // The trigger key — changes cause the effect to re-run and speak
   const triggerKey = text ?? charName ?? ''
 
   useEffect(() => {
     if (!triggerKey) return
 
-    // ── 1. Stop whatever is currently playing (different step's voice) ────────
+    // Stop previous voice
     stopGlobalVoice()
 
-    // ── 2. Resolve the text to speak ─────────────────────────────────────────
+    // If muted, don't start new voice
+    if (isMuted()) return
+
     let speech: string
     if (text) {
       speech = text
@@ -139,27 +129,23 @@ export default function WelcomeVoice({ charName, text, delayMs = 800 }: Props) {
       return
     }
 
-    // ── 3. Claim ownership of the global singleton ────────────────────────────
     isOwnerRef.current = true
     globalVoice.setSpeaking = setSpeaking
 
     const apiBase = import.meta.env.VITE_API_URL || ''
 
-    // ── 4. Check preload cache: if audio is already downloaded, play instantly ─
     const cachedUrlPromise = charName
       ? preloadCache.get(`__url__${charName}`) ?? null
       : preloadCache.get(speech) ?? null
 
     const playAudio = async (urlPromise: Promise<string | null> | null, delay: number) => {
       const doPlay = async () => {
-        if (!isOwnerRef.current) return
+        if (!isOwnerRef.current || isMuted()) return
         globalVoice.timer = null
         try {
           let url: string | null = null
           if (urlPromise) {
-            // Use preloaded blob — already downloaded!
             url = await urlPromise
-            // Clean entry so it can't be replayed unintentionally
             preloadCache.delete(`__url__${charName}`)
             preloadCache.delete(`__char__${charName}`)
             preloadCache.delete(speech)
@@ -169,13 +155,13 @@ export default function WelcomeVoice({ charName, text, delayMs = 800 }: Props) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ text: speech, mode: 'story' }),
             })
-            if (!res.ok || !isOwnerRef.current) return
+            if (!res.ok || !isOwnerRef.current || isMuted()) return
             const blob = await res.blob()
-            if (!isOwnerRef.current) return
+            if (!isOwnerRef.current || isMuted()) return
             url = URL.createObjectURL(blob)
           }
 
-          if (!url || !isOwnerRef.current) return
+          if (!url || !isOwnerRef.current || isMuted()) return
 
           globalVoice.blobUrl = url
           const audio = new Audio(url)
@@ -206,10 +192,8 @@ export default function WelcomeVoice({ charName, text, delayMs = 800 }: Props) {
       }
     }
 
-    // If preloaded: play with 0 delay. Otherwise use normal delay.
     playAudio(cachedUrlPromise, cachedUrlPromise ? 0 : delayMs)
 
-    // ── 5. Cleanup: runs when this instance unmounts or triggerKey changes ────
     return () => {
       isOwnerRef.current = false
       if (globalVoice.setSpeaking === setSpeaking) {
