@@ -3,7 +3,7 @@ import { useRef, useState, useCallback } from 'react'
 export type TtsMode = 'story' | 'teacher' | 'quiz' | 'word' | 'default'
 
 interface SpeechSynthesisHook {
-  speak: (text: string, mode?: TtsMode) => void
+  speak: (text: string, mode?: TtsMode, lang?: string) => void
   stop: () => void
   isSpeaking: boolean
   isSupported: boolean
@@ -50,7 +50,7 @@ export function useSpeechSynthesis(): SpeechSynthesisHook {
   }, [])
 
   const speak = useCallback(
-    async (text: string, mode: TtsMode = 'default') => {
+    async (text: string, mode: TtsMode = 'default', lang?: string) => {
       stop()
       setIsSpeaking(true)
 
@@ -66,7 +66,7 @@ export function useSpeechSynthesis(): SpeechSynthesisHook {
         const res = await fetch(`${API}/api/tts/speak`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: 'Kore', mode }),
+          body: JSON.stringify({ text, voice: 'Kore', mode, lang }),
           signal: controller.signal,
         })
         clearTimeout(fetchTimeout)
@@ -97,24 +97,9 @@ export function useSpeechSynthesis(): SpeechSynthesisHook {
           setIsSpeaking(false)
           return
         }
-        // Gemini TTS failed — fall back to Web Speech API so the user still hears something
-        console.warn('[TTS] Gemini voice failed, falling back to Web Speech:', err)
-        if ('speechSynthesis' in window) {
-          try {
-            const utter = new SpeechSynthesisUtterance(text)
-            utter.rate = mode === 'word' ? 0.6 : 0.9
-            utter.pitch = 1.0
-            utter.lang = 'en-US'
-            utter.onend = () => { setIsSpeaking(false); setCurrentWordIndex(-1) }
-            utter.onerror = () => setIsSpeaking(false)
-            utterRef.current = utter
-            window.speechSynthesis.speak(utter)
-          } catch {
-            setIsSpeaking(false)
-          }
-        } else {
-          setIsSpeaking(false)
-        }
+        // Gemini TTS failed — fail silently (no robot voice fallback)
+        console.warn('[TTS] Voice failed:', err)
+        setIsSpeaking(false)
       }
     },
     [stop]
