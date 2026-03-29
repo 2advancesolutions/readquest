@@ -11,6 +11,7 @@ import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import { useSoundEffects } from '../hooks/useSoundEffects'
 import '../styles/reader.css'
+import { emitXpUpdate, getStoredXp } from '../components/XpBadge'
 
 function normalize(w: string) {
   // Strip punctuation, hyphens, possessives; lowercase
@@ -362,11 +363,19 @@ export default function BookReader() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     silenceTimerRef.current = setTimeout(() => {
       mic.stopListening()   // → isListening goes false → batch eval fires
+      // Also stop the audio recorder so pendingAudioRef is populated for saving
+      if (recorder.isRecording()) {
+        recorder.stopRecording().then(result => {
+          if (result && result.blob.size >= 100) {
+            pendingAudioRef.current = result
+          }
+        })
+      }
     }, 3000)
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     }
-  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening])  // eslint-disable-line
+  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening, recorder])  // eslint-disable-line
 
   // ── Review phase — MANUAL mic: TTS speaks word, student presses button to repeat ──
   const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -476,8 +485,12 @@ export default function BookReader() {
   }, [mic.transcript, mic.interimTranscript, phase, mic.isListening, reviewIdx, missedWords])  // eslint-disable-line
 
 
-  // ── XP toast ─────────────────────────────────────────────────────────────
+  // ── XP toast — shows animation AND persists to the global XP badge ──────
   const showXPToast = (amount: number) => {
+    if (amount > 0) {
+      const newTotal = getStoredXp() + amount
+      emitXpUpdate(newTotal, amount)   // updates badge + localStorage instantly
+    }
     setXpToast({ amount, id: Date.now() })
     setTimeout(() => setXpToast(null), 2000)
   }

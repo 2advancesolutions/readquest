@@ -19,6 +19,13 @@ import ParentDashboard from './pages/ParentDashboard'
 import RecordingsLibrary from './pages/RecordingsLibrary'
 import BookRecordings from './pages/BookRecordings'
 import RecordingPlayback from './pages/RecordingPlayback'
+import SpellingArena from './pages/SpellingArena'
+import ReadingExams from './pages/ReadingExams'
+import GamesArcade from './pages/GamesArcade'
+import GamePlay from './pages/GamePlay'
+import Leaderboard from './pages/Leaderboard'
+import XpBadge from './components/XpBadge'
+import MobileNav from './components/MobileNav'
 
 function App() {
   const [session, setSession] = useState<any>(null)
@@ -74,6 +81,10 @@ function App() {
 
   return (
     <BrowserRouter>
+      {/* Global XP badge — always top-right for logged-in users */}
+      {session && <XpBadge />}
+      {/* Global mobile nav — floating FAB + drawer, visible only on ≤768px */}
+      {session && <MobileNav />}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         {/* Signup renders regardless of session — the wizard controls its own flow */}
@@ -97,6 +108,12 @@ function App() {
         <Route path="/recordings" element={session ? <RecordingsLibrary /> : <Navigate to="/login" replace />} />
         <Route path="/recordings/:bookId" element={session ? <BookRecordings /> : <Navigate to="/login" replace />} />
         <Route path="/recordings/:bookId/:recordingId" element={session ? <RecordingPlayback /> : <Navigate to="/login" replace />} />
+        <Route path="/spelling" element={session ? <SpellingArena /> : <Navigate to="/login" replace />} />
+        <Route path="/exams" element={session ? <ReadingExams /> : <Navigate to="/login" replace />} />
+        <Route path="/scores" element={session ? <ReadingExams /> : <Navigate to="/login" replace />} />
+        <Route path="/games" element={session ? <GamesArcade /> : <Navigate to="/login" replace />} />
+        <Route path="/games/:gameId" element={session ? <GamePlay /> : <Navigate to="/login" replace />} />
+        <Route path="/leaderboard" element={session ? <Leaderboard /> : <Navigate to="/login" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

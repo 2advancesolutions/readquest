@@ -71,8 +71,44 @@ export const quizzesApi = {
     api.post(`/quizzes/${questionId}/submit`, { answer }),
 };
 
+export const examsApi = {
+  /** Generate a fresh exam — full (30Q/30min) or practice (15Q/10min) */
+  generate: (grade_level: number, section: string, is_practice = false) =>
+    api.post('/exams/generate', { grade_level, section, is_practice }, { timeout: 120000 }),
+  /** Submit all answers at once — returns full scored results */
+  submit: (
+    exam_id: string,
+    answers: Record<string, string[]>,
+    time_taken_sec?: number,
+    started_at?: string,
+    is_practice = false,
+  ) =>
+    api.post('/exams/submit', { exam_id, answers, time_taken_sec, started_at, is_practice }),
+  /** Get all past exam attempts for this student (excludes practice by default on /history) */
+  history: () => api.get('/exams/history'),
+  /** Get ALL scores including practice tests — the full permanent score log */
+  scores: (includePractice = true) =>
+    api.get(`/exams/scores?include_practice=${includePractice}`),
+  /** Get grade readiness status */
+  readiness: () => api.get('/exams/readiness'),
+  /** Review a specific past attempt with full answer breakdown */
+  review: (attempt_id: string) => api.get(`/exams/${attempt_id}/review`),
+  /** Reset all (non-practice) exam progress for a grade — starts all over */
+  resetProgress: (grade_level: number) =>
+    api.post('/exams/reset-progress', { grade_level }),
+};
+
+
 export const rewardsApi = {
-  getXP: () => deduplicate('rewards:xp', () => api.get('/rewards/xp')),
+  getXP: (startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams()
+    if (startDate) params.set('start_date', startDate)
+    if (endDate)   params.set('end_date',   endDate)
+    const qs = params.toString()
+    const url = qs ? `/rewards/xp?${qs}` : '/rewards/xp'
+    // Bypass deduplication when date params vary so new selections always refetch
+    return qs ? api.get(url) : deduplicate('rewards:xp', () => api.get(url))
+  },
   getXPHistory: () => deduplicate('rewards:xp:history', () => api.get('/rewards/xp/history')),
   getBadges: () => deduplicate('rewards:badges', () => api.get('/rewards/badges')),
   getStreaks: () => deduplicate('rewards:streaks', () => api.get('/rewards/streaks')),
@@ -260,7 +296,71 @@ export const readingLogsApi = {
   },
 }
 
+// ── Spelling Arena API ─────────────────────────────────────────────────────
+export const spellingApi = {
+  getWords: (studentId: string, limit = 10) =>
+    api.get<SpellingWordOut[]>(`/spelling/words?limit=${limit}`, {
+      headers: { 'X-Student-ID': studentId },
+    }),
 
+  getGradeWords: (studentId: string, limit = 10, grade?: number) =>
+    api.get<SpellingWordOut[]>(
+      `/spelling/grade-words?limit=${limit}${grade !== undefined ? `&grade=${grade}` : ''}`,
+      { headers: { 'X-Student-ID': studentId } },
+    ),
+
+  createSession: (studentId: string, characterName: string, totalWords = 10) =>
+    api.post<{ session_id: string }>('/spelling/sessions', {
+      character_name: characterName,
+      total_words: totalWords,
+    }, { headers: { 'X-Student-ID': studentId } }),
+
+  submitAttempt: (
+    studentId: string,
+    sessionId: string,
+    word: string,
+    gameMode: 'bee' | 'blanks' | 'scramble',
+    studentAnswer: string,
+    attemptNumber = 1,
+  ) =>
+    api.post<AttemptResultOut>('/spelling/attempts', {
+      session_id: sessionId,
+      word,
+      game_mode: gameMode,
+      student_answer: studentAnswer,
+      attempt_number: attemptNumber,
+    }, { headers: { 'X-Student-ID': studentId } }),
+
+  getStats: (studentId: string) =>
+    api.get<SpellingStatsOut>('/spelling/stats', {
+      headers: { 'X-Student-ID': studentId },
+    }),
+}
+
+// ── Spelling API types ─────────────────────────────────────────────────────
+export interface SpellingWordOut {
+  word: string
+  definition?: string
+  example_sentence?: string
+  source: 'error' | 'vocabulary' | 'grade'
+  mastered: boolean
+}
+
+export interface AttemptResultOut {
+  is_correct: boolean
+  correct_answer: string
+  mastered: boolean
+  newly_mastered: boolean
+  xp_awarded: number
+}
+
+export interface SpellingStatsOut {
+  total_sessions: number
+  words_mastered: number
+  total_attempts: number
+  correct_attempts: number
+  accuracy_pct: number
+}
 
 
 export default api;

@@ -1,0 +1,89 @@
+/* ═══════════════════════════════════════════════════════════════
+   XP Badge — always-visible top-right XP counter
+   ═══════════════════════════════════════════════════════════════ */
+
+.xp-badge {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 200;          /* below drawer (z:51) on mobile, above everything on desktop */
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px 7px 10px;
+  border-radius: 99px;
+  background: rgba(15, 8, 35, 0.85);
+  border: 1.5px solid rgba(192, 132, 252, 0.4);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(112, 42, 225, 0.25), 0 0 0 1px rgba(255,255,255,0.04);
+  cursor: default;
+  user-select: none;
+  transition: border-color 0.3s;
+}
+
+/* Hide XP badge during active exam to prevent overlap with countdown timer */
+body.exam-active #xp-badge-global {
+  display: none;
+}
+
+.xp-badge:hover {
+  border-color: rgba(192, 132, 252, 0.7);
+}
+
+.xp-badge-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.xp-badge-value {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: #c084fc;
+  letter-spacing: -0.01em;
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+  min-width: 24px;
+  text-align: right;
+}
+
+.xp-badge-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: rgba(192, 132, 252, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+}
+
+/* Floating +N animation */
+.xp-badge-delta {
+  position: absolute;
+  top: -22px;
+  right: 8px;
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #4ade80;
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+  pointer-events: none;
+  animation: xp-float-up 1.4s ease-out forwards;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+}
+
+@keyframes xp-float-up {
+  0%   { opacity: 1; transform: translateY(0) scale(1.2); }
+  60%  { opacity: 1; transform: translateY(-20px) scale(1); }
+  100% { opacity: 0; transform: translateY(-36px) scale(0.8); }
+}
+
+/* ── Mobile: keep badge top-right, smaller, clear of drawer ── */
+@media (max-width: 768px) {
+  .xp-badge {
+    top: 12px;
+    right: 12px;
+    padding: 5px 11px 5px 8px;
+    gap: 4px;
+    z-index: 350;   /* above page content, below MobileNav drawer (z:401) */
+  }
+  .xp-badge-icon  { font-size: 0.82rem; }
+  .xp-badge-value { font-size: 0.78rem; min-width: 18px; }
+  .xp-badge-label { font-size: 0.58rem; }
+}

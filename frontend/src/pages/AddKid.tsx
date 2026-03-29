@@ -132,21 +132,22 @@ const AddKid = () => {
       <div className="app-content">
         <div style={{
           minHeight: '100vh',
-          background: 'linear-gradient(160deg, #FCF4FF 0%, #F0E6FF 100%)',
+          background: 'linear-gradient(160deg, #080418 0%, #110729 45%, #0d0520 100%)',
           padding: '48px 48px 80px',
           position: 'relative',
           overflow: 'hidden',
+          color: 'rgba(233,221,255,0.9)',
         }}>
           {/* Background blobs */}
-          <div style={{ position: 'absolute', top: -80, right: -80, width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(178,140,255,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', bottom: 80, left: -60, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(112,42,225,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', top: -180, left: -120, width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.18) 0%, rgba(124,58,237,0.05) 45%, transparent 70%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', bottom: -80, right: -60, width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(236,72,153,0.1) 0%, rgba(112,42,225,0.06) 50%, transparent 70%)', pointerEvents: 'none' }} />
 
           {/* ── Page Header ── */}
           <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 40 }}>
-            <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 800, color: 'var(--rq-text)', letterSpacing: '-0.03em', margin: '0 0 6px' }}>
+            <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 800, color: 'rgba(233,221,255,0.95)', letterSpacing: '-0.03em', margin: '0 0 6px' }}>
               👧 Manage Children
             </h1>
-            <p style={{ color: 'var(--rq-text-muted)', fontSize: '1rem', margin: 0, fontWeight: 500 }}>
+            <p style={{ color: 'rgba(204,195,216,0.55)', fontSize: '1rem', margin: 0, fontWeight: 500 }}>
               Add or manage children linked to your account
             </p>
           </motion.div>
@@ -155,12 +156,12 @@ const AddKid = () => {
           {fetching ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 40 }}>
               {[0, 1].map(i => (
-                <div key={i} style={{ height: 80, borderRadius: 24, background: 'linear-gradient(90deg, #F7EDFF 25%, #EFE3FE 50%, #F7EDFF 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                <div key={i} style={{ height: 80, borderRadius: 24, background: 'linear-gradient(90deg, rgba(30,14,70,0.8) 25%, rgba(60,30,120,0.5) 50%, rgba(30,14,70,0.8) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite', border: '1px solid rgba(150,110,255,0.1)' }} />
               ))}
             </div>
           ) : existingChildren.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} style={{ marginBottom: 40 }}>
-              <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--rq-text-muted)', marginBottom: 16 }}>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(204,195,216,0.45)', marginBottom: 16 }}>
                 Your Children
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -169,13 +170,15 @@ const AddKid = () => {
                     initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.06 * i, type: 'spring', stiffness: 240, damping: 22 }}
                     style={{
-                      background: '#fff',
+                      background: 'rgba(20,10,50,0.7)',
+                      backdropFilter: 'blur(12px)',
                       borderRadius: 24,
                       padding: '18px 24px',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 18,
-                      boxShadow: '0 8px 32px rgba(112,42,225,0.08)',
+                      border: '1px solid rgba(150,110,255,0.15)',
+                      boxShadow: '0 4px 16px rgba(10,4,28,0.4)',
                     }}>
                     {/* Avatar */}
                     <div style={{
@@ -189,15 +192,16 @@ const AddKid = () => {
 
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--rq-text)', marginBottom: 3 }}>{child.name}</div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--rq-text-muted)' }}>
+                      <div style={{ fontWeight: 700, fontSize: '1rem', color: 'rgba(233,221,255,0.9)', marginBottom: 3 }}>{child.name}</div>
+                      <div style={{ fontSize: '0.82rem', color: 'rgba(204,195,216,0.5)' }}>
                         {child.school || gradeLabel(child.grade_level)}
                       </div>
                     </div>
 
                     {/* Grade chip */}
                     <div style={{
-                      background: 'var(--rq-purple-light2)', color: 'var(--rq-purple)',
+                      background: 'rgba(124,58,237,0.2)', color: '#c084fc',
+                      border: '1px solid rgba(192,132,252,0.25)',
                       borderRadius: 999, padding: '5px 14px',
                       fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
                     }}>
@@ -213,8 +217,8 @@ const AddKid = () => {
                         navigate('/dashboard');
                       }}
                       style={{
-                        background: 'var(--rq-surface)', color: 'var(--rq-purple)',
-                        border: 'none', borderRadius: 999, padding: '9px 20px',
+                        background: 'rgba(124,58,237,0.15)', color: '#c084fc',
+                        border: '1px solid rgba(192,132,252,0.2)', borderRadius: 999, padding: '9px 20px',
                         fontFamily: 'var(--font-body)', fontSize: '0.85rem', fontWeight: 700,
                         cursor: 'pointer', flexShrink: 0, transition: 'background 0.18s',
                       }}>
@@ -228,9 +232,9 @@ const AddKid = () => {
 
           {/* ── Add a Child Form ── */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-            style={{ background: '#fff', borderRadius: 28, padding: '32px 32px 28px', boxShadow: '0 8px 40px rgba(112,42,225,0.09)' }}>
+            style={{ background: 'rgba(20,10,50,0.75)', backdropFilter: 'blur(16px)', border: '1px solid rgba(150,110,255,0.15)', borderRadius: 28, padding: '32px 32px 28px', boxShadow: '0 8px 32px rgba(10,4,28,0.4)' }}>
 
-            <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--rq-text-muted)', marginBottom: 24 }}>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(204,195,216,0.45)', marginBottom: 24 }}>
               Add a Child
             </p>
 
@@ -320,7 +324,7 @@ const AddKid = () => {
           <style>{`
             @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
             @keyframes spin { to { transform: rotate(360deg); } }
-            input:focus, select:focus { outline: none; border-color: var(--rq-purple) !important; box-shadow: 0 0 0 3px rgba(112,42,225,0.12); background: #fff !important; }
+            input:focus, select:focus { outline: none; border-color: rgba(192,132,252,0.5) !important; box-shadow: 0 0 0 3px rgba(112,42,225,0.2) !important; background: rgba(30,14,70,0.9) !important; }
           `}</style>
         </div>
       </div>
@@ -332,7 +336,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.8rem',
   fontWeight: 600,
-  color: 'var(--rq-text-muted)',
+  color: 'rgba(204,195,216,0.55)',
   marginBottom: 8,
   letterSpacing: '0.01em',
 };
@@ -341,12 +345,12 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '12px 16px',
   borderRadius: 14,
-  border: '1.5px solid transparent',
-  background: 'var(--rq-surface-low)',
+  border: '1.5px solid rgba(150,110,255,0.2)',
+  background: 'rgba(30,14,70,0.7)',
   fontFamily: 'var(--font-body)',
   fontSize: '0.95rem',
   fontWeight: 500,
-  color: 'var(--rq-text)',
+  color: 'rgba(233,221,255,0.9)',
   boxSizing: 'border-box',
   transition: 'border-color 0.18s, box-shadow 0.18s, background 0.18s',
 };

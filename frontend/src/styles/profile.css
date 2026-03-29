@@ -5,8 +5,9 @@
 /* ── Page wrapper ── */
 .profile-page {
   min-height: 100vh;
-  background: var(--rq-gradient-bg);
+  background: transparent;
   padding: 40px 40px 80px;
+  color: rgba(233,221,255,0.9);
 }
 
 /* ── Hero card ── */
@@ -94,10 +95,13 @@
 
 /* ── Cards ── */
 .profile-card {
-  background: var(--rq-card);
+  background: rgba(20,10,50,0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(150,110,255,0.15);
   border-radius: var(--rq-radius-lg);
   padding: 28px 24px;
-  box-shadow: var(--rq-shadow-card);
+  box-shadow: 0 4px 24px rgba(10,4,28,0.4);
 }
 
 .profile-card-full {
@@ -110,7 +114,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--rq-text-muted);
+  color: rgba(150,110,255,0.65);
   margin: 0 0 20px;
 }
 
@@ -131,26 +135,26 @@
   width: 100%;
   padding: 11px 14px;
   border-radius: var(--rq-radius-sm);
-  border: 1.5px solid var(--rq-surface-high);
-  background: var(--rq-surface-low);
+  border: 1.5px solid rgba(150,110,255,0.2);
+  background: rgba(30,14,70,0.6);
   font-family: var(--font-body);
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--rq-text);
+  color: rgba(233,221,255,0.9);
   outline: none;
   transition: border-color 0.18s, box-shadow 0.18s;
   box-sizing: border-box;
 }
 
 .profile-input:focus {
-  border-color: var(--rq-purple);
-  box-shadow: 0 0 0 3px rgba(112, 42, 225, 0.12);
-  background: white;
+  border-color: rgba(192,132,252,0.6);
+  box-shadow: 0 0 0 3px rgba(112, 42, 225, 0.2);
+  background: rgba(40,20,90,0.7);
 }
 
 .profile-input:disabled {
-  background: var(--rq-surface);
-  color: var(--rq-text-muted);
+  background: rgba(20,10,50,0.4);
+  color: rgba(204,195,216,0.4);
   cursor: not-allowed;
 }
 
@@ -210,10 +214,11 @@
   gap: 14px;
   padding: 12px 14px;
   border-radius: var(--rq-radius-md);
-  background: var(--rq-surface-low);
+  background: rgba(30,14,70,0.6);
+  border: 1px solid rgba(150,110,255,0.12);
   transition: background 0.18s;
 }
-.profile-child-row:hover { background: var(--rq-surface); }
+.profile-child-row:hover { background: rgba(40,20,90,0.7); }
 
 .profile-child-avatar {
   width: 40px;
@@ -233,12 +238,12 @@
 .profile-child-name {
   font-weight: 700;
   font-size: 0.92rem;
-  color: var(--rq-text);
+  color: rgba(233,221,255,0.9);
 }
 
 .profile-child-grade {
   font-size: 0.8rem;
-  color: var(--rq-text-muted);
+  color: rgba(204,195,216,0.5);
   font-weight: 500;
 }
 
@@ -247,8 +252,9 @@
   font-weight: 700;
   padding: 3px 10px;
   border-radius: var(--rq-radius-full);
-  background: var(--rq-purple-light2);
-  color: var(--rq-purple);
+  background: rgba(124,58,237,0.2);
+  color: #c084fc;
+  border: 1px solid rgba(192,132,252,0.25);
 }
 
 .profile-add-child-btn {
@@ -257,9 +263,9 @@
   gap: 8px;
   padding: 11px 14px;
   border-radius: var(--rq-radius-md);
-  border: 1.5px dashed var(--rq-surface-highest);
+  border: 1.5px dashed rgba(192,132,252,0.2);
   background: transparent;
-  color: var(--rq-text-muted);
+  color: rgba(204,195,216,0.5);
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 0.88rem;
@@ -270,9 +276,9 @@
   margin-top: 6px;
 }
 .profile-add-child-btn:hover {
-  border-color: var(--rq-purple);
-  color: var(--rq-purple);
-  background: var(--rq-purple-light2);
+  border-color: rgba(192,132,252,0.5);
+  color: #c084fc;
+  background: rgba(124,58,237,0.1);
 }
 
 /* ── Toast feedback ── */
@@ -315,7 +321,8 @@
 .profile-stat-pill {
   flex: 1;
   min-width: 80px;
-  background: var(--rq-surface-low);
+  background: rgba(30,14,70,0.7);
+  border: 1px solid rgba(150,110,255,0.15);
   border-radius: var(--rq-radius-md);
   padding: 14px 12px;
   text-align: center;
@@ -325,7 +332,7 @@
   display: block;
   font-size: 1.4rem;
   font-weight: 800;
-  color: var(--rq-purple);
+  color: #c084fc;
   font-family: var(--font-heading);
   letter-spacing: -0.03em;
 }
@@ -334,7 +341,7 @@
   display: block;
   font-size: 0.72rem;
   font-weight: 600;
-  color: var(--rq-text-muted);
+  color: rgba(204,195,216,0.5);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-top: 2px;

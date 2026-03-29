@@ -700,20 +700,24 @@ export default function StoryGenerator() {
   return (
     <div className="gen-root">
 
-      {/* ── Top Header ── */}
-      <header className={`gen-header${['character','scene','language','artStyle','generating'].includes(step) ? ' gen-header-dark' : ''}`}>
-        <div>
-          <div className="gen-header-logo">ReadQuest ✨</div>
-          <div className="gen-header-subtitle">Story Creator</div>
-        </div>
+      <header className={`gen-header${['character','scene','language','artStyle','generating','done','preview'].includes(step) ? ' gen-header-dark' : ''}`}>
+        {/* Col 1 — left: back button */}
+        <button className="gen-back-btn" onClick={() => navigate('/dashboard')}>
+          ← Dashboard
+        </button>
+
+        {/* Col 2 — center: step progress */}
         <div className="gen-header-title">
           {step !== 'generating' && step !== 'preview'
             ? `Step ${currentNum} of 4`
             : step === 'generating' ? '✨ Generating...' : '🎉 Done!'}
         </div>
-        <button className="gen-back-btn" onClick={() => navigate('/dashboard')}>
-          ← Dashboard
-        </button>
+
+        {/* Col 3 — right: brand logo */}
+        <div className="gen-header-logo-wrap">
+          <div className="gen-header-logo">ReadQuest ✨</div>
+          <div className="gen-header-subtitle">Story Creator</div>
+        </div>
       </header>
 
       {/* ── Body ── */}

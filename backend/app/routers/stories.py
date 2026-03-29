@@ -383,6 +383,17 @@ async def list_stories(x_student_id: Optional[str] = Header(default=None), db: A
         x_student_id = "guest"
 
     from app.models.student import Student as StudentModel
+    import uuid as _uuid_mod
+
+    # Guard: if the ID isn't a valid UUID, skip DB queries to avoid asyncpg crash
+    try:
+        _uuid_mod.UUID(x_student_id)
+        valid_uuid = True
+    except (ValueError, AttributeError):
+        valid_uuid = False
+
+    if not valid_uuid:
+        return []  # No stories for non-UUID IDs (guest, demo-student-1, etc.)
 
     # Build the set of student_ids to query
     ids_to_query = {x_student_id}

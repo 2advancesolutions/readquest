@@ -190,14 +190,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 32px 16px;
+  padding: 20px 160px 16px 32px; /* right pad clears the fixed XP badge (badge is ~120px wide) */
   background: rgba(12,5,32,0.82);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid rgba(150,110,255,0.12);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
   gap: 16px;
 }
 
@@ -788,26 +788,36 @@
 @media (max-width: 900px) {
   .dash-right-panel { display: none; }
 }
+
+/* ── Mobile ≤768px ── */
 @media (max-width: 768px) {
-  .dash-root { flex-direction: column; }
-  .dash-sidebar {
-    width: 100%; height: auto; position: sticky; top: 0;
-    z-index: 20; padding: 12px 16px;
-    flex-direction: row; align-items: center;
-    justify-content: space-between; gap: 8px;
-    border-right: none;
-    border-bottom: 1px solid rgba(150,110,255,0.13);
+  /* Hide permanent desktop sidebar — global MobileNav FAB handles navigation */
+  .dash-sidebar { display: none; }
+
+  /* Clean top header: normal flex row, reduced padding */
+  .dash-top-header {
+    padding: 14px 16px;
+    gap: 12px;
+    /* Right pad: leaves room for the fixed XP badge (top:12px right:12px) */
+    padding-right: 110px;
   }
-  .dash-logo-sub { display: none; }
-  .dash-nav { flex-direction: row; flex: 0; gap: 2px; }
-  .dash-nav-link span { display: none; }
-  .dash-nav-link { padding: 8px 10px; }
-  .dash-nav-section-label { display: none; }
-  .dash-sidebar-bottom { padding: 0; }
-  .dash-logout-btn span { display: none; }
-  .dash-center { padding: 20px 16px; }
-  .dash-top-header { padding: 14px 16px; }
-  .story-grid { grid-template-columns: repeat(2, 1fr); }
-  .dash-continue-card { flex-direction: column; }
+
+  /* Hide desktop-only elements that don't fit on mobile */
+  .dash-child-pills    { display: none; }
+  .dash-header-actions { display: none; }
+  .dash-avatar         { display: none; }
+
+  /* Tighten content area and story grid */
+  .dash-center { padding: 16px 14px 100px; } /* bottom pad clears the floating FAB */
+  .story-grid  { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .dash-continue-card  { flex-direction: column; }
   .dash-continue-cover { width: 100%; height: 160px; }
+
+  /* Greeting text smaller on mobile */
+  .dash-greeting {
+    font-size: 1.1rem;
+  }
+  .dash-date {
+    font-size: 0.72rem;
+  }
 }

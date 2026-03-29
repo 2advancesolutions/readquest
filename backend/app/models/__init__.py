@@ -8,3 +8,5 @@ from app.models.vocabulary import VocabularyWord
 from app.models.assignment import Assignment, AssignmentResult
 from app.models.quest import QuestLevel, QuestProgress
 from app.models.parent_review import ParentReview
+from app.models.spelling import SpellingSession, SpellingAttempt, WordMastery
+from app.models.exam import ReadingExam, ReadingExamQuestion, ReadingExamAttempt

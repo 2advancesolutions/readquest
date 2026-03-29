@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from datetime import date, timedelta
-from typing import Tuple
+from typing import Tuple, Optional
 from app.database import get_session
 from app.models.gamification import XPLedger, Badge, StudentBadge, Streak
 from app.models.student import Student
@@ -24,8 +24,26 @@ def compute_level(total_xp: int) -> Tuple[int, str, int, float]:
 
 
 @router.get("/xp")
-async def get_xp(x_student_id: str = Header(...), db: AsyncSession = Depends(get_session)):
+async def get_xp(
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+    start_date: Optional[str] = None,   # ISO: YYYY-MM-DD
+    end_date:   Optional[str] = None,   # ISO: YYYY-MM-DD
+):
     from app.models.gamification import ReadingProgress
+    from datetime import datetime
+
+    # ── Build date window ──────────────────────────────────────────────────
+    try:
+        end_d   = datetime.fromisoformat(end_date).date()   if end_date   else date.today()
+        start_d = datetime.fromisoformat(start_date).date() if start_date else end_d - timedelta(days=6)
+    except ValueError:
+        end_d   = date.today()
+        start_d = end_d - timedelta(days=6)
+
+    # Build list of all days in the window
+    num_days = (end_d - start_d).days + 1
+    all_days = [start_d + timedelta(days=i) for i in range(num_days)]
 
     # ── Total XP & level ───────────────────────────────────────────────────
     total_result = await db.execute(select(func.sum(XPLedger.amount)).where(XPLedger.student_id == x_student_id))
@@ -46,29 +64,27 @@ async def get_xp(x_student_id: str = Header(...), db: AsyncSession = Depends(get
         else:
             break
 
-    # ── XP history — last 7 days ───────────────────────────────────────────
+    # ── XP history — one entry per day in range ────────────────────────────
     xp_history = []
-    for i in range(6, -1, -1):
-        day = date.today() - timedelta(days=i)
+    for day in all_days:
         result = await db.execute(
             select(func.sum(XPLedger.amount)).where(
                 XPLedger.student_id == x_student_id,
                 func.date(XPLedger.earned_at) == day,
             )
         )
-        xp_history.append({"date": day.strftime("%a"), "amount": result.scalar() or 0})
+        xp_history.append({"date": day.isoformat(), "amount": result.scalar() or 0})
 
-    # ── Weekly activity — did the student read on each of the last 7 days? ─
+    # ── Weekly activity — did the student read on each day in range? ────────
     weekly_activity = []
-    for i in range(6, -1, -1):
-        day = date.today() - timedelta(days=i)
+    for day in all_days:
         read_result = await db.execute(
             select(func.count()).where(
                 Streak.student_id == x_student_id,
                 Streak.active_date == day,
             )
         )
-        weekly_activity.append({"date": day.strftime("%a"), "active": (read_result.scalar() or 0) > 0})
+        weekly_activity.append({"date": day.isoformat(), "active": (read_result.scalar() or 0) > 0})
 
     # ── Badges ─────────────────────────────────────────────────────────────
     all_badges = (await db.execute(select(Badge))).scalars().all()
@@ -328,5 +344,45 @@ async def get_leaderboard(
             "level": level,
             "level_name": level_name,
             "rank": rank,
+        })
+    return leaderboard
+
+
+@router.get("/leaderboard/global")
+async def get_global_leaderboard(
+    db: AsyncSession = Depends(get_session),
+    limit: int = 100,
+):
+    """Return ALL students across the entire app, ranked by total XP descending."""
+    query = (
+        select(
+            Student.id,
+            Student.name,
+            Student.grade_level,
+            Student.avatar_url,
+            func.coalesce(func.sum(XPLedger.amount), 0).label("total_xp"),
+        )
+        .outerjoin(XPLedger, XPLedger.student_id == Student.id)
+        .group_by(Student.id, Student.name, Student.grade_level, Student.avatar_url)
+        .order_by(desc("total_xp"))
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+    rows = result.fetchall()
+
+    leaderboard = []
+    for rank, row in enumerate(rows, start=1):
+        student_id, name, grade_level, avatar_url, total_xp = row
+        level, level_name, _, _ = compute_level(int(total_xp))
+        leaderboard.append({
+            "rank": rank,
+            "student_id": student_id,
+            "name": name,
+            "grade_level": grade_level,
+            "avatar_url": avatar_url,
+            "total_xp": int(total_xp),
+            "level": level,
+            "level_name": level_name,
         })
     return leaderboard

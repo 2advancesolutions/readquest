@@ -1,0 +1,251 @@
+/* ═══════════════════════════════════════════════════════════════
+   MobileNav — Global bottom-left FAB + slide-in drawer
+   Visible only on ≤768px. Desktop: display:none.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Desktop: hide everything ── */
+.mn-fab,
+.mn-backdrop,
+.mn-drawer {
+  display: none;
+}
+
+/* ── Mobile only ── */
+@media (max-width: 768px) {
+
+  /* ── Floating Action Button ── */
+  .mn-fab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 300;
+
+    padding: 11px 22px;
+    border-radius: 99px;
+    border: 1.5px solid rgba(192, 132, 252, 0.35);
+    background: rgba(10, 4, 28, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow:
+      0 8px 32px rgba(112, 42, 225, 0.45),
+      0 2px 8px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    color: rgba(220, 210, 255, 0.9);
+    font-size: 0.88rem;
+    font-weight: 700;
+    font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+
+  .mn-fab svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    stroke: #c084fc;
+  }
+
+  .mn-fab:hover,
+  .mn-fab:active {
+    background: rgba(124, 58, 237, 0.85);
+    border-color: rgba(192, 132, 252, 0.6);
+    color: #fff;
+    box-shadow: 0 12px 40px rgba(112, 42, 225, 0.65);
+    transform: translateX(-50%) translateY(-2px);
+  }
+
+  /* ── Backdrop ── */
+  .mn-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 2, 16, 0.7);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 400;
+  }
+
+  /* ── Drawer panel ── */
+  .mn-drawer {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 288px;
+    max-width: 88vw;
+    background: rgba(8, 3, 22, 0.97);
+    backdrop-filter: blur(32px) saturate(180%);
+    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    border-right: 1px solid rgba(150, 110, 255, 0.18);
+    box-shadow: 6px 0 48px rgba(0, 0, 0, 0.65);
+    z-index: 401;
+    padding: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* ── Drawer header ── */
+  .mn-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 24px 18px 20px;
+    border-bottom: 1px solid rgba(150, 110, 255, 0.1);
+    flex-shrink: 0;
+  }
+
+  .mn-logo {
+    font-size: 1.15rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #ffffff 0%, #e9ddff 40%, #c084fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+  }
+
+  .mn-logo-sub {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: rgba(192, 132, 252, 0.45);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  .mn-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(200, 190, 220, 0.7);
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-family: system-ui;
+  }
+  .mn-close:hover {
+    background: rgba(247, 75, 109, 0.15);
+    border-color: rgba(247, 75, 109, 0.3);
+    color: #f87171;
+  }
+
+  /* ── Nav links ── */
+  .mn-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 12px;
+    overflow-y: auto;
+  }
+
+  .mn-link {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: none;
+    background: transparent;
+    color: rgba(200, 190, 220, 0.65);
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    letter-spacing: -0.01em;
+  }
+
+  .mn-link-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.7;
+    transition: opacity 0.16s;
+  }
+  .mn-link-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .mn-link:hover {
+    background: rgba(124, 58, 237, 0.14);
+    color: rgba(233, 221, 255, 0.9);
+  }
+  .mn-link:hover .mn-link-icon { opacity: 1; }
+
+  .mn-link:active {
+    background: rgba(124, 58, 237, 0.25);
+    transform: scale(0.98);
+  }
+
+  /* Special "Create Story" link */
+  .mn-link--special {
+    margin-top: 6px;
+    background: rgba(112, 42, 225, 0.12);
+    border: 1px solid rgba(192, 132, 252, 0.2);
+    color: #c084fc;
+  }
+  .mn-link--special:hover {
+    background: rgba(112, 42, 225, 0.25);
+    border-color: rgba(192, 132, 252, 0.4);
+    color: #e9ddff;
+  }
+  .mn-link--special .mn-link-icon { opacity: 1; }
+
+  /* ── Footer (sign out) ── */
+  .mn-footer {
+    padding: 12px 12px 28px;
+    border-top: 1px solid rgba(150, 110, 255, 0.1);
+    flex-shrink: 0;
+  }
+
+  .mn-signout {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: none;
+    background: transparent;
+    color: rgba(200, 190, 220, 0.45);
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.16s;
+  }
+  .mn-signout svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .mn-signout:hover {
+    background: rgba(247, 75, 109, 0.1);
+    color: #f87171;
+  }
+}
