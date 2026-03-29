@@ -1,16 +1,14 @@
 /**
  * useSpeechRecognition — universal speech recognition hook.
  *
- * PATH 1: Browser SpeechRecognition API (Chrome desktop, Safari iOS)
+ * PATH 1: Browser SpeechRecognition API (Chrome desktop, Safari iOS, Chrome Android)
  *   → Uses webkitSpeechRecognition directly. Fast, no server round-trip.
- *   → Single-shot mode on iOS/Android (tap per phrase).
+ *   → On mobile: continuous=false but auto-restarts to emulate continuous listening.
+ *   → interimResults=true on ALL platforms for real-time green word highlighting.
  *
  * PATH 2: Server-side STT via MediaRecorder (Chrome iOS, Firefox, any unsupported browser)
- *   → Records audio with MediaRecorder (works EVERYWHERE)
- *   → Sends audio blob to POST /api/stt/transcribe (Gemini transcription)
- *   → Returns transcribed text. Slightly slower but universally compatible.
- *
- * The hook automatically detects which path to use. Callers don't need to know.
+ *   → Records audio in short segments (3s chunks) and sends to /api/stt/transcribe
+ *   → Progressive transcript updates for word highlighting.
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
 
@@ -47,11 +45,14 @@ const isAndroid = (() => {
   return /Android/i.test(navigator.userAgent)
 })()
 
-// Browser SpeechRecognition: single-shot on mobile, continuous on desktop
-const useNonContinuous = isIOS || isAndroid
+const isMobile = isIOS || isAndroid
+
+// Chrome on iOS (CriOS) has SpeechRecognition in the window but it throws on start()
+const isIOSChrome = isIOS && /CriOS/i.test(navigator?.userAgent ?? '')
 
 // Can we use the browser SpeechRecognition API?
-const hasBrowserSR = !!getSRClass()
+// Chrome on iOS technically exposes it but it doesn't work — force MediaRecorder
+const hasBrowserSR = !!getSRClass() && !isIOSChrome
 
 const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || ''
 
@@ -66,16 +67,20 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const shouldKeepRef    = useRef(false)
   const transcriptRef    = useRef('')
   const currentLangRef   = useRef('en-US')
+  // Track whether we're in auto-restart cycle (mobile single-shot mode)
+  const autoRestartRef   = useRef(false)
 
   // MediaRecorder fallback refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef   = useRef<Blob[]>([])
   const mediaStreamRef   = useRef<MediaStream | null>(null)
-  const silenceTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const chunkTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isSendingRef     = useRef(false)
 
   // Cleanup on unmount
   useEffect(() => () => {
     shouldKeepRef.current = false
+    autoRestartRef.current = false
     if (recognitionRef.current) {
       try { recognitionRef.current.onend = null; recognitionRef.current.abort() } catch { /**/ }
       recognitionRef.current = null
@@ -85,6 +90,10 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(t => t.stop())
+    }
+    if (chunkTimerRef.current) {
+      clearInterval(chunkTimerRef.current)
+      chunkTimerRef.current = null
     }
   }, [])
 
@@ -104,9 +113,13 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     }
 
     const rec = new SRClass()
-    if (useNonContinuous) {
+
+    // ── Mobile: continuous=false (required by iOS Safari) but we AUTO-RESTART
+    // in onend to emulate continuous listening.
+    // ── interimResults=true EVERYWHERE for real-time green word highlighting.
+    if (isMobile) {
       rec.continuous     = false
-      rec.interimResults = false
+      rec.interimResults = true   // ← THIS IS THE KEY FIX: was `false` on mobile
     } else {
       rec.continuous     = true
       rec.interimResults = true
@@ -132,15 +145,38 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         transcriptRef.current = (transcriptRef.current + ' ' + finalChunk).trim()
         setTranscript(transcriptRef.current)
       }
-      if (!useNonContinuous) setInterimTranscript(interim)
+      // Always update interim — on mobile this now works and powers live highlighting
+      setInterimTranscript(interim)
     }
 
     rec.onend = () => {
       setInterimTranscript('')
       recognitionRef.current = null
-      if (useNonContinuous) {
-        shouldKeepRef.current = false
-        setIsListening(false)
+
+      if (isMobile) {
+        // Auto-restart for continuous listening simulation on mobile
+        if (shouldKeepRef.current) {
+          autoRestartRef.current = true
+          // Small delay to prevent rapid-fire restarts and iOS throttling
+          setTimeout(() => {
+            if (shouldKeepRef.current) {
+              try {
+                startBrowserSession(currentLangRef.current)
+              } catch {
+                // If restart fails, mark as done
+                shouldKeepRef.current = false
+                autoRestartRef.current = false
+                setIsListening(false)
+              }
+            } else {
+              autoRestartRef.current = false
+              setIsListening(false)
+            }
+          }, 100)
+        } else {
+          autoRestartRef.current = false
+          setIsListening(false)
+        }
       } else if (shouldKeepRef.current) {
         try { startBrowserSession(currentLangRef.current) } catch { /**/ }
       } else {
@@ -151,6 +187,36 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       setInterimTranscript('')
       recognitionRef.current = null
+
+      // 'no-speech' on mobile is NOT fatal — just means silence during this segment.
+      // Auto-restart to keep listening.
+      if (e.error === 'no-speech' && isMobile && shouldKeepRef.current) {
+        autoRestartRef.current = true
+        setTimeout(() => {
+          if (shouldKeepRef.current) {
+            try {
+              startBrowserSession(currentLangRef.current)
+            } catch {
+              shouldKeepRef.current = false
+              autoRestartRef.current = false
+              setIsListening(false)
+            }
+          } else {
+            autoRestartRef.current = false
+            setIsListening(false)
+          }
+        }, 200)
+        return
+      }
+
+      // 'aborted' happens when we manually stop — not an error
+      if (e.error === 'aborted') {
+        shouldKeepRef.current = false
+        autoRestartRef.current = false
+        setIsListening(false)
+        return
+      }
+
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         const msg = isIOS
           ? 'Microphone blocked. Go to Settings → Safari → Microphone → Allow.'
@@ -162,6 +228,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         setPermissionError('Network error — check your internet connection.')
       }
       shouldKeepRef.current = false
+      autoRestartRef.current = false
       setIsListening(false)
     }
 
@@ -171,14 +238,47 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       if (err?.name !== 'InvalidStateError') {
         setIsListening(false)
         shouldKeepRef.current = false
+        autoRestartRef.current = false
         recognitionRef.current = null
       }
     }
   }, []) // eslint-disable-line
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PATH 2: MediaRecorder + Server-side STT (works EVERYWHERE)
+  // PATH 2: MediaRecorder + Server-side STT (Chrome iOS, Firefox, etc.)
+  // Progressive mode: sends 3-second audio chunks for incremental transcription
   // ═══════════════════════════════════════════════════════════════════════════
+  const sendChunkToServer = useCallback(async (blob: Blob, lang: string) => {
+    if (blob.size < 100 || isSendingRef.current) return
+    isSendingRef.current = true
+    try {
+      const formData = new FormData()
+      formData.append('audio', blob, 'recording.webm')
+      formData.append('lang', lang)
+
+      const res = await fetch(`${API_BASE}/api/stt/transcribe`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) throw new Error(`STT failed: ${res.status}`)
+
+      const data = await res.json()
+      const text = data.text?.trim() ?? ''
+
+      if (text) {
+        transcriptRef.current = (transcriptRef.current + ' ' + text).trim()
+        setTranscript(transcriptRef.current)
+        // Clear interim since we got real text
+        setInterimTranscript('')
+      }
+    } catch (err) {
+      console.warn('[STT] Server transcription chunk failed:', err)
+    } finally {
+      isSendingRef.current = false
+    }
+  }, [])
+
   const startMediaRecorder = useCallback(async (lang = 'en-US') => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -207,48 +307,48 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         stream.getTracks().forEach(t => t.stop())
         mediaStreamRef.current = null
 
-        const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || 'audio/webm' })
-        audioChunksRef.current = []
-
-        if (blob.size < 100) {
-          setIsListening(false)
-          return
+        // Clear the chunk polling timer
+        if (chunkTimerRef.current) {
+          clearInterval(chunkTimerRef.current)
+          chunkTimerRef.current = null
         }
 
-        // Show "processing" state
-        setInterimTranscript('Processing...')
-
-        try {
-          const formData = new FormData()
-          formData.append('audio', blob, 'recording.webm')
-          formData.append('lang', lang)
-
-          const res = await fetch(`${API_BASE}/api/stt/transcribe`, {
-            method: 'POST',
-            body: formData,
-          })
-
-          if (!res.ok) throw new Error(`STT failed: ${res.status}`)
-
-          const data = await res.json()
-          const text = data.text?.trim() ?? ''
-
-          if (text) {
-            transcriptRef.current = (transcriptRef.current + ' ' + text).trim()
-            setTranscript(transcriptRef.current)
+        // Send any remaining audio
+        if (audioChunksRef.current.length > 0) {
+          const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || 'audio/webm' })
+          audioChunksRef.current = []
+          if (blob.size >= 100) {
+            setInterimTranscript('Processing...')
+            await sendChunkToServer(blob, lang)
           }
-        } catch (err) {
-          console.warn('[STT] Server transcription failed:', err)
-          setPermissionError('Voice recognition failed. Please try again.')
-        } finally {
-          setInterimTranscript('')
-          setIsListening(false)
         }
+
+        setInterimTranscript('')
+        setIsListening(false)
       }
 
       mr.start(250)  // collect data every 250ms
       setIsListening(true)
       setPermissionError('')
+
+      // Show that we're listening (pulsing indicator)
+      setInterimTranscript('🎙️')
+
+      // ── Progressive chunking: every 3 seconds, harvest accumulated audio
+      //    and send it to the server for incremental transcription.
+      //    This gives near-real-time feedback even without browser SR.
+      chunkTimerRef.current = setInterval(() => {
+        if (audioChunksRef.current.length === 0) return
+        if (mr.state !== 'recording') return
+
+        const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || 'audio/webm' })
+        audioChunksRef.current = []
+
+        // Give visual feedback that we're processing
+        setInterimTranscript('🎙️ listening...')
+
+        sendChunkToServer(blob, lang)
+      }, 3000)
 
     } catch (err: any) {
       console.warn('[STT] MediaRecorder start failed:', err)
@@ -263,15 +363,15 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       }
       setIsListening(false)
     }
-  }, []) // eslint-disable-line
+  }, [sendChunkToServer]) // eslint-disable-line
 
   const stopMediaRecorder = useCallback(() => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current)
-      silenceTimerRef.current = null
+    if (chunkTimerRef.current) {
+      clearInterval(chunkTimerRef.current)
+      chunkTimerRef.current = null
     }
     if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop()  // → triggers onstop → server STT
+      mediaRecorderRef.current.stop()  // → triggers onstop → final chunk → server STT
     } else {
       setIsListening(false)
     }
@@ -287,11 +387,10 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     if (hasBrowserSR) {
       if (shouldKeepRef.current) return  // already running
       setPermissionError('')
-      if (!useNonContinuous) {
-        setTranscript('')
-        setInterimTranscript('')
-        transcriptRef.current = ''
-      }
+      // Always reset transcript on new session start
+      setTranscript('')
+      setInterimTranscript('')
+      transcriptRef.current = ''
       shouldKeepRef.current = true
       startBrowserSession(lang)
       return
@@ -307,6 +406,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const stopListening = useCallback(() => {
     if (hasBrowserSR) {
       shouldKeepRef.current = false
+      autoRestartRef.current = false
       setIsListening(false)
       setInterimTranscript('')
       if (recognitionRef.current) {

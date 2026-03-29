@@ -1445,7 +1445,7 @@ export default function BookReader() {
                   mic.permissionError ? 'mic-error' : ''
                 }`}
                 onClick={toggleMic}
-                title={mic.isListening ? 'Stop reading' : isIOS ? 'Tap each time you speak' : 'Tap to read aloud'}
+                title={mic.isListening ? 'Stop reading' : 'Tap to read aloud'}
               >
                 {mic.isListening ? (
                   /* Stop square — tap to end this session */
@@ -1475,7 +1475,6 @@ export default function BookReader() {
               }}>
                 {mic.isListening ? 'Listening…'
                  : mic.permissionError ? '🔒 Allow mic'
-                 : isIOS ? 'Tap & speak'
                  : 'Read Aloud'}
               </span>
               {mic.permissionError && (
@@ -1483,16 +1482,10 @@ export default function BookReader() {
                   {isIOS ? 'Settings → Safari → Mic' : 'Tap 🔒 → Site Settings → Mic'}
                 </span>
               )}
-              {/* Chrome on iOS — no SpeechRecognition support at all */}
-              {isIOSChrome && !mic.isSupported && !mic.permissionError && (
-                <span style={{ fontSize: '9px', color: '#fbbf24', textAlign: 'center', maxWidth: '90px', lineHeight: 1.4, marginTop: 2 }}>
-                  🧭 Open in Safari
-                </span>
-              )}
-              {/* iOS hint — shown when not listening and no error, to explain tap-per-phrase model */}
-              {isIOS && !mic.isListening && !mic.permissionError && mic.transcript && (
-                <span style={{ fontSize: '9px', color: 'rgba(250,204,21,0.8)', textAlign: 'center', maxWidth: '80px', lineHeight: 1.3 }}>
-                  Tap again to continue
+              {/* Chrome on iOS — uses server-side STT fallback, works but slightly slower */}
+              {isIOSChrome && !mic.isListening && !mic.permissionError && (
+                <span style={{ fontSize: '9px', color: '#a7f3d0', textAlign: 'center', maxWidth: '100px', lineHeight: 1.4, marginTop: 2 }}>
+                  🎤 Voice ready
                 </span>
               )}
             </div>
