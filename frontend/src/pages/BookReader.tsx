@@ -164,25 +164,41 @@ export default function BookReader() {
   const [micPerm, setMicPerm] = useState<'prompt' | 'granted' | 'denied'>('prompt')
 
   // Check current permission state on mount (no dialog shown)
+  // NOTE: navigator.permissions is NOT supported on iOS Safari — fall back to 'granted'
+  // so the mic button is immediately accessible without requiring a banner tap.
   useEffect(() => {
-    if (!navigator.permissions) return
+    if (!navigator.permissions) {
+      // iOS Safari / older browsers — assume 'prompt' but don't block the mic button.
+      // The first tap on toggleMic will trigger the browser's own permission dialog.
+      setMicPerm('prompt')
+      return
+    }
     navigator.permissions.query({ name: 'microphone' as PermissionName })
       .then(status => {
         setMicPerm(status.state as 'prompt' | 'granted' | 'denied')
         status.onchange = () => setMicPerm(status.state as 'prompt' | 'granted' | 'denied')
       })
-      .catch(() => { /* Permissions API not available */ })
+      .catch(() => {
+        // Permissions API threw (some Android WebViews) — don't block the mic
+        setMicPerm('prompt')
+      })
   }, [])
 
   // Called when student taps the "Enable Microphone" banner — triggers native OS dialog
-  const handleRequestMicPerm = () => {
-    if (!navigator.mediaDevices?.getUserMedia) return
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(stream => {
-        stream.getTracks().forEach(t => t.stop())
-        setMicPerm('granted')
-      })
-      .catch(() => setMicPerm('denied'))
+  // MUST be async so we can await getUserMedia directly inside the user-gesture handler.
+  // On iOS Safari, any code inside .then() is no longer in the gesture chain.
+  const handleRequestMicPerm = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicPerm('granted')  // no API = probably desktop, just allow
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(t => t.stop())
+      setMicPerm('granted')
+    } catch {
+      setMicPerm('denied')
+    }
   }
 
   // ── Comprehension-page voice dictation ───────────────────────────────────
@@ -696,10 +712,7 @@ export default function BookReader() {
       mic.stopListening()
       // Stop audio recording (non-blocking)
       recorder.stopRecording().then(result => {
-        if (result) {
-          // Store the blob temporarily so handleNextPage can save it
-          pendingAudioRef.current = result
-        }
+        if (result) pendingAudioRef.current = result
       })
     } else {
       tts.stop()
@@ -708,18 +721,24 @@ export default function BookReader() {
       wasReadingRef.current = false
       pendingAudioRef.current = null
       setWordStatuses(pageWordsRef.current.map(() => 'idle'))
-      // Start audio recording alongside speech recognition
-      // getUserMedia reuses permission already granted to SpeechRecognition
+
+      // ── CRITICAL: startListening() MUST be called FIRST, synchronously,
+      // inside the click handler. Any async work before it (getUserMedia .then)
+      // breaks the user-gesture permission chain on iOS Safari and Android Chrome.
+      mic.startListening()
+      sfx.playClick()
+
+      // Update micPerm so the banner dismisses after first successful use
+      if (micPerm === 'prompt') setMicPerm('granted')
+
+      // Start audio recording in parallel — this can be async, it's not permission-gated
       navigator.mediaDevices?.getUserMedia({ audio: true })
         .then(stream => {
-          // Stop any previous stream tracks
           mediaStreamRef.current?.getTracks().forEach(t => t.stop())
           mediaStreamRef.current = stream
           recorder.startRecording(stream)
         })
         .catch(() => { /* mic permission already handled by SpeechRecognition */ })
-      mic.startListening()   // sync — triggers browser permission dialog
-      sfx.playClick()
     }
   }
 
