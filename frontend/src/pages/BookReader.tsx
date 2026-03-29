@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 const isIOS = /iPad|iPhone|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '') && !(window as any).MSStream
+// Chrome on iOS uses WKWebView but blocks SpeechRecognition — only Safari works
+const isIOSChrome = isIOS && /CriOS/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { storiesApi, progressApi, rewardsApi, readingLogsApi } from '../services/api'
@@ -157,6 +159,16 @@ export default function BookReader() {
   const mic = useSpeechRecognition()
   const sfx = useSoundEffects()
   const recorder = useAudioRecorder()
+
+  // Map story language name → BCP-47 locale for speech recognition & TTS
+  const storyLang = useMemo(() => {
+    const map: Record<string, string> = {
+      english: 'en-US', spanish: 'es-ES', french: 'fr-FR',
+      portuguese: 'pt-BR', german: 'de-DE', italian: 'it-IT',
+      mandarin: 'zh-CN', japanese: 'ja-JP', arabic: 'ar-SA',
+    }
+    return map[(story?.language ?? 'english').toLowerCase()] ?? 'en-US'
+  }, [story?.language])
 
   // Shared MediaStream for both SpeechRecognition and MediaRecorder
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -432,7 +444,7 @@ export default function BookReader() {
     }
     tts.stop()
     mic.resetTranscript()
-    mic.startListening()
+    mic.startListening(storyLang)
   }, [mic, tts])
 
   // Called when student wants to hear the word again
@@ -731,7 +743,7 @@ export default function BookReader() {
       // ── CRITICAL: startListening() MUST be called FIRST, synchronously,
       // inside the click handler. Any async work before it (getUserMedia .then)
       // breaks the user-gesture permission chain on iOS Safari and Android Chrome.
-      mic.startListening()
+      mic.startListening(storyLang)
       sfx.playClick()
 
       // Update micPerm so the banner dismisses after first successful use
@@ -1397,7 +1409,7 @@ export default function BookReader() {
                         sfx.playClick(); mic.resetTranscript()
                         accTranscriptRef.current = ''; wasReadingRef.current = false
                         setWordStatuses(pageWordsRef.current.map(() => 'idle'))
-                        mic.startListening()
+                        mic.startListening(storyLang)
                       }} style={{marginLeft:'auto',background:'#f1daff',border:'none',borderRadius:999,padding:'5px 12px',color:'#702ae1',fontWeight:700,cursor:'pointer',fontSize:'0.8rem'}}>
                         🔄 Try Again
                       </button>
@@ -1469,6 +1481,12 @@ export default function BookReader() {
               {mic.permissionError && (
                 <span style={{ fontSize: '9px', color: '#fca5a5', textAlign: 'center', maxWidth: '90px', lineHeight: 1.4, marginTop: 2 }}>
                   {isIOS ? 'Settings → Safari → Mic' : 'Tap 🔒 → Site Settings → Mic'}
+                </span>
+              )}
+              {/* Chrome on iOS — no SpeechRecognition support at all */}
+              {isIOSChrome && !mic.isSupported && !mic.permissionError && (
+                <span style={{ fontSize: '9px', color: '#fbbf24', textAlign: 'center', maxWidth: '90px', lineHeight: 1.4, marginTop: 2 }}>
+                  🧭 Open in Safari
                 </span>
               )}
               {/* iOS hint — shown when not listening and no error, to explain tap-per-phrase model */}

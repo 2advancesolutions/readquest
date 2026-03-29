@@ -61,6 +61,7 @@ export interface Story {
   title: string;
   grade_level: number;
   theme: string;
+  language?: string;           // e.g. 'english', 'spanish', 'french', etc.
   cover_media_url?: string;
   pages: StoryPage[];
   quiz_questions: QuizQuestion[];
