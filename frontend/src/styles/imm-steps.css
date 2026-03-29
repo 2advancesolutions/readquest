@@ -619,3 +619,103 @@
   .gscreen-steps { gap: 8px; }
   .gscreen-step { padding: 6px 12px; font-size: 0.72rem; }
 }
+
+/* ══ Step 1 — Character Creation Full-Screen Loader ══════════════════════ */
+.step1-char-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: linear-gradient(160deg, #08041a 0%, #130a2e 50%, #0c0520 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  border-radius: inherit;
+}
+
+/* Triple spinning portal rings */
+.step1-loader-rings {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.step1-loader-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 3px solid transparent;
+}
+.step1-loader-ring-1 {
+  width: 160px; height: 160px;
+  border-top-color: #c084fc;
+  border-right-color: rgba(192,132,252,0.3);
+  animation: loaderSpin 1.2s linear infinite;
+}
+.step1-loader-ring-2 {
+  width: 130px; height: 130px;
+  border-bottom-color: #7c3aed;
+  border-left-color: rgba(124,58,237,0.3);
+  animation: loaderSpin 0.9s linear infinite reverse;
+}
+.step1-loader-ring-3 {
+  width: 100px; height: 100px;
+  border-top-color: #f0abfc;
+  border-right-color: rgba(240,171,252,0.2);
+  animation: loaderSpin 1.5s linear infinite;
+}
+.step1-loader-center {
+  position: relative;
+  z-index: 2;
+  animation: loaderPulse 1.5s ease-in-out infinite;
+}
+@keyframes loaderSpin { to { transform: rotate(360deg); } }
+@keyframes loaderPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* "Creating Daffy Duck…" */
+.step1-loader-name {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: rgba(233, 221, 255, 0.9);
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+.step1-loader-charname {
+  background: linear-gradient(135deg, #c084fc, #f0abfc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Rotating status message */
+.step1-loader-msg {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(192, 132, 252, 0.7);
+  letter-spacing: 0.01em;
+  text-align: center;
+  min-height: 1.4em;
+}
+
+/* Bouncing progress dots */
+.step1-loader-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.step1-loader-dot {
+  width: 8px;
+  height: 8px;
+  background: #7c3aed;
+  border-radius: 50%;
+  animation: loaderDotBounce 1s ease-in-out infinite;
+}
+@keyframes loaderDotBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50% { transform: translateY(-10px); opacity: 1; background: #c084fc; }
+}

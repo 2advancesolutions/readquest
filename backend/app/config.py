@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SUPABASE_SERVICE_KEY: str = ""   # service_role key for Storage uploads
     SUPABASE_ANON_KEY: str = ""      # fallback anon key
+    FAL_AI: str = ""                 # fal.ai API key for image generation
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

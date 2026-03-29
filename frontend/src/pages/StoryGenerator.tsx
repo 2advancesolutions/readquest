@@ -100,14 +100,12 @@ const LANGUAGES = [
 ]
 
 const ART_STYLES = [
-  { id: 'cartoon',    label: 'Cartoon',     emoji: '🎨', desc: 'Fun 2D illustrated look' },
-  { id: 'pixar',      label: 'Pixar 3D',    emoji: '🦄', desc: 'Cinematic 3D animation' },
-  { id: 'real',       label: 'Realistic',   emoji: '📸', desc: 'Lifelike photos & scenes' },
-  { id: 'watercolor', label: 'Watercolor',  emoji: '🖌️', desc: 'Soft painted brushstrokes' },
-  { id: 'manga',      label: 'Manga/Anime', emoji: '⚡', desc: 'Japanese anime style' },
-  { id: 'sketch',     label: 'Sketch',      emoji: '✏️', desc: 'Hand-drawn pencil art' },
-  { id: 'storybook',  label: 'Classic Book',emoji: '📖', desc: 'Golden-age storybook feel' },
-  { id: 'neon',       label: 'Neon Glow',   emoji: '✨', desc: 'Electric glow & dark magic' },
+  { id: 'cartoon',   label: 'Cartoon',           emoji: '🎨', desc: 'Fun 2D illustrated look' },
+  { id: 'cinematic', label: 'Cinematic',          emoji: '🎬', desc: 'A cinematic action sequence' },
+  { id: 'pixar',     label: 'Pixar / Animated',   emoji: '🦄', desc: 'A stylized Pixar-like 3D animation' },
+  { id: 'real',      label: 'Realistic',          emoji: '📸', desc: 'A gritty, realistic version' },
+  { id: 'comic',     label: 'Comic Book Style',   emoji: '💥', desc: 'A dynamic comic-book-inspired animation' },
+  { id: 'epic',      label: 'Epic',               emoji: '⚡', desc: 'A blockbuster trailer-style sequence' },
 ]
 
 const THEME_OPTIONS = [
@@ -491,9 +489,11 @@ export default function StoryGenerator() {
     const blocked = validateContent(characterInput)
     if (blocked) { setAnalyzeError(blocked); return }
     setAnalyzeError(''); setCharLoading(true); setCharacterData(null)
-    setSceneDescription(''); setStep('scene')
+    setSceneDescription('')
+    // Stay on Step 1 — show the full-screen loader while character generates.
+    // Only advance to Step 2 AFTER the API returns.
     let msgIdx = 0
-    charMsgIntervalRef.current = setInterval(() => { msgIdx = (msgIdx + 1) % CHAR_LOADING_MSGS.length; setCharLoadingMsg(CHAR_LOADING_MSGS[msgIdx]) }, 5000)
+    charMsgIntervalRef.current = setInterval(() => { msgIdx = (msgIdx + 1) % CHAR_LOADING_MSGS.length; setCharLoadingMsg(CHAR_LOADING_MSGS[msgIdx]) }, 3000)
     try {
       const res = await storiesApi.analyzeCharacter(characterInput.trim())
       const d = res.data
@@ -515,6 +515,8 @@ export default function StoryGenerator() {
     } finally {
       if (charMsgIntervalRef.current) clearInterval(charMsgIntervalRef.current)
       setCharLoading(false)
+      // Now that character is ready, navigate to Step 2
+      setStep('scene')
     }
   }
 
@@ -824,14 +826,6 @@ export default function StoryGenerator() {
                           const val = e.target.value
                           setCharacterInput(val)
                           if (analyzeError) setAnalyzeError('')
-                          // Clear any pending debounce
-                          if (charDebounceRef.current) clearTimeout(charDebounceRef.current)
-                          // Auto-call API 1.2s after user stops typing (≥2 chars)
-                          if (val.trim().length >= 2) {
-                            charDebounceRef.current = setTimeout(() => {
-                              handleAnalyzeCharacter()
-                            }, 1200)
-                          }
                         }}
                         onKeyDown={e => e.key === 'Enter' && handleAnalyzeCharacter()}
                         autoFocus
@@ -906,6 +900,51 @@ export default function StoryGenerator() {
 
                 {/* Welcome voice — plays once on load, references the hero's name */}
                 <WelcomeVoice charName={heroChar.name} />
+
+                {/* ── Full-screen character creation loader ── */}
+                {charLoading && (
+                  <motion.div
+                    key="char-loader"
+                    className="step1-char-loader"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    {/* Spinning magic portal rings */}
+                    <div className="step1-loader-rings">
+                      <div className="step1-loader-ring step1-loader-ring-1" />
+                      <div className="step1-loader-ring step1-loader-ring-2" />
+                      <div className="step1-loader-ring step1-loader-ring-3" />
+                      <div className="step1-loader-center">
+                        <span style={{ fontSize: '2.8rem' }}>🌟</span>
+                      </div>
+                    </div>
+
+                    {/* Character name */}
+                    <div className="step1-loader-name">
+                      Creating <span className="step1-loader-charname">{characterInput}</span>…
+                    </div>
+
+                    {/* Rotating status messages */}
+                    <motion.div
+                      key={charLoadingMsg}
+                      className="step1-loader-msg"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.4 }}
+                    >
+                      {charLoadingMsg}
+                    </motion.div>
+
+                    {/* Progress dots */}
+                    <div className="step1-loader-dots">
+                      {[0, 1, 2, 3, 4].map(i => (
+                        <div key={i} className="step1-loader-dot" style={{ animationDelay: `${i * 0.18}s` }} />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
 
               </motion.div>
             )}
@@ -1080,28 +1119,7 @@ export default function StoryGenerator() {
 
                 {/* ── CENTER: Character Stage — invite prompt until Generate is clicked ── */}
                 <AnimatePresence>
-                  {portraitLoading ? (
-                    // Portrait is generating — show loader in center stage
-                    <motion.div key="char-stage-loading" className="scene2-center-stage"
-                      initial={{ opacity: 0, scale: 0.85, y: 20 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.85, y: 20 }}
-                      transition={{ duration: 0.4 }}>
-                      <div className="scene2-portrait-frame">
-                        <div className="scene2-char-inline-loader">
-                          <div className="scene2-char-loader-ring" />
-                          <div className="scene2-char-loader-ring scene2-char-loader-ring-2" />
-                          <div className="scene2-char-loader-core" />
-                          <div className="scene2-char-loader-text">
-                            <span className="scene2-char-loader-label">✦ Painting your scene…</span>
-                            <span className="scene2-char-loader-sub">
-                              {characterData?.character_name} · {THEME_OPTIONS.find(t => t.id === selectedTheme)?.label}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ) : characterData?.character_media_url ? (
+                  {characterData?.character_media_url ? (
                     // Portrait ready — show it blended into background
                     <motion.div key="char-stage" className="scene2-center-stage"
                       initial={{ opacity: 0, scale: 0.85, y: 20 }}
@@ -1132,12 +1150,7 @@ export default function StoryGenerator() {
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4 }}>
                       <div className="scene2-invite-orb">
-                        {characterData?.character_media_url ? (
-                          <img src={characterData.character_media_url} alt={characterData.character_name}
-                            className="scene2-invite-char-img" />
-                        ) : (
-                          <span className="scene2-invite-emoji">🌍</span>
-                        )}
+                        <span className="scene2-invite-emoji">🌍</span>
                       </div>
                       <div className="scene2-invite-text">
                         <span className="scene2-invite-hero">{characterData?.character_name ?? 'Your Hero'}</span>

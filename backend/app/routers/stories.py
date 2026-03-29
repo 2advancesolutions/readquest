@@ -61,119 +61,65 @@ class StoryResponse(BaseModel):
 
 @router.post("/analyze-character")
 async def analyze_character(req: AnalyzeCharacterRequest):
-    """Use Gemini SDK directly to identify character + generate portrait — no OpenRouter."""
-    import json
-    from app.agents.content_agent import _call_gemini_text
+    """Generate a character portrait using FLUX Dev only — no Gemini/LLM text step."""
+    from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes
 
-    # ── Task 1: Gemini text — extract visual description ──────────────────────
-    async def analyze():
-        prompt = f"""You are a creative children's story assistant helping generate an ORIGINAL illustration.
+    # Build a rich image prompt optimized for rembg background removal.
+    # This mirrors the structure of the prompt Gemini previously generated:
+    # plain white background + clear character edges + flat colors = clean transparent cutout.
+    char = req.character.strip()
+    image_prompt = (
+        f"An original children's book cartoon illustration of a character inspired by {char}. "
+        f"Full body pose, arms slightly out, character ISOLATED and CENTERED on a PURE WHITE background. "
+        f"Clean bold cartoon line art, bright flat cel-shaded colors, HARD black outlines with no feathering, "
+        f"NO drop shadows, NO gradient background, NO texture behind the character, NO scenery, "
+        f"NO other characters, NO text, NO logos, NO watermarks. "
+        f"The character must be the ONLY element in the image standing alone on solid white. "
+        f"Kid-friendly, high quality, sticker-style illustration."
+    )
 
-The child's favorite character is: "{req.character}"
+    # Generate portrait with FLUX Dev
+    raw_url = await _generate_image_nano_banana2(image_prompt)
+    portrait_url = raw_url
 
-Your job:
-1. Identify the character
-2. Describe exactly what they LOOK LIKE in detail (colors, shape, clothing, accessories)
-3. Build an image generation prompt that describes the character visually WITHOUT using their copyrighted name
-
-Respond ONLY with valid JSON:
-{{
-  "character_name": "{req.character}",
-  "universe": "which franchise/universe (e.g. Nickelodeon, Disney, Pixar, etc.)",
-  "description": "1-sentence kid-friendly description of {req.character}",
-  "visual_description": "detailed visual description: body shape, skin/fur color, eye color, clothing colors and style, accessories, hair — enough to draw them from scratch",
-  "image_prompt": "An original children's book cartoon illustration of [paste visual_description here as a fresh character description, e.g. 'a small round pink pig girl with a big round head, tiny pink ears, wearing a bright red dress and black shoes, friendly smile, simple flat cartoon style'], full body pose, arms slightly out, centered on a PLAIN WHITE background, clean cartoon line art, bright flat colors, no shadows, no gradients, no text, no logos, no watermarks, kid-friendly"
-}}
-
-CRITICAL: The image_prompt must describe the character VISUALLY (colors, shape, clothing) — do NOT use their name or franchise name inside the image_prompt field.
-CRITICAL: character_name must be EXACTLY "{req.character}"."""
-        raw = await _call_gemini_text(
-            system="You are a creative children's assistant. Reply with valid JSON only.",
-            user=prompt,
-            temperature=0.7,
-        )
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"): raw = raw[4:]
-        return json.loads(raw.strip())
-
-    # ── Task 2: Generate character portrait with transparent background ────────
-    async def generate_portrait(image_prompt: str) -> Optional[str]:
-        from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes
-        import httpx as _httpx
-
-        # Step 1: generate the raw portrait image
-        raw_url = await _generate_image_nano_banana2(image_prompt)
-        if not raw_url:
-            return None
-
-        # Step 2: fetch the raw bytes (from Supabase URL or local path)
+    if raw_url:
+        # Fetch bytes and remove background → transparent PNG
         try:
+            import httpx as _httpx
             if raw_url.startswith("http"):
                 async with _httpx.AsyncClient(timeout=30) as client:
                     resp = await client.get(raw_url)
                     img_bytes = resp.content
             else:
-                # local static file path
                 from pathlib import Path
                 img_bytes = Path(raw_url.lstrip("/")).read_bytes()
+
+            transparent_bytes = await remove_background_from_bytes(img_bytes)
+
+            from app.agents.content_agent import _upload_to_supabase
+            import uuid as _uuid2
+            filename = f"portrait_{_uuid2.uuid4().hex}.png"
+            public_url = await _upload_to_supabase(transparent_bytes, filename)
+            if public_url:
+                portrait_url = public_url
+            else:
+                from pathlib import Path as _Path
+                _Path("static/images").mkdir(parents=True, exist_ok=True)
+                _Path(f"static/images/{filename}").write_bytes(transparent_bytes)
+                portrait_url = f"http://localhost:8000/static/images/{filename}"
         except Exception as e:
-            print(f"[generate_portrait] Could not fetch raw bytes: {e}")
-            return raw_url  # return as-is if we can't fetch
+            print(f"[analyze-character] Background removal failed (using raw): {e}")
 
-        # Step 3: remove background → transparent PNG
-        transparent_bytes = await remove_background_from_bytes(img_bytes)
-
-        # Step 4: re-upload the transparent version
-        from app.agents.content_agent import _upload_to_supabase
-        import uuid as _uuid2
-        filename = f"portrait_{_uuid2.uuid4().hex}.png"
-        public_url = await _upload_to_supabase(transparent_bytes, filename)
-        if public_url:
-            return public_url
-
-        # Fallback: save locally
-        from pathlib import Path as _Path
-        _Path("static/images").mkdir(parents=True, exist_ok=True)
-        _Path(f"static/images/{filename}").write_bytes(transparent_bytes)
-        return f"/static/images/{filename}"
-
-
-    # Run both in parallel: LLM analysis + image generation
-    try:
-        char_data = await analyze()
-    except Exception as e:
-        print(f"[analyze-character] LLM failed: {e}")
-        char_data = {
-            "character_name": req.character,
-            "universe": "Original",
-            "description": f"The amazing {req.character} — ready for a great adventure!",
-            "image_prompt": (
-                f"An original children's book cartoon illustration of a beloved children's cartoon character "
-                f"inspired by {req.character}, full body pose, arms slightly out, centered, "
-                "PLAIN WHITE background, clean cartoon line art, bright flat colors, "
-                "no shadows, no gradients, no text, no logos, kid-friendly"
-            ),
-        }
-
-    image_prompt = char_data.get(
-        "image_prompt",
-        f"An original children's book cartoon illustration of a beloved children's cartoon character "
-        f"inspired by {char_data['character_name']}, full body pose, arms slightly out, centered, "
-        "PLAIN WHITE background, clean cartoon line art, bright flat colors, "
-        "no shadows, no gradients, no text, no logos, kid-friendly"
-    )
-
-    portrait_url = await generate_portrait(image_prompt)
-    print(f"[analyze-character] portrait saved: {portrait_url}")
+    print(f"[analyze-character] portrait ready: {portrait_url}")
 
     return {
-        "character_name": req.character,  # always use the exact name the child typed
-        "universe": char_data.get("universe", "Original"),
-        "description": char_data.get("description", f"The amazing {req.character}!"),
+        "character_name": char,
+        "universe": "Adventure",
+        "description": f"{char} — ready for an epic adventure!",
         "character_image_url": portrait_url,
         "scenes": [],
     }
+
 
 
 @router.post("/generate")

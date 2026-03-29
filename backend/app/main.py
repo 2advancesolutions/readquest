@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.routers import students, stories, quizzes, rewards, tts, parents
 from app.routers import fluency, vocabulary, assignments, quest, spelling, exams
+from app.routers import movie_studio
 import app.database as db
 
 app = FastAPI(
@@ -77,3 +78,4 @@ app.include_router(assignments.router, prefix="/api/assignments", tags=["assignm
 app.include_router(quest.router, prefix="/api/quest", tags=["quest"])
 app.include_router(spelling.router, prefix="/api", tags=["spelling"])
 app.include_router(exams.router, prefix="/api/exams", tags=["exams"])
+app.include_router(movie_studio.router, prefix="/api/movie-studio", tags=["movie-studio"])

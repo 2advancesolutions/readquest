@@ -24,6 +24,7 @@ import ReadingExams from './pages/ReadingExams'
 import GamesArcade from './pages/GamesArcade'
 import GamePlay from './pages/GamePlay'
 import Leaderboard from './pages/Leaderboard'
+import MovieStudio from './pages/MovieStudio'
 import XpBadge from './components/XpBadge'
 import MobileNav from './components/MobileNav'
 
@@ -114,6 +115,7 @@ function App() {
         <Route path="/games" element={session ? <GamesArcade /> : <Navigate to="/login" replace />} />
         <Route path="/games/:gameId" element={session ? <GamePlay /> : <Navigate to="/login" replace />} />
         <Route path="/leaderboard" element={session ? <Leaderboard /> : <Navigate to="/login" replace />} />
+        <Route path="/movie-studio" element={session ? <MovieStudio /> : <Navigate to="/login" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

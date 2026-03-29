@@ -66,7 +66,7 @@ class ContentState(TypedDict):
     story_raw: str
     story_parsed: dict
     image_prompts: list
-    image_urls: list        # actual Imagen 2 generated image URLs
+    image_urls: list        # fal.ai FLUX.1 [dev] generated image URLs
     quiz_questions: list
     quality_score: float
     retry_count: int
@@ -271,133 +271,158 @@ async def parse_story_node(state: ContentState) -> ContentState:
 
 
 async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
-    """Generate a per-page illustration using gemini-2.5-flash-image
-    via the google-genai SDK with GEMINI_API_KEY.
+    """Generate a per-page illustration using fal.ai FLUX.1 [dev].
 
-    Returns the local /static/images/<uuid>.png path, or None on failure.
+    Uses the higher-quality FLUX Dev model (28 steps, guidance_scale 3.5)
+    for significantly better character likeness — Spider-Man, Disney, Pixar, etc.
+
+    Returns a Supabase public URL or local /static/images/<uuid>.png path, or None on failure.
     """
-    from google import genai as _genai
-    from google.genai import types as _gtypes
+    import os
 
-    api_key = settings.GEMINI_API_KEY
-    if not api_key:
-        print("[Gemini-Image] No GEMINI_API_KEY — skipping")
+    fal_key = settings.FAL_AI or os.environ.get("FAL_AI", "")
+    if not fal_key:
+        print("[fal.ai] No FAL_AI key — skipping image generation")
         return None
 
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── Sanitize the story prompt so it won't trigger safety filters ──────────
-    # Remove action/combat/villain words that Gemini's image model blocks
-    _BLOCK_WORDS = [
-        "fight", "fought", "battle", "attack", "shoot", "shot", "laser", "beam",
-        "stomp", "crash", "explosion", "villain", "evil", "robot", "gun", "weapon",
-        "steal", "stole", "stolen", "heist", "rob", "crime", "danger", "dark",
-        "destroy", "kill", "punch", "kick", "blow up", "blast", "smash", "threat",
-        "enemy", "enemies", "spy", "trap", "escape", "chaos", "terror",
-    ]
-    safe_scene = prompt[:300]
-    for w in _BLOCK_WORDS:
-        import re as _re
-        safe_scene = _re.sub(rf'\b{w}\w*\b', 'adventure', safe_scene, flags=_re.IGNORECASE)
-
-
-    image_prompt = safe_scene
-
-    # Three varied safe fallbacks in case the sanitized prompt still triggers filters
-    _SAFE_FALLBACKS = [
-        "A clean 2D cartoon illustration of a colorful futuristic city with friendly round robots, glowing buildings, rainbow sky, cheerful warm lighting, wholesome and bright, safe for kids, no text.",
-        "A clean 2D cartoon illustration of a magical forest with friendly animals, sparkling fireflies, rainbow, colorful flowers, cheerful and bright, safe for kids, no text.",
-        "A clean 2D cartoon illustration of a sunny friendly neighborhood with colorful houses, fluffy clouds, smiling sun and butterflies, warm and happy, safe for kids, no text.",
-    ]
+    # Truncate very long prompts (fal.ai handles most content fine, no aggressive filters)
+    image_prompt = prompt[:500]
 
     try:
-        client = _genai.Client(api_key=api_key)
+        import fal_client
+        # Set the key via env var (fal_client reads FAL_KEY or FAL_KEY_ID:FAL_KEY_SECRET)
+        os.environ["FAL_KEY"] = fal_key
 
-        def _call(p: str):
-            return client.models.generate_content(
-                model="gemini-2.5-flash-image",
-                contents=p,
-                config=_gtypes.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                ),
-            )
+        print(f"[fal.ai] Generating image with FLUX.1 [dev] (high-quality)...")
+        result = await asyncio.to_thread(
+            fal_client.subscribe,
+            "fal-ai/flux/dev",
+            arguments={
+                "prompt": image_prompt,
+                "image_size": "square_hd",       # 1024×1024
+                "num_inference_steps": 28,        # dev default — much higher quality
+                "guidance_scale": 3.5,            # stronger prompt adherence for characters
+                "num_images": 1,
+                "enable_safety_checker": True,
+                "output_format": "png",           # lossless for Supabase upload
+            },
+        )
 
-        def _extract_image(response) -> Optional[bytes]:
-            """Return image bytes from response, or None if blocked/missing."""
-            if not response.candidates:
-                return None
-            candidate = response.candidates[0]
-            if not candidate.content or not candidate.content.parts:
-                reason = getattr(candidate, 'finish_reason', 'unknown')
-                print(f"[Gemini-Image] Blocked — finish_reason={reason}")
-                return None
-            for part in candidate.content.parts:
-                if part.inline_data and part.inline_data.data:
-                    return part.inline_data.data
+        # Extract the image URL from fal.ai response
+        images = result.get("images", [])
+        if not images:
+            print("[fal.ai] No images returned in response")
             return None
 
-        print(f"[Gemini-Image] Calling gemini-2.5-flash-image...")
-        response = await asyncio.to_thread(_call, image_prompt)
-        img_bytes = _extract_image(response)
+        fal_image_url = images[0].get("url")
+        if not fal_image_url:
+            print("[fal.ai] No URL in image response")
+            return None
 
-        # Try each fallback until one works
-        for i, fallback in enumerate(_SAFE_FALLBACKS):
-            if img_bytes is not None:
-                break
-            print(f"[Gemini-Image] Retrying with safe fallback #{i+1}...")
-            response = await asyncio.to_thread(_call, fallback)
-            img_bytes = _extract_image(response)
+        print(f"[fal.ai] Got image URL from fal.ai, downloading...")
 
-        if img_bytes:
-            filename = f"{uuid.uuid4().hex}.png"
-            # Try Supabase Storage first (persistent), fall back to local
-            public_url = await _upload_to_supabase(img_bytes, filename)
-            if public_url:
-                return public_url
-            # Fallback: local static dir (ephemeral in production, but better than nothing)
-            STATIC_DIR.mkdir(parents=True, exist_ok=True)
-            (STATIC_DIR / filename).write_bytes(img_bytes)
-            print(f"[Gemini-Image] Saved locally (no Supabase key): static/images/{filename} ({len(img_bytes)} bytes)")
-            return f"/static/images/{filename}"
+        # Download the image bytes from fal.ai's temporary URL
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(fal_image_url)
+            if resp.status_code != 200:
+                print(f"[fal.ai] Failed to download image: HTTP {resp.status_code}")
+                return None
+            img_bytes = resp.content
 
+        # Upload to Supabase Storage for persistence
+        filename = f"{uuid.uuid4().hex}.png"
+        public_url = await _upload_to_supabase(img_bytes, filename)
+        if public_url:
+            print(f"[fal.ai] ✅ Image uploaded to Supabase: {public_url}")
+            return public_url
 
-        print("[Gemini-Image] Could not generate image after all retries — skipping")
-        return None
+        # Fallback: save locally
+        STATIC_DIR.mkdir(parents=True, exist_ok=True)
+        (STATIC_DIR / filename).write_bytes(img_bytes)
+        print(f"[fal.ai] Saved locally (no Supabase key): static/images/{filename} ({len(img_bytes)} bytes)")
+        return f"/static/images/{filename}"
 
     except Exception as e:
-        err_str = str(e)
-        if "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
-            print(f"[Gemini-Image] ⚠️  QUOTA ERROR — check billing at https://aistudio.google.com/apikey")
-        else:
-            print(f"[Gemini-Image] Exception: {e}")
+        print(f"[fal.ai] Exception: {e}")
         return None
 
 
 async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
     """
-    Remove the background from image bytes using rembg (U2Net model).
-    Runs in a thread pool so the async event loop is never blocked.
-    Returns PNG bytes with a fully transparent background.
-    Falls back to the original bytes if rembg is unavailable or fails.
+    Remove the white background from image bytes using Pillow only.
+    Flood-fills from all 4 corners to identify background white pixels,
+    converts them to transparent — perfect for flat cartoon illustrations.
+    Returns PNG bytes with a transparent background.
+    Falls back to the original bytes if anything fails.
     """
     def _do_remove(data: bytes) -> bytes:
-        from rembg import remove as rembg_remove
         from PIL import Image
         import io
-        input_img = Image.open(io.BytesIO(data)).convert("RGBA")
-        output_img = rembg_remove(input_img)
+        import numpy as np
+
+        img = Image.open(io.BytesIO(data)).convert("RGBA")
+        arr = np.array(img)
+
+        # White-ish threshold — pixels where all RGB channels > 220 are "background"
+        r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
+        white_mask = (r > 220) & (g > 220) & (b > 220)
+
+        # Flood fill from all 4 corners to get ONLY connected white background
+        # (avoids removing white pixels that are part of the character)
+        from PIL import ImageDraw
+        h, w = arr.shape[:2]
+        flood_mask = np.zeros((h, w), dtype=bool)
+
+        # Use PIL's flood-fill by converting to L mode for speed
+        gray = img.convert("L")
+        gray_arr = np.array(gray)
+
+        def flood_from(start_y, start_x):
+            """BFS flood fill from corner through white pixels."""
+            if not white_mask[start_y, start_x]:
+                return
+            from collections import deque
+            q = deque()
+            q.append((start_y, start_x))
+            while q:
+                cy, cx = q.popleft()
+                if cy < 0 or cy >= h or cx < 0 or cx >= w:
+                    continue
+                if flood_mask[cy, cx] or not white_mask[cy, cx]:
+                    continue
+                flood_mask[cy, cx] = True
+                q.extend([(cy+1, cx), (cy-1, cx), (cy, cx+1), (cy, cx-1)])
+
+        flood_from(0, 0)
+        flood_from(0, w - 1)
+        flood_from(h - 1, 0)
+        flood_from(h - 1, w - 1)
+
+        # Make flooded pixels transparent
+        arr[flood_mask, 3] = 0
+
+        # Soft edge feathering — slightly fade near-white border pixels
+        near_white = (r > 200) & (g > 200) & (b > 200) & (~flood_mask)
+        brightness = (r[near_white].astype(float) + g[near_white].astype(float) + b[near_white].astype(float)) / 3.0
+        alpha_scale = np.clip((255.0 - brightness) / 35.0, 0.0, 1.0)
+        arr[near_white, 3] = (arr[near_white, 3] * alpha_scale).astype(np.uint8)
+
+        result_img = Image.fromarray(arr, "RGBA")
         buf = io.BytesIO()
-        output_img.save(buf, format="PNG")
+        result_img.save(buf, format="PNG")
         return buf.getvalue()
 
     try:
-        print("[rembg] Removing background from portrait…")
+        print("[bg-remove] Removing white background from portrait…")
         result = await asyncio.to_thread(_do_remove, img_bytes)
-        print(f"[rembg] Done — transparent PNG {len(result)} bytes")
+        print(f"[bg-remove] Done — transparent PNG {len(result)} bytes")
         return result
     except Exception as e:
-        print(f"[rembg] Failed (non-fatal, returning original): {e}")
+        print(f"[bg-remove] Failed (non-fatal, returning original): {e}")
         return img_bytes
+
 
 
 
@@ -411,6 +436,7 @@ async def image_prompt_node(state: ContentState) -> ContentState:
     # Character-first prompt templates — [{char}] is always the first/main object stated
     ART_STYLE_PROMPTS = {
         "cartoon": (
+            "Fun 2D illustrated look. "
             "A clean 2D cartoon children's book illustration. "
             "MAIN SUBJECT (prominently centered, clearly visible): [{char}]. "
             "Scene: [{scene}]. "
@@ -418,57 +444,50 @@ async def image_prompt_node(state: ContentState) -> ContentState:
             "minimal shading, smooth vector style, modern cartoon aesthetic, "
             "safe for kids, wholesome, no text, high resolution."
         ),
+        "cinematic": (
+            "A cinematic action sequence. "
+            "Epic wide-angle cinematic shot, dramatic lighting, film grain, letterbox framing. "
+            "MAIN SUBJECT (hero, large, dynamic pose, foreground): [{char}]. "
+            "Scene: [{scene}]. "
+            "Anamorphic lens flares, depth of field, motion blur, moody atmospheric haze, "
+            "Hollywood blockbuster color grade, photorealistic detail, "
+            "safe for kids, no text, 8k ultra quality."
+        ),
         "pixar": (
-            "A 3D Pixar-style children's book render. "
+            "A stylized Pixar-like 3D animation. "
+            "A 3D Pixar-style animated film render. "
             "MAIN CHARACTER (clearly visible, in focus, foreground): [{char}]. "
             "Scene: [{scene}]. "
             "Cinematic lighting, subsurface scattering, soft global illumination, "
             "depth of field, highly detailed textures, expressive character design, "
-            "studio-quality render, wholesome, safe for kids, no text, 8k."
+            "studio-quality 3D animation render, wholesome, safe for kids, no text, 8k."
         ),
         "real": (
-            "A photorealistic children's book image. "
+            "A gritty, realistic version. "
+            "A photorealistic high-fidelity image. "
             "MAIN CHARACTER (clearly depicted, foreground, large): [{char}]. "
             "Scene: [{scene}]. "
             "DSLR photography, 85mm lens, natural lighting, shallow depth of field, "
             "ultra realistic textures, sharp focus, cinematic composition, "
             "safe for kids, no text, 8k resolution."
         ),
-        "watercolor": (
-            "A watercolor children's book painting. "
-            "MAIN CHARACTER (prominently featured, full body): [{char}]. "
+        "comic": (
+            "A dynamic comic-book-inspired animation. "
+            "Bold comic book illustration with dramatic panel energy. "
+            "MAIN CHARACTER (action pose, center frame, bold outlines): [{char}]. "
             "Scene: [{scene}]. "
-            "Wet-on-wet technique, soft color bleeds, pastel washes, "
-            "textured paper grain, delicate brushstrokes, "
-            "light and airy composition, wholesome, safe for kids, no text."
+            "Strong ink outlines, halftone dot shading, vivid primary colors, "
+            "speed lines, Ben-Day dots, dynamic perspective, "
+            "Marvel/DC graphic novel style, safe for kids, no text."
         ),
-        "manga": (
-            "An anime-style children's book illustration. "
-            "MAIN CHARACTER (clearly visible, expressive, foreground): [{char}]. "
+        "epic": (
+            "A blockbuster trailer-style sequence. "
+            "Epic key art for a summer blockbuster movie poster. "
+            "MAIN CHARACTER (heroic stance, dramatic lighting, center stage): [{char}]. "
             "Scene: [{scene}]. "
-            "Clean ink linework, bold cel shading, expressive eyes, "
-            "dynamic pose, vibrant colors, studio anime quality, safe for kids, no text."
-        ),
-        "sketch": (
-            "A pencil sketch children's book illustration. "
-            "MAIN CHARACTER (central, clearly drawn, full body): [{char}]. "
-            "Scene: [{scene}]. "
-            "Fine linework, cross-hatching, sepia tones, "
-            "light watercolor wash, textured paper, wholesome, safe for kids, no text."
-        ),
-        "storybook": (
-            "A vintage 1950s children's storybook illustration. "
-            "MAIN CHARACTER (prominently featured, full body visible): [{char}]. "
-            "Scene: [{scene}]. "
-            "Gouache and ink, soft muted colors, nostalgic charm, "
-            "hand-painted textures, warm lighting, wholesome, safe for kids, no text."
-        ),
-        "neon": (
-            "A glowing neon children's book illustration. "
-            "MAIN CHARACTER (brightly glowing, center stage): [{char}]. "
-            "Scene: [{scene}]. "
-            "Luminous electric colors, vibrant neon highlights, glowing outlines, "
-            "dark background, soft bloom lighting, safe for kids, no text."
+            "Golden hour light, towering scale, lens flares, volumetric god rays, "
+            "cinematic color grading, high contrast, dramatic shadows, "
+            "movie poster quality, safe for kids, no text, 8k."
         ),
     }
     style_template = ART_STYLE_PROMPTS.get(art_style, ART_STYLE_PROMPTS['cartoon'])
@@ -484,13 +503,11 @@ async def image_prompt_node(state: ContentState) -> ContentState:
         prompts.append(prompt)
     state["image_prompts"] = prompts
 
-    # Generate page images sequentially with delay to avoid rate limits
+    # Generate page images sequentially via fal.ai
     image_urls = []
-    for i, p in enumerate(prompts):
+    for p in prompts:
         url = await _generate_image_nano_banana2(p)
         image_urls.append(url)
-        if i < len(prompts) - 1:
-            await asyncio.sleep(2)  # respect Gemini rate limits
     state["image_urls"] = image_urls
     return state
 
