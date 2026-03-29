@@ -240,6 +240,7 @@
 .book-page-image-panel {
   width: 100%;
   height: auto;
+  min-height: 180px;   /* always visible on mobile even without image */
   flex-shrink: 0;
   position: relative;
   background: linear-gradient(180deg, #edd3ff 0%, #f5e2ff 100%);

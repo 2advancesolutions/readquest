@@ -35,8 +35,10 @@ const isAndroid = (() => {
   return /Android/i.test(navigator.userAgent)
 })()
 
-// Use non-continuous mode on iOS and some Android browsers
-const useNonContinuous = isIOS
+// Use non-continuous mode on iOS AND Android Chrome — both require a user gesture
+// to restart recognition, so auto-restart after onend is silently blocked.
+// Single-shot (one tap = one session) is the only reliable pattern on mobile.
+const useNonContinuous = isIOS || isAndroid
 
 export function useSpeechRecognition(): SpeechRecognitionHook {
   const [isListening, setIsListening]             = useState(false)
@@ -146,7 +148,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         if (isIOS) {
           msg = 'Microphone blocked. Go to Settings → Safari → Microphone and set it to Allow.'
         } else if (isAndroid) {
-          msg = 'Microphone blocked. Tap the 🔒 lock in the address bar → Site Settings → Microphone → Allow.'
+          msg = 'Microphone blocked. Tap the 🔒 in the address bar → Site Settings → Microphone → Allow, then tap the mic button again.'
         } else {
           msg = 'Microphone blocked. Tap the 🔒 lock in the address bar and set Microphone to Allow.'
         }

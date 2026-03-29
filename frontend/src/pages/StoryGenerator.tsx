@@ -1195,23 +1195,6 @@ export default function StoryGenerator() {
                     </motion.p>
                   )}
 
-                  {/* ✨ Generate Scene button — fires the combined portrait call */}
-                  <motion.button
-                    className={`scene2-generate-btn ${
-                      !selectedTheme || portraitLoading ? 'scene2-generate-btn-disabled' : ''
-                    }`}
-                    onClick={handleGenerateScene}
-                    whileHover={selectedTheme && !portraitLoading ? { scale: 1.03, y: -2 } : {}}
-                    whileTap={selectedTheme && !portraitLoading ? { scale: 0.97 } : {}}
-                    type="button"
-                    disabled={!selectedTheme || portraitLoading}
-                  >
-                    {portraitLoading ? (
-                      <><span className="scene2-generate-spinner" />Generating…</>
-                    ) : (
-                      <>✨ Generate Scene</>
-                    )}
-                  </motion.button>
                 </div>
 
                 {/* ── CENTER: Character Stage — invite prompt until Generate is clicked ── */}
@@ -1374,74 +1357,6 @@ export default function StoryGenerator() {
                     ))}
                   </div>
                   {generateError && <p className="gen-error" style={{ marginTop: 16, textAlign: 'center' }}>{generateError}</p>}
-                </div>
-              </motion.div>
-            )}
-
-            {/* ── Generating screen ── */}
-            {step === 'generating' && (
-              <motion.div key="generating" className="gscreen-canvas"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-
-                {/* Ambient glow */}
-                <div className="gscreen-glow" />
-                {/* Twinkling stars */}
-                <div className="step1-stars" aria-hidden>
-                  {[...Array(30)].map((_, i) => (
-                    <div key={i} className="step1-star" style={{
-                      left: `${(i * 13 + 5) % 97}%`, top: `${(i * 19 + 7) % 91}%`,
-                      animationDelay: `${(i * 0.28) % 3}s`,
-                      width: `${(i % 3) + 1}px`, height: `${(i % 3) + 1}px`,
-                    }} />
-                  ))}
-                </div>
-
-                <div className="gscreen-content">
-
-                  {/* ── Wizard Fill Loader ── */}
-                  <WizardFillLoader />
-
-                  <div className="gscreen-title-row">
-                    <AnimatePresence mode="wait">
-                      <motion.h1 key={tipIndex} className="gscreen-title"
-                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.5 }}>
-                        {getCharacterTips(characterData?.character_name || characterInput || 'Your Hero')[tipIndex % getCharacterTips(characterData?.character_name || characterInput || 'Your Hero').length]}
-                      </motion.h1>
-                    </AnimatePresence>
-                    <p className="gscreen-sub">🌟 Keep reading — every page is a new adventure for <strong>{characterData?.character_name || characterInput || 'your hero'}</strong>!</p>
-                  </div>
-
-                  {/* ── Progress steps ── */}
-                  <div className="gscreen-steps">
-                    {[
-                      { label: 'Writing story',         emoji: '✍️' },
-                      { label: 'Creating illustrations', emoji: '🎨' },
-                      { label: 'Crafting quiz',          emoji: '🧠' },
-                    ].map((s, i) => {
-                      const charTips = getCharacterTips(characterData?.character_name || characterInput || 'Your Hero')
-                      const prog = tipIndex % charTips.length
-                      const done = prog > i * 2
-                      const active = !done && prog >= i * 2
-                      return (
-                        <div key={s.label} className={`gscreen-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
-                          <span className="gscreen-step-icon">{done ? '✓' : s.emoji}</span>
-                          <span className="gscreen-step-label">{s.label}</span>
-                          {active && <span className="gscreen-step-pulse" />}
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  {/* ── Sweeping progress bar ── */}
-                  <div className="gscreen-bar-wrap">
-                    <motion.div className="gscreen-bar"
-                      animate={{ width: ['5%', '90%'] }}
-                      transition={{ duration: 45, ease: 'easeOut' }}
-                    />
-                  </div>
-
                 </div>
               </motion.div>
             )}
