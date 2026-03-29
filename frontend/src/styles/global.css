@@ -126,3 +126,52 @@ img { max-width: 100%; display: block; }
   display: flex;
   flex-direction: column;
 }
+
+/* ── Global Mute Button ── */
+.global-mute-btn {
+  position: fixed;
+  bottom: 80px;          /* above mobile nav FAB */
+  left: 16px;
+  z-index: 9999;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(167,139,250,0.35);
+  background: rgba(15, 10, 40, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: rgba(167,139,250,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 0 0 rgba(167,139,250,0);
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.global-mute-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.global-mute-btn:hover {
+  border-color: rgba(167,139,250,0.7);
+  color: #c4b5fd;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 12px rgba(167,139,250,0.2);
+}
+/* When muted, tint red */
+.global-mute-btn[aria-label="Unmute AI voice"] {
+  color: rgba(248,113,113,0.85);
+  border-color: rgba(248,113,113,0.4);
+}
+.global-mute-btn[aria-label="Unmute AI voice"]:hover {
+  color: #f87171;
+  border-color: rgba(248,113,113,0.7);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 12px rgba(248,113,113,0.2);
+}
+/* On desktop, move it away from corner */
+@media (min-width: 769px) {
+  .global-mute-btn {
+    bottom: 24px;
+    left: 24px;
+  }
+}
+

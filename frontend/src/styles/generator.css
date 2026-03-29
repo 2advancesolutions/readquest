@@ -99,6 +99,10 @@
   cursor: pointer;
   transition: all 0.15s;
   font-family: var(--font-body);
+  /* Don't let the 1fr grid column stretch the button */
+  justify-self: start;
+  width: fit-content;
+  white-space: nowrap;
 }
 .gen-back-btn:hover, .gen-back:hover { background: var(--rq-surface-highest); color: var(--rq-text); }
 
@@ -1173,6 +1177,12 @@
   opacity: 1;
 }
 
+/* Mobile-only theme preview elements — hidden by default on desktop */
+.scene2-mobile-bg-preview,
+.scene2-mobile-bg-loading {
+  display: none;
+}
+
 /* ── Background-generation loading indicator ──
    Shown in the top-right corner while Gemini is painting the world  */
 .scene2-bg-loading {
@@ -2035,10 +2045,43 @@
   /* Make bg-loading indicator not obscure content on small screens */
   .scene2-bg-loading { top: 8px; right: 8px; padding: 6px 12px 6px 6px; }
   .scene2-bg-loading-text { font-size: 0.65rem; }
-  /* Overlay slightly lighter on mobile so bg image is more visible */
-  .scene2-theme-overlay-active { opacity: 0.7; }
-  /* Generate Scene button not needed on mobile — theme tap is enough */
-  .scene2-generate-btn { display: none; }
+  /* Overlay lighter on mobile so background image shows through */
+  .scene2-theme-overlay-active { opacity: 0.55; }
+  /* Show Generate Scene button on mobile too */
+  .scene2-generate-btn { display: flex; }
+
+  /* Mobile: theme background preview banner inside the left panel */
+  .scene2-mobile-bg-preview {
+    display: block;
+    width: 100%;
+    height: 120px;
+    border-radius: 14px;
+    object-fit: cover;
+    object-position: center;
+    border: 1.5px solid rgba(192,132,252,0.35);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    margin-bottom: 4px;
+    animation: mobileBgFadeIn 0.6s ease;
+  }
+  @keyframes mobileBgFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .scene2-mobile-bg-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 80px;
+    border-radius: 14px;
+    background: rgba(124,58,237,0.1);
+    border: 1.5px dashed rgba(192,132,252,0.3);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: rgba(192,132,252,0.8);
+    margin-bottom: 4px;
+  }
 }
 
 

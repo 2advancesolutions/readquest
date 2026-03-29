@@ -19,6 +19,8 @@ class GenerateRequest(BaseModel):
     character_name: str
     language: str = "english"
     art_style: str = "cartoon"
+    character_description: Optional[str] = None   # e.g. "blonde braided hair, ice-blue dress"
+    character_universe: Optional[str] = None       # e.g. "Frozen (Disney)"
     # Phase 1 AI Tutor additions
     sel_theme: Optional[str] = None       # e.g. 'bullying', 'empathy', 'kindness'
     story_mode: str = "free_play"         # 'free_play' | 'quest'
@@ -58,27 +60,73 @@ class StoryResponse(BaseModel):
     quiz_questions: list[QuizResponse] = []
     created_at: str
 
-
 @router.post("/analyze-character")
 async def analyze_character(req: AnalyzeCharacterRequest):
-    """Generate a character portrait using FLUX Dev only — no Gemini/LLM text step."""
-    from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes
+    """Generate a character portrait — uses Gemini to enrich the character first, then FLUX Dev for the image."""
+    import asyncio
+    from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes, _call_gemini_text
 
-    # Build a rich image prompt optimized for rembg background removal.
-    # This mirrors the structure of the prompt Gemini previously generated:
-    # plain white background + clear character edges + flat colors = clean transparent cutout.
     char = req.character.strip()
+
+    # ── Step 1: Use Gemini to identify the character and get their real visual description ──
+    char_info = {
+        "universe": "Adventure",
+        "description": f"{char} — a brave and adventurous hero",
+        "visual_appearance": char,
+    }
+    try:
+        gemini_prompt = f"""You are a character identification expert for children's media.
+
+The user typed: "{char}"
+
+Identify this character and respond with ONLY valid JSON (no markdown, no explanation):
+{{
+  "canonical_name": "<full canonical character name>",
+  "universe": "<franchise/show/movie name, e.g. 'DC Comics', 'Frozen (Disney)', 'Marvel Comics'>",
+  "description": "<1-2 sentence engaging description of who this character is>",
+  "visual_appearance": "<precise visual description: hair color+style, costume/outfit colors and details, any signature features like cape, mask, weapon, etc. Be very specific for image generation.>"
+}}
+
+If the character is not well-known, make up a reasonable children's story character appearance.
+Reply with only valid JSON."""
+
+        raw = await _call_gemini_text(
+            system="You are a character identification expert. Always respond with valid JSON only.",
+            user=gemini_prompt,
+            temperature=0.1
+        )
+        # Parse the JSON
+        import json, re
+        # Strip markdown if present
+        clean = raw.strip()
+        if "```" in clean:
+            clean = re.sub(r"```(?:json)?", "", clean).strip().rstrip("`").strip()
+        data = json.loads(clean)
+        char_info = {
+            "universe": data.get("universe", "Adventure"),
+            "description": data.get("description", f"{char} — a brave hero"),
+            "visual_appearance": data.get("visual_appearance", char),
+            "canonical_name": data.get("canonical_name", char),
+        }
+        print(f"[analyze-character] Gemini enriched: {char_info}")
+    except Exception as e:
+        print(f"[analyze-character] Gemini enrichment failed (using defaults): {e}")
+
+    visual = char_info.get("visual_appearance", char)
+    canonical = char_info.get("canonical_name", char)
+
+    # ── Step 2: Build a high-quality portrait prompt using the real visual description ──
     image_prompt = (
-        f"An original children's book cartoon illustration of a character inspired by {char}. "
-        f"Full body pose, arms slightly out, character ISOLATED and CENTERED on a PURE WHITE background. "
-        f"Clean bold cartoon line art, bright flat cel-shaded colors, HARD black outlines with no feathering, "
-        f"NO drop shadows, NO gradient background, NO texture behind the character, NO scenery, "
-        f"NO other characters, NO text, NO logos, NO watermarks. "
-        f"The character must be the ONLY element in the image standing alone on solid white. "
-        f"Kid-friendly, high quality, sticker-style illustration."
+        f"A high-quality children's book illustration of {canonical}. "
+        f"Visual description: {visual}. "
+        f"Full body pose, arms slightly at sides, confident heroic stance, character ISOLATED and CENTERED. "
+        f"PURE WHITE background with NO scenery, NO other characters, NO shadows behind the character. "
+        f"Clean bold cartoon line art, bright vivid colors, HARD black outlines, flat cel-shaded style, "
+        f"highly detailed costume and face matching the character's iconic look, "
+        f"kid-friendly, sticker-style illustration, high resolution, no text, no logos, no watermarks."
     )
 
-    # Generate portrait with FLUX Dev
+    # ── Step 3: Generate portrait with FLUX Dev ──
     raw_url = await _generate_image_nano_banana2(image_prompt)
     portrait_url = raw_url
 
@@ -113,11 +161,13 @@ async def analyze_character(req: AnalyzeCharacterRequest):
     print(f"[analyze-character] portrait ready: {portrait_url}")
 
     return {
-        "character_name": char,
-        "universe": "Adventure",
-        "description": f"{char} — ready for an epic adventure!",
+        "character_name": canonical,
+        "universe": char_info["universe"],
+        "description": char_info["description"],
+        "visual_appearance": char_info.get("visual_appearance", ""),
         "character_image_url": portrait_url,
         "scenes": [],
+
     }
 
 
@@ -182,6 +232,8 @@ async def generate_story(
             character_name=safe_character,
             language=req.language or "english",
             art_style=req.art_style or "cartoon",
+            character_description=req.character_description or None,
+            character_universe=req.character_universe or None,
         )
     except Exception as e:
         raise HTTPException(500, detail=f"Story generation failed: {str(e)}")

@@ -27,6 +27,7 @@ import Leaderboard from './pages/Leaderboard'
 import MovieStudio from './pages/MovieStudio'
 import XpBadge from './components/XpBadge'
 import MobileNav from './components/MobileNav'
+import MuteButton from './components/MuteButton'
 
 function App() {
   const [session, setSession] = useState<any>(null)
@@ -86,6 +87,8 @@ function App() {
       {session && <XpBadge />}
       {/* Global mobile nav — floating FAB + drawer, visible only on ≤768px */}
       {session && <MobileNav />}
+      {/* Global mute button — mutes AI voice narration on any page */}
+      {session && <MuteButton />}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         {/* Signup renders regardless of session — the wizard controls its own flow */}

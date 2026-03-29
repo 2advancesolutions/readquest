@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+
+const isIOS = /iPad|iPhone|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '') && !(window as any).MSStream
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { storiesApi, progressApi, rewardsApi, readingLogsApi } from '../services/api'
@@ -212,12 +214,16 @@ export default function BookReader() {
     if (compMicRef.current) { compMicRef.current.stop(); compMicRef.current = null }
     if (compMicTimeoutRef.current) clearTimeout(compMicTimeoutRef.current)
     const rec: SpeechRecognition = new SR()
-    rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true
+    // iOS Safari requires continuous:false and interimResults:false
+    const iosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    rec.lang = 'en-US'
+    rec.continuous = !iosDevice
+    rec.interimResults = !iosDevice
     compMicRef.current = rec
     let finalText = ''
     const resetTimer = () => {
       if (compMicTimeoutRef.current) clearTimeout(compMicTimeoutRef.current)
-      compMicTimeoutRef.current = setTimeout(() => rec.stop(), 2500)
+      compMicTimeoutRef.current = setTimeout(() => rec.stop(), iosDevice ? 5000 : 2500)
     }
     rec.onstart = () => { setActiveCompMic(fieldKey); resetTimer() }
     rec.onresult = (e: SpeechRecognitionEvent) => {
@@ -225,7 +231,7 @@ export default function BookReader() {
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
-        else interim = e.results[i][0].transcript
+        else if (!iosDevice) interim = e.results[i][0].transcript
       }
       onResult(finalText + interim)
     }
@@ -1421,12 +1427,23 @@ export default function BookReader() {
 
           {mic.isSupported && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
-              <button className={`reader-mic-btn ${mic.isListening ? 'listening' : ''}`} onClick={toggleMic}
-                title={mic.isListening ? 'Stop reading' : 'Tap to read aloud'}>
+              <button
+                className={`reader-mic-btn ${
+                  mic.isListening ? 'listening' :
+                  mic.permissionError ? 'mic-error' : ''
+                }`}
+                onClick={toggleMic}
+                title={mic.isListening ? 'Stop reading' : isIOS ? 'Tap each time you speak' : 'Tap to read aloud'}
+              >
                 {mic.isListening ? (
-                  /* Stop square */
+                  /* Stop square — tap to end this session */
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="4" y="4" width="16" height="16" rx="2"/>
+                  </svg>
+                ) : mic.permissionError ? (
+                  /* Lock icon — mic blocked */
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17 11V7A5 5 0 0 0 7 7v4M5 11h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zm7 3v3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
                   </svg>
                 ) : (
                   /* Microphone SVG */
@@ -1438,12 +1455,26 @@ export default function BookReader() {
                   </svg>
                 )}
               </button>
-              <span style={{ fontSize: '10px', fontWeight: 700, color: mic.isListening ? '#fca5a5' : 'rgba(178,140,255,0.8)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {mic.isListening ? 'Listening…' : 'Read Aloud'}
+              <span style={{
+                fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                color: mic.isListening ? '#fca5a5'
+                     : mic.permissionError ? '#f87171'
+                     : 'rgba(178,140,255,0.8)',
+              }}>
+                {mic.isListening ? 'Listening…'
+                 : mic.permissionError ? '🔒 Allow mic'
+                 : isIOS ? 'Tap & speak'
+                 : 'Read Aloud'}
               </span>
               {mic.permissionError && (
-                <span style={{ fontSize: '9px', color: '#f87171', textAlign: 'center', maxWidth: '70px', lineHeight: 1.3 }}>
-                  🔒 Allow mic
+                <span style={{ fontSize: '9px', color: '#fca5a5', textAlign: 'center', maxWidth: '90px', lineHeight: 1.4, marginTop: 2 }}>
+                  {isIOS ? 'Settings → Safari → Mic' : 'Tap 🔒 → Site Settings → Mic'}
+                </span>
+              )}
+              {/* iOS hint — shown when not listening and no error, to explain tap-per-phrase model */}
+              {isIOS && !mic.isListening && !mic.permissionError && mic.transcript && (
+                <span style={{ fontSize: '9px', color: 'rgba(250,204,21,0.8)', textAlign: 'center', maxWidth: '80px', lineHeight: 1.3 }}>
+                  Tap again to continue
                 </span>
               )}
             </div>
