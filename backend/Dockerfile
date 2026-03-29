@@ -3,9 +3,10 @@ FROM python:3.11-slim AS base
 
 WORKDIR /app
 
-# System deps for asyncpg / aiosqlite
+# System deps for asyncpg / aiosqlite / rembg (OpenCV needs libGL)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl && \
+    gcc libpq-dev curl \
+    libgl1 libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

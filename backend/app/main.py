@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.routers import students, stories, quizzes, rewards, tts, parents
+from app.routers import fluency, vocabulary, assignments, quest, spelling, exams
 import app.database as db
 
 app = FastAPI(
@@ -68,3 +69,11 @@ app.include_router(tts.router, prefix="/api/tts", tags=["tts"])
 # Added auth routers
 
 app.include_router(parents.router, prefix="/api/parents", tags=["parents"])
+
+# Phase 1 — AI Tutor routers
+app.include_router(fluency.router, prefix="/api/fluency", tags=["fluency"])
+app.include_router(vocabulary.router, prefix="/api/vocabulary", tags=["vocabulary"])
+app.include_router(assignments.router, prefix="/api/assignments", tags=["assignments"])
+app.include_router(quest.router, prefix="/api/quest", tags=["quest"])
+app.include_router(spelling.router, prefix="/api", tags=["spelling"])
+app.include_router(exams.router, prefix="/api/exams", tags=["exams"])

@@ -300,24 +300,14 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
         import re as _re
         safe_scene = _re.sub(rf'\b{w}\w*\b', 'adventure', safe_scene, flags=_re.IGNORECASE)
 
-    image_prompt = (
-        "Create a beautiful children's book illustration. "
-        "Pixar-style 3D cartoon, bright vibrant colors, wholesome, cheerful, "
-        "safe for kids, no text. "
-        f"Scene: {safe_scene}"
-    )
+
+    image_prompt = safe_scene
 
     # Three varied safe fallbacks in case the sanitized prompt still triggers filters
     _SAFE_FALLBACKS = [
-        ("A beautiful Pixar-style 3D cartoon children's book illustration. "
-         "Colorful futuristic city with friendly round robots, glowing buildings, "
-         "rainbow sky, cheerful warm lighting. No text, no people, wholesome and bright."),
-        ("A beautiful Pixar-style 3D cartoon illustration. "
-         "Magical forest with friendly animals, sparkling fireflies, rainbow, "
-         "colorful flowers. Cheerful, bright, safe for children. No text."),
-        ("A beautiful Pixar-style 3D cartoon children's book illustration. "
-         "Sunny day in a friendly neighborhood. Colorful houses, fluffy clouds, "
-         "smiling sun, butterflies. No text, warm and happy."),
+        "A clean 2D cartoon illustration of a colorful futuristic city with friendly round robots, glowing buildings, rainbow sky, cheerful warm lighting, wholesome and bright, safe for kids, no text.",
+        "A clean 2D cartoon illustration of a magical forest with friendly animals, sparkling fireflies, rainbow, colorful flowers, cheerful and bright, safe for kids, no text.",
+        "A clean 2D cartoon illustration of a sunny friendly neighborhood with colorful houses, fluffy clouds, smiling sun and butterflies, warm and happy, safe for kids, no text.",
     ]
 
     try:
@@ -383,17 +373,114 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
         return None
 
 
+async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
+    """
+    Remove the background from image bytes using rembg (U2Net model).
+    Runs in a thread pool so the async event loop is never blocked.
+    Returns PNG bytes with a fully transparent background.
+    Falls back to the original bytes if rembg is unavailable or fails.
+    """
+    def _do_remove(data: bytes) -> bytes:
+        from rembg import remove as rembg_remove
+        from PIL import Image
+        import io
+        input_img = Image.open(io.BytesIO(data)).convert("RGBA")
+        output_img = rembg_remove(input_img)
+        buf = io.BytesIO()
+        output_img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    try:
+        print("[rembg] Removing background from portrait…")
+        result = await asyncio.to_thread(_do_remove, img_bytes)
+        print(f"[rembg] Done — transparent PNG {len(result)} bytes")
+        return result
+    except Exception as e:
+        print(f"[rembg] Failed (non-fatal, returning original): {e}")
+        return img_bytes
+
+
+
 async def image_prompt_node(state: ContentState) -> ContentState:
-    """Generate per-page illustration prompts then call Nano Banana 2 concurrently for all 5 pages."""
+    """Generate per-page illustration prompts — character is the MAIN SUBJECT of every prompt."""
     pages = state["story_parsed"].get("pages", [])
+    art_style = state.get('art_style', 'cartoon')
+    char = state['character_name']
+    theme = state['theme']
+
+    # Character-first prompt templates — [{char}] is always the first/main object stated
+    ART_STYLE_PROMPTS = {
+        "cartoon": (
+            "A clean 2D cartoon children's book illustration. "
+            "MAIN SUBJECT (prominently centered, clearly visible): [{char}]. "
+            "Scene: [{scene}]. "
+            "Bold black outlines, flat design, bright saturated colors, "
+            "minimal shading, smooth vector style, modern cartoon aesthetic, "
+            "safe for kids, wholesome, no text, high resolution."
+        ),
+        "pixar": (
+            "A 3D Pixar-style children's book render. "
+            "MAIN CHARACTER (clearly visible, in focus, foreground): [{char}]. "
+            "Scene: [{scene}]. "
+            "Cinematic lighting, subsurface scattering, soft global illumination, "
+            "depth of field, highly detailed textures, expressive character design, "
+            "studio-quality render, wholesome, safe for kids, no text, 8k."
+        ),
+        "real": (
+            "A photorealistic children's book image. "
+            "MAIN CHARACTER (clearly depicted, foreground, large): [{char}]. "
+            "Scene: [{scene}]. "
+            "DSLR photography, 85mm lens, natural lighting, shallow depth of field, "
+            "ultra realistic textures, sharp focus, cinematic composition, "
+            "safe for kids, no text, 8k resolution."
+        ),
+        "watercolor": (
+            "A watercolor children's book painting. "
+            "MAIN CHARACTER (prominently featured, full body): [{char}]. "
+            "Scene: [{scene}]. "
+            "Wet-on-wet technique, soft color bleeds, pastel washes, "
+            "textured paper grain, delicate brushstrokes, "
+            "light and airy composition, wholesome, safe for kids, no text."
+        ),
+        "manga": (
+            "An anime-style children's book illustration. "
+            "MAIN CHARACTER (clearly visible, expressive, foreground): [{char}]. "
+            "Scene: [{scene}]. "
+            "Clean ink linework, bold cel shading, expressive eyes, "
+            "dynamic pose, vibrant colors, studio anime quality, safe for kids, no text."
+        ),
+        "sketch": (
+            "A pencil sketch children's book illustration. "
+            "MAIN CHARACTER (central, clearly drawn, full body): [{char}]. "
+            "Scene: [{scene}]. "
+            "Fine linework, cross-hatching, sepia tones, "
+            "light watercolor wash, textured paper, wholesome, safe for kids, no text."
+        ),
+        "storybook": (
+            "A vintage 1950s children's storybook illustration. "
+            "MAIN CHARACTER (prominently featured, full body visible): [{char}]. "
+            "Scene: [{scene}]. "
+            "Gouache and ink, soft muted colors, nostalgic charm, "
+            "hand-painted textures, warm lighting, wholesome, safe for kids, no text."
+        ),
+        "neon": (
+            "A glowing neon children's book illustration. "
+            "MAIN CHARACTER (brightly glowing, center stage): [{char}]. "
+            "Scene: [{scene}]. "
+            "Luminous electric colors, vibrant neon highlights, glowing outlines, "
+            "dark background, soft bloom lighting, safe for kids, no text."
+        ),
+    }
+    style_template = ART_STYLE_PROMPTS.get(art_style, ART_STYLE_PROMPTS['cartoon'])
+
     prompts = []
     for page in pages:
-        prompt = (
-            f"{page['content'][:200]}. "
-            f"Theme: {state['theme']}. Character: {state['character_name']}. "
-            f"Art style: {state.get('art_style', 'cartoon')}. "
+        scene = (
+            f"{page['content'][:180]}. "
+            f"Setting/theme: {theme}. "
             f"Grade {state['grade']} children's storybook."
         )
+        prompt = style_template.replace('[{char}]', char).replace('[{scene}]', scene)
         prompts.append(prompt)
     state["image_prompts"] = prompts
 
@@ -406,6 +493,98 @@ async def image_prompt_node(state: ContentState) -> ContentState:
             await asyncio.sleep(2)  # respect Gemini rate limits
     state["image_urls"] = image_urls
     return state
+
+
+async def character_verify_node(state: ContentState) -> ContentState:
+    """Verify each page image contains the selected character; regenerate any that don't."""
+    char = state['character_name']
+    pages = state["story_parsed"].get("pages", [])
+    image_urls = list(state.get("image_urls", []))
+    art_style = state.get('art_style', 'cartoon')
+
+    # Only verify pages that got a real HTTP image URL
+    verifiable = [i for i, url in enumerate(image_urls) if url and url.startswith("http")]
+    if not verifiable:
+        print("[character_verify] No HTTP image URLs to verify — skipping")
+        return state
+
+    page_list = "\n".join([
+        f"Page {i+1} (index {i}): {image_urls[i]}"
+        for i in verifiable
+    ])
+    verify_prompt = f"""You are a children's book quality checker.
+The selected character for this story is: \"{char}\"
+
+Below are image URLs for story pages. For each one decide:
+- Does the image CLEARLY show a character matching \"{char}\"?
+- YES only if the character is visibly the main subject.
+- NO if it is just background/scenery with no clear main character, or shows the wrong character.
+
+{page_list}
+
+Respond ONLY with valid JSON — array ordered same as above:
+[{{"page_index": <0-based int>, "has_character": true/false, "reason": "<one sentence>"}}]
+"""
+
+    failed_indexes: list = []
+    try:
+        raw = await _call_gemini_text(
+            system="You are a strict children's book art director. Reply with valid JSON only.",
+            user=verify_prompt,
+            temperature=0.1,
+        )
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        checks = json.loads(raw.strip())
+        for item in checks:
+            page_idx = item.get("page_index")
+            has_char = item.get("has_character", True)
+            reason = item.get("reason", "")
+            print(f"[character_verify] Page {page_idx+1}: has_character={has_char} — {reason}")
+            if not has_char and page_idx is not None and 0 <= page_idx < len(image_urls):
+                failed_indexes.append(page_idx)
+    except Exception as e:
+        print(f"[character_verify] Verification call failed (non-fatal): {e}")
+        return state
+
+    if not failed_indexes:
+        print("[character_verify] All pages passed character check")
+        return state
+
+    print(f"[character_verify] Regenerating {len(failed_indexes)} page(s): {[i+1 for i in failed_indexes]}")
+
+    # Very explicit character-first regen prompt
+    REGEN_TEMPLATE = (
+        "Children's storybook illustration. "
+        "THE MAIN STAR OF THIS IMAGE IS {char}. "
+        "Draw {char} as the LARGEST subject, centered, full body visible, clearly recognizable. "
+        "Scene context: {scene}. "
+        "{char} is actively part of the scene, surrounded by {theme} elements. "
+        "Art style: {style}. Bright, colorful, safe for kids, wholesome, no text."
+    )
+
+    for page_idx in failed_indexes:
+        page_content = pages[page_idx]['content'][:180] if page_idx < len(pages) else ""
+        regen_prompt = REGEN_TEMPLATE.format(
+            char=char,
+            scene=page_content,
+            theme=state['theme'],
+            style=art_style,
+        )
+        print(f"[character_verify] Regenerating page {page_idx+1}...")
+        new_url = await _generate_image_nano_banana2(regen_prompt)
+        if new_url:
+            image_urls[page_idx] = new_url
+            print(f"[character_verify] Page {page_idx+1} regenerated OK")
+        else:
+            print(f"[character_verify] Regen failed for page {page_idx+1}, keeping original")
+        await asyncio.sleep(2)
+
+    state["image_urls"] = image_urls
+    return state
+
 
 
 async def quiz_generator_node(state: ContentState) -> ContentState:
@@ -495,6 +674,7 @@ def build_content_graph():
     builder.add_node("story_writer", story_writer_node)
     builder.add_node("parse_story", parse_story_node)
     builder.add_node("image_prompt_gen", image_prompt_node)
+    builder.add_node("character_verify", character_verify_node)
     builder.add_node("quiz_generator", quiz_generator_node)
     builder.add_node("assemble_result", assemble_result_node)
 
@@ -502,7 +682,8 @@ def build_content_graph():
     builder.add_edge("grade_setup", "story_writer")
     builder.add_edge("story_writer", "parse_story")
     builder.add_edge("parse_story", "image_prompt_gen")
-    builder.add_edge("image_prompt_gen", "quiz_generator")
+    builder.add_edge("image_prompt_gen", "character_verify")
+    builder.add_edge("character_verify", "quiz_generator")
     builder.add_edge("quiz_generator", "assemble_result")
     builder.add_edge("assemble_result", END)
 

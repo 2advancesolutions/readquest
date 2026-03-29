@@ -62,7 +62,8 @@ export function useSpeechSynthesis(): SpeechSynthesisHook {
 
       try {
         // ── Gemini TTS (Kore — warm natural female) ──────────────────────────
-        const res = await fetch('http://localhost:8000/api/tts/speak', {
+        const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+        const res = await fetch(`${API}/api/tts/speak`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, voice: 'Kore', mode }),
@@ -91,14 +92,29 @@ export function useSpeechSynthesis(): SpeechSynthesisHook {
         await audio.play()
       } catch (err: unknown) {
         clearTimeout(fetchTimeout)
-        // If user explicitly called stop() — detected by abortRef being cleared — exit silently
+        // If user explicitly called stop() — exit silently
         if (err instanceof Error && err.name === 'AbortError' && !abortRef.current) {
           setIsSpeaking(false)
           return
         }
-        // TTS failed — stay silent rather than play robot Web Speech voice
-        console.warn('[TTS] Chirp3-HD failed, staying silent:', err)
-        setIsSpeaking(false)
+        // Gemini TTS failed — fall back to Web Speech API so the user still hears something
+        console.warn('[TTS] Gemini voice failed, falling back to Web Speech:', err)
+        if ('speechSynthesis' in window) {
+          try {
+            const utter = new SpeechSynthesisUtterance(text)
+            utter.rate = mode === 'word' ? 0.6 : 0.9
+            utter.pitch = 1.0
+            utter.lang = 'en-US'
+            utter.onend = () => { setIsSpeaking(false); setCurrentWordIndex(-1) }
+            utter.onerror = () => setIsSpeaking(false)
+            utterRef.current = utter
+            window.speechSynthesis.speak(utter)
+          } catch {
+            setIsSpeaking(false)
+          }
+        } else {
+          setIsSpeaking(false)
+        }
       }
     },
     [stop]

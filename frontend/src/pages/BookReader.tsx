@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { storiesApi, progressApi, rewardsApi, readingLogsApi } from '../services/api'
+import { saveRecording } from '../services/recordingsDb'
+import { useAudioRecorder } from '../hooks/useAudioRecorder'
 
 import type { Story, QuizQuestion, PageScore, ReadingSession, ComprehensionAnswer } from '../types'
 import { MOCK_STORY } from './mockStory'  // keep for dev reference but not used as fallback
@@ -9,6 +11,7 @@ import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import { useSoundEffects } from '../hooks/useSoundEffects'
 import '../styles/reader.css'
+import { emitXpUpdate, getStoredXp } from '../components/XpBadge'
 
 function normalize(w: string) {
   // Strip punctuation, hyphens, possessives; lowercase
@@ -151,6 +154,52 @@ export default function BookReader() {
   const tts = useSpeechSynthesis()
   const mic = useSpeechRecognition()
   const sfx = useSoundEffects()
+  const recorder = useAudioRecorder()
+
+  // Shared MediaStream for both SpeechRecognition and MediaRecorder
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+
+  // ── Proactive mic permission ──────────────────────────────────────────
+  // 'prompt' = not yet asked, 'granted' = approved, 'denied' = blocked
+  const [micPerm, setMicPerm] = useState<'prompt' | 'granted' | 'denied'>('prompt')
+
+  // Check current permission state on mount (no dialog shown)
+  // NOTE: navigator.permissions is NOT supported on iOS Safari — fall back to 'granted'
+  // so the mic button is immediately accessible without requiring a banner tap.
+  useEffect(() => {
+    if (!navigator.permissions) {
+      // iOS Safari / older browsers — assume 'prompt' but don't block the mic button.
+      // The first tap on toggleMic will trigger the browser's own permission dialog.
+      setMicPerm('prompt')
+      return
+    }
+    navigator.permissions.query({ name: 'microphone' as PermissionName })
+      .then(status => {
+        setMicPerm(status.state as 'prompt' | 'granted' | 'denied')
+        status.onchange = () => setMicPerm(status.state as 'prompt' | 'granted' | 'denied')
+      })
+      .catch(() => {
+        // Permissions API threw (some Android WebViews) — don't block the mic
+        setMicPerm('prompt')
+      })
+  }, [])
+
+  // Called when student taps the "Enable Microphone" banner — triggers native OS dialog
+  // MUST be async so we can await getUserMedia directly inside the user-gesture handler.
+  // On iOS Safari, any code inside .then() is no longer in the gesture chain.
+  const handleRequestMicPerm = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicPerm('granted')  // no API = probably desktop, just allow
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(t => t.stop())
+      setMicPerm('granted')
+    } catch {
+      setMicPerm('denied')
+    }
+  }
 
   // ── Comprehension-page voice dictation ───────────────────────────────────
   const [activeCompMic, setActiveCompMic] = useState<string | null>(null)
@@ -330,11 +379,19 @@ export default function BookReader() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     silenceTimerRef.current = setTimeout(() => {
       mic.stopListening()   // → isListening goes false → batch eval fires
+      // Also stop the audio recorder so pendingAudioRef is populated for saving
+      if (recorder.isRecording()) {
+        recorder.stopRecording().then(result => {
+          if (result && result.blob.size >= 100) {
+            pendingAudioRef.current = result
+          }
+        })
+      }
     }, 3000)
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     }
-  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening])  // eslint-disable-line
+  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening, recorder])  // eslint-disable-line
 
   // ── Review phase — MANUAL mic: TTS speaks word, student presses button to repeat ──
   const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -360,13 +417,14 @@ export default function BookReader() {
     return () => clearTimeout(t)
   }, [phase, reviewIdx, reviewStarted, missedWords])  // eslint-disable-line
 
-  // Called when student taps the "I'm Ready!" mic button
+  // Called when student taps the mic button in review phase
+  // SYNC - no await before startListening or mobile browsers block the mic
   const handleReviewMicPress = useCallback(() => {
     if (mic.isListening) {
       mic.stopListening()
       return
     }
-    tts.stop()  // stop TTS if still playing
+    tts.stop()
     mic.resetTranscript()
     mic.startListening()
   }, [mic, tts])
@@ -443,13 +501,20 @@ export default function BookReader() {
   }, [mic.transcript, mic.interimTranscript, phase, mic.isListening, reviewIdx, missedWords])  // eslint-disable-line
 
 
-  // ── XP toast ─────────────────────────────────────────────────────────────
+  // ── XP toast — shows animation AND persists to the global XP badge ──────
   const showXPToast = (amount: number) => {
+    if (amount > 0) {
+      const newTotal = getStoredXp() + amount
+      emitXpUpdate(newTotal, amount)   // updates badge + localStorage instantly
+    }
     setXpToast({ amount, id: Date.now() })
     setTimeout(() => setXpToast(null), 2000)
   }
 
   // ── Next page → review missed words → quiz → advance ───────────────────
+  // Stores the last audio blob captured this page (set by toggleMic → stopRecording)
+  const pendingAudioRef = useRef<{ blob: Blob; duration: number } | null>(null)
+
   const handleNextPage = useCallback(() => {
     if (!story || !page) return
     sfx.playPageTurn()
@@ -472,6 +537,39 @@ export default function BookReader() {
     rewardsApi.recordActivity().catch(() => {})   // ← record streak day
     showXPToast(5 + Math.round((correct / Math.max(words.length, 1)) * 10))
 
+    // ── Save recording to IndexedDB (fire-and-forget) ─────────────────────
+    ;(async () => {
+      try {
+        let audioResult = pendingAudioRef.current
+        if (!audioResult && recorder.isRecording()) {
+          audioResult = await recorder.stopRecording()
+        }
+        pendingAudioRef.current = null
+        if (!audioResult || audioResult.blob.size < 100) return
+        const studentId   = localStorage.getItem('readquest_student_id') || 'guest'
+        const studentName = localStorage.getItem('readquest_student_name') || 'Student'
+        const accuracy    = words.length > 0 ? Math.round((correct / words.length) * 100) : 0
+        await saveRecording({
+          studentId,
+          studentName,
+          bookId: story.id,
+          bookTitle: story.title,
+          bookCover: story.cover_media_url,
+          gradeLevel: story.grade_level,
+          pageNumber: page.page_number,
+          pageText: page.content,
+          transcript: accTranscriptRef.current || mic.transcript,
+          wordStatuses: [...wordStatuses],
+          accuracy,
+          audioBlob: audioResult.blob,
+          duration: audioResult.duration,
+          createdAt: new Date().toISOString(),
+        })
+      } catch (err) {
+        console.warn('[Recordings] Failed to save recording:', err)
+      }
+    })()
+
     // Collect missed words
     const missed = words
       .map((w, i) => ({ word: w, idx: i }))
@@ -489,7 +587,7 @@ export default function BookReader() {
 
     // No missed words → skip to quiz
     startQuiz(newScores)
-  }, [story, page, wordStatuses, pageScores, currentPage, sfx, tts, mic])
+  }, [story, page, wordStatuses, pageScores, currentPage, sfx, tts, mic, recorder])
 
   // Start the 3-question quiz for the current page
   const startQuiz = useCallback((newScores?: PageScore[]) => {
@@ -606,17 +704,41 @@ export default function BookReader() {
   }
 
   // ── Mic toggle ────────────────────────────────────────────────────────────
+  // SYNC — recognition.start() must be in the direct click handler call stack.
+  // Any await before it breaks the browser's user-gesture permission chain on mobile.
   const toggleMic = () => {
-    sfx.playClick()
     if (mic.isListening) {
+      sfx.playClick()
       mic.stopListening()
+      // Stop audio recording (non-blocking)
+      recorder.stopRecording().then(result => {
+        if (result) pendingAudioRef.current = result
+      })
     } else {
       tts.stop()
       mic.resetTranscript()
       accTranscriptRef.current = ''
       wasReadingRef.current = false
-      setWordStatuses(pageWordsRef.current.map(() => 'idle'))  // reset all to grey
+      pendingAudioRef.current = null
+      setWordStatuses(pageWordsRef.current.map(() => 'idle'))
+
+      // ── CRITICAL: startListening() MUST be called FIRST, synchronously,
+      // inside the click handler. Any async work before it (getUserMedia .then)
+      // breaks the user-gesture permission chain on iOS Safari and Android Chrome.
       mic.startListening()
+      sfx.playClick()
+
+      // Update micPerm so the banner dismisses after first successful use
+      if (micPerm === 'prompt') setMicPerm('granted')
+
+      // Start audio recording in parallel — this can be async, it's not permission-gated
+      navigator.mediaDevices?.getUserMedia({ audio: true })
+        .then(stream => {
+          mediaStreamRef.current?.getTracks().forEach(t => t.stop())
+          mediaStreamRef.current = stream
+          recorder.startRecording(stream)
+        })
+        .catch(() => { /* mic permission already handled by SpeechRecognition */ })
     }
   }
 
@@ -632,7 +754,8 @@ export default function BookReader() {
     let gradedScore = 50
     let gradedFeedback = 'Great effort reading this story!'
     try {
-      const res = await fetch('http://localhost:8000/api/stories/grade-comprehension', {
+      const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+      const res = await fetch(`${API}/api/stories/grade-comprehension`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -990,6 +1113,42 @@ export default function BookReader() {
         </div>
       </div>
 
+      {/* Mic permission banner — shown only until student grants access */}
+      <AnimatePresence>
+        {mic.isSupported && micPerm === 'prompt' && (
+          <motion.button
+            className="mic-perm-banner"
+            onClick={handleRequestMicPerm}
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              background: 'linear-gradient(90deg, rgba(112,42,225,0.35), rgba(67,20,200,0.35))',
+              border: 'none', borderBottom: '1px solid rgba(178,140,255,0.25)',
+              padding: '10px 16px', cursor: 'pointer', color: '#edd3ff',
+              fontFamily: 'var(--font-body)', fontSize: '0.9rem', fontWeight: 600,
+              textAlign: 'left', WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <span style={{ fontSize: '1.4rem' }}>🎙️</span>
+            <span style={{ flex: 1 }}>Tap here to enable your microphone for reading</span>
+            <span style={{ fontSize: '0.8rem', opacity: 0.7, whiteSpace: 'nowrap' }}>Tap →</span>
+          </motion.button>
+        )}
+        {mic.isSupported && micPerm === 'denied' && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
+              background: 'rgba(239,68,68,0.15)', borderBottom: '1px solid rgba(239,68,68,0.3)',
+              color: '#fca5a5', fontSize: '0.82rem', fontFamily: 'var(--font-body)',
+            }}
+          >
+            <span>🔒</span>
+            <span>Microphone blocked. Tap the 🔒 in your address bar → Site Settings → Allow Microphone.</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Status banner */}
       <AnimatePresence>
         {mic.isListening && (
@@ -1261,10 +1420,33 @@ export default function BookReader() {
           </div>
 
           {mic.isSupported && (
-            <button className={`reader-mic-btn ${mic.isListening ? 'listening' : ''}`} onClick={toggleMic}
-              title={mic.isListening ? 'Stop' : 'Read aloud'}>
-              {mic.isListening ? '⏹' : '🎤'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
+              <button className={`reader-mic-btn ${mic.isListening ? 'listening' : ''}`} onClick={toggleMic}
+                title={mic.isListening ? 'Stop reading' : 'Tap to read aloud'}>
+                {mic.isListening ? (
+                  /* Stop square */
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                  </svg>
+                ) : (
+                  /* Microphone SVG */
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="9" y="2" width="6" height="11" rx="3"/>
+                    <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+                    <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="8" y1="22" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </button>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: mic.isListening ? '#fca5a5' : 'rgba(178,140,255,0.8)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                {mic.isListening ? 'Listening…' : 'Read Aloud'}
+              </span>
+              {mic.permissionError && (
+                <span style={{ fontSize: '9px', color: '#f87171', textAlign: 'center', maxWidth: '70px', lineHeight: 1.3 }}>
+                  🔒 Allow mic
+                </span>
+              )}
+            </div>
           )}
         </div>
 

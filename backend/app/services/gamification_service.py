@@ -33,6 +33,12 @@ BADGE_DEFINITIONS = [
 
 async def award_xp(db: AsyncSession, student_id: str, amount: int, reason: str) -> int:
     """Award XP to a student and check for badge triggers."""
+    import uuid as _uuid_check
+    try:
+        _uuid_check.UUID(student_id)
+    except (ValueError, AttributeError):
+        return 0  # skip DB insert for non-UUID IDs like "guest"
+
     ledger_entry = XPLedger(student_id=student_id, amount=amount, reason=reason)
     db.add(ledger_entry)
 

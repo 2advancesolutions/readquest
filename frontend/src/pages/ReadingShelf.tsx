@@ -322,12 +322,20 @@ function StudentShelf({ child }: { child: Child }) {
                           <div className="shelf-detail-inner">
                             <div className="shelf-comp-row-hdr">
                               <h4 className="shelf-detail-header">Comprehension</h4>
-                              <span className="shelf-comp-pct">{entry.log.comprehension_score}%</span>
+                              <span className="shelf-comp-pct">
+                                {entry.log.quiz_total > 0
+                                  ? `${Math.round((entry.log.quiz_score / entry.log.quiz_total) * 100)}%`
+                                  : `${entry.log.comprehension_score}%`}
+                              </span>
                             </div>
                             <div className="shelf-comp-track">
                               <motion.div className="shelf-comp-fill"
                                 initial={{ width: 0 }}
-                                animate={{ width: `${entry.log.comprehension_score}%` }}
+                                animate={{ width: `${
+                                  entry.log.quiz_total > 0
+                                    ? Math.round((entry.log.quiz_score / entry.log.quiz_total) * 100)
+                                    : entry.log.comprehension_score
+                                }%` }}
                                 transition={{ duration: 0.7, delay: 0.1 }} />
                             </div>
                             {entry.log.feedback && (

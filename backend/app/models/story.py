@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Integer, Text, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Integer, Text, DateTime, JSON, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -19,6 +19,12 @@ class Story(Base):
     cover_media_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # SEL fields
+    is_sel_story: Mapped[bool] = mapped_column(Boolean, default=False)
+    sel_tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # e.g. ['bullying', 'empathy']
+    sel_reflections: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # AI reflections + Socratic hints
+    # Story mode: 'free_play' (default) | 'quest' (structured progression)
+    story_mode: Mapped[str] = mapped_column(String(20), default="free_play")
 
 
 class StoryPage(Base):

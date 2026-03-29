@@ -1,0 +1,960 @@
+/* ═══════════════════════════════════════════════════════════════
+   Spelling Arena — Night-Bloom Design System
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Root & background ─────────────────────────────────────────── */
+.sp-root {
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 20% 10%, rgba(112,42,225,0.18) 0%, transparent 55%),
+              radial-gradient(ellipse at 80% 80%, rgba(76,10,200,0.14) 0%, transparent 55%),
+              #0b0718;
+  color: #e9e3f5;
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+  padding: 24px 20px 60px;
+  position: relative;
+}
+
+.sp-back-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(204,195,216,0.8);
+  padding: 8px 16px;
+  border-radius: 99px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  z-index: 50;
+}
+.sp-back-btn:hover {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+/* ── Character Select ──────────────────────────────────────────── */
+.sp-select-page {
+  max-width: 960px;
+  margin: 40px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.sp-select-hero { text-align: center; }
+
+.sp-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 900;
+  background: linear-gradient(135deg, #c084fc, #702ae1, #4f46e5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.sp-subtitle {
+  font-size: 1.05rem;
+  color: rgba(204,195,216,0.7);
+  margin: 0;
+}
+
+.sp-char-search {
+  width: 100%;
+  max-width: 380px;
+  padding: 12px 20px;
+  border-radius: 99px;
+  border: 1.5px solid rgba(150,110,255,0.3);
+  background: rgba(255,255,255,0.05);
+  color: #e9e3f5;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.sp-char-search:focus {
+  border-color: rgba(192,132,252,0.6);
+  box-shadow: 0 0 0 3px rgba(112,42,225,0.15);
+}
+.sp-char-search::placeholder { color: rgba(204,195,216,0.4); }
+
+.sp-char-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 14px;
+  width: 100%;
+  max-height: 54vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 2px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150,110,255,0.4) transparent;
+}
+.sp-char-grid::-webkit-scrollbar { width: 4px; }
+.sp-char-grid::-webkit-scrollbar-thumb { background: rgba(150,110,255,0.4); border-radius: 99px; }
+
+.sp-char-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.sp-char-card:hover {
+  background: rgba(112,42,225,0.12);
+  border-color: rgba(150,110,255,0.4);
+}
+.sp-char-card.selected {
+  border-color: rgba(192,132,252,0.7);
+  background: rgba(112,42,225,0.18);
+  box-shadow: 0 0 20px rgba(112,42,225,0.3);
+}
+.sp-char-img-wrap {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255,255,255,0.06);
+}
+.sp-char-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.sp-char-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(204,195,216,0.8);
+  text-align: center;
+  line-height: 1.2;
+}
+.sp-char-check {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: #702ae1;
+  color: white;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900;
+}
+
+/* ── Word source toggle ──────────────────────────────────────────── */
+.sp-source-toggle {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.sp-source-label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: rgba(204,195,216,0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sp-source-btns {
+  display: flex;
+  gap: 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 99px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.sp-source-btn {
+  padding: 8px 18px;
+  border-radius: 99px;
+  border: none;
+  background: transparent;
+  color: rgba(204,195,216,0.7);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.sp-source-btn:hover {
+  background: rgba(112,42,225,0.15);
+  color: #c084fc;
+}
+.sp-source-btn.active {
+  background: linear-gradient(135deg, #702ae1, #4f46e5);
+  color: white;
+  box-shadow: 0 2px 10px rgba(112,42,225,0.3);
+}
+.sp-source-hint {
+  font-size: 0.78rem;
+  color: rgba(204,195,216,0.45);
+  margin: 0;
+  text-align: center;
+  font-style: italic;
+}
+
+.sp-start-btn {
+  padding: 16px 40px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, #702ae1, #4f46e5);
+  color: white;
+  font-size: 1.05rem;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 8px 32px rgba(112,42,225,0.35);
+  transition: opacity 0.2s;
+}
+.sp-start-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sp-error {
+  color: #f87171;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 12px 20px;
+  background: rgba(239,68,68,0.08);
+  border-radius: 12px;
+  border: 1px solid rgba(239,68,68,0.2);
+  max-width: 480px;
+}
+
+/* ── Game Page ─────────────────────────────────────────────────── */
+.sp-game-page {
+  max-width: 960px;
+  margin: 50px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sp-progress-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sp-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: rgba(204,195,216,0.6);
+  font-weight: 600;
+}
+.sp-progress-score { color: #c084fc; }
+.sp-progress-track {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.sp-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #702ae1, #4f46e5);
+  border-radius: 99px;
+}
+
+.sp-game-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 680px) {
+  .sp-game-layout {
+    grid-template-columns: 1fr;
+  }
+  .sp-coach-col {
+    display: flex;
+    justify-content: center;
+  }
+}
+
+.sp-feedback-banner {
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.sp-feedback-banner.correct {
+  background: rgba(34,197,94,0.10);
+  border: 1px solid rgba(34,197,94,0.3);
+}
+.sp-feedback-banner.wrong {
+  background: rgba(251,146,60,0.10);
+  border: 1px solid rgba(251,146,60,0.25);
+}
+
+/* Correct row */
+.sp-feedback-correct {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sp-feedback-emoji  { font-size: 1.25rem; line-height: 1; }
+.sp-feedback-text   { color: #4ade80; flex: 1; }
+.sp-feedback-banner.wrong .sp-feedback-text { color: #fb923c; }
+
+/* XP earned pill */
+.sp-feedback-xp {
+  background: rgba(74,222,128,0.18);
+  border: 1px solid rgba(74,222,128,0.35);
+  color: #4ade80;
+  font-size: 0.8rem;
+  font-weight: 900;
+  padding: 3px 10px;
+  border-radius: 99px;
+  letter-spacing: 0.03em;
+  animation: sp-xp-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes sp-xp-pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* Wrong row */
+.sp-feedback-wrong { display: flex; flex-direction: column; gap: 8px; }
+
+/* Correct word reveal chip */
+.sp-correct-word-reveal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(251,146,60,0.08);
+  border: 1px dashed rgba(251,146,60,0.3);
+  border-radius: 8px;
+  width: fit-content;
+}
+.sp-correct-word-label {
+  font-size: 0.75rem;
+  color: rgba(251,146,60,0.7);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sp-correct-word {
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #fed7aa;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Progress bar right side */
+.sp-progress-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sp-session-xp {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #c084fc;
+  background: rgba(112,42,225,0.15);
+  border: 1px solid rgba(192,132,252,0.25);
+  padding: 2px 10px;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+}
+
+
+/* ── Coach ─────────────────────────────────────────────────────── */
+.coach-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.coach-character {
+  position: relative;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: rgba(30,14,70,0.9);
+  border: 2px solid rgba(150,110,255,0.4);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.coach-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.coach-fallback { font-size: 3rem; }
+
+.coach-confetti-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid #ffd700;
+  pointer-events: none;
+}
+
+.coach-bubble {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  padding: 10px 16px;
+  font-size: 0.82rem;
+  color: rgba(233,227,245,0.9);
+  font-weight: 600;
+  text-align: center;
+  max-width: 160px;
+  position: relative;
+}
+.coach-bubble::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: rgba(255,255,255,0.12);
+}
+
+/* ── Mode Card (shared) ──────────────────────────────────────────── */
+.sp-mode-card {
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sp-mode-header { display: flex; align-items: center; }
+.sp-mode-badge {
+  background: rgba(112,42,225,0.2);
+  border: 1px solid rgba(150,110,255,0.3);
+  color: #c084fc;
+  padding: 4px 14px;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sp-mode-prompt {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #e9e3f5;
+  margin: 0;
+}
+
+.sp-hint-box {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.sp-hint-label {
+  font-weight: 800;
+  color: #c084fc;
+  margin-right: 6px;
+}
+.sp-hint-text { color: rgba(204,195,216,0.8); }
+.sp-hint-italic { font-style: italic; color: rgba(204,195,216,0.7); }
+
+/* Spelling Bee */
+.sp-bee-actions { display: flex; gap: 10px; }
+.sp-listen-btn {
+  padding: 10px 20px;
+  border-radius: 99px;
+  background: rgba(112,42,225,0.2);
+  border: 1px solid rgba(150,110,255,0.35);
+  color: #c084fc;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sp-listen-btn:hover:not(:disabled) { background: rgba(112,42,225,0.35); }
+.sp-listen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sp-listen-btn.listening {
+  background: rgba(112,42,225,0.35);
+  animation: sp-pulse 1.2s ease-in-out infinite;
+}
+
+/* Compact icon-only listen button for Blanks and Scramble */
+.sp-listen-sm {
+  padding: 6px 12px;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+/* Row that places prompt + replay button side-by-side */
+.sp-mode-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sp-mode-header-row .sp-mode-prompt { margin: 0; }
+
+/* Speaking pulse animation */
+@keyframes sp-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(112,42,225,0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(112,42,225,0); }
+}
+
+.sp-listen-wave {
+  display: inline-block;
+  animation: sp-wave 0.5s ease-in-out infinite alternate;
+}
+@keyframes sp-wave {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(1.3); }
+}
+
+.sp-input {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(150,110,255,0.3);
+  background: rgba(255,255,255,0.05);
+  color: #e9e3f5;
+  font-size: 1.1rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+.sp-input:focus {
+  border-color: rgba(192,132,252,0.6);
+  box-shadow: 0 0 0 3px rgba(112,42,225,0.15);
+}
+.sp-input::placeholder { color: rgba(204,195,216,0.35); }
+
+.sp-submit-btn {
+  align-self: flex-end;
+  padding: 12px 28px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, #702ae1, #4f46e5);
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(112,42,225,0.3);
+  transition: opacity 0.2s;
+}
+.sp-submit-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Fill Blanks */
+.sp-blanks-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.sp-blank-input {
+  width: 36px; height: 44px;
+  text-align: center;
+  border-radius: 8px;
+  border: 1.5px solid rgba(150,110,255,0.5);
+  background: rgba(112,42,225,0.1);
+  color: #e9e3f5;
+  font-size: 1.1rem;
+  font-weight: 700;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  text-transform: uppercase;
+}
+.sp-blank-input:focus {
+  border-color: #c084fc;
+  box-shadow: 0 0 0 2px rgba(112,42,225,0.2);
+}
+.sp-known-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px; height: 44px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: rgba(233,227,245,0.9);
+}
+.sp-space { width: 14px; }
+
+/* Word Scramble */
+.sp-answer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 52px;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  border: 1.5px dashed rgba(150,110,255,0.3);
+}
+.sp-answer-slot {
+  width: 36px; height: 40px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(150,110,255,0.3);
+  background: rgba(112,42,225,0.08);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #c084fc;
+  transition: background 0.2s;
+}
+.sp-answer-slot.filled {
+  background: rgba(112,42,225,0.2);
+  border-color: rgba(192,132,252,0.5);
+}
+
+.sp-tiles-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.sp-tile {
+  width: 46px; height: 46px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.14);
+  color: #e9e3f5;
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.sp-tile:hover:not(.used) {
+  background: rgba(112,42,225,0.25);
+  border-color: rgba(192,132,252,0.5);
+}
+.sp-tile.used {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.sp-scramble-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sp-secondary-btn {
+  padding: 9px 18px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(204,195,216,0.8);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sp-secondary-btn:hover { background: rgba(255,255,255,0.1); }
+.sp-secondary-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.sp-submit-inline { align-self: auto; }
+
+/* ── Summary Page ──────────────────────────────────────────────── */
+.sp-summary-page {
+  max-width: 640px;
+  margin: 50px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.sp-summary-coach { display: flex; justify-content: center; }
+
+.sp-summary-card {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 24px;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sp-summary-title {
+  font-size: 1.8rem;
+  font-weight: 900;
+  margin: 0;
+  background: linear-gradient(135deg, #c084fc, #702ae1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-align: center;
+}
+
+.sp-summary-stats {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.sp-stat-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 24px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  gap: 4px;
+  min-width: 80px;
+}
+.sp-stat-pill.highlight {
+  background: rgba(112,42,225,0.15);
+  border-color: rgba(150,110,255,0.35);
+}
+.sp-stat-num {
+  font-size: 1.7rem;
+  font-weight: 900;
+  color: #c084fc;
+  line-height: 1;
+}
+.sp-stat-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(204,195,216,0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sp-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 32vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150,110,255,0.3) transparent;
+}
+.sp-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  font-size: 0.9rem;
+}
+.sp-result-row.correct { border-left: 3px solid #4ade80; }
+.sp-result-row.wrong { border-left: 3px solid #f87171; }
+.sp-result-icon { font-size: 1rem; }
+.sp-result-word {
+  font-weight: 700;
+  flex: 1;
+  color: rgba(233,227,245,0.9);
+}
+.sp-mastery-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fbbf24;
+  background: rgba(251,191,36,0.1);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.sp-result-xp {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #c084fc;
+}
+
+.sp-summary-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.sp-back-home {
+  padding: 12px 24px;
+}
+
+/* ═══════════════════════════════════
+   BLOCK MODE — SpellingBee & FillBlanks
+   ═══════════════════════════════════ */
+
+/* Helper buttons row */
+.sp-bee-helpers {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sp-helper-btn {
+  padding: 8px 16px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  color: rgba(204,195,216,0.85);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.sp-helper-btn:hover:not(:disabled) {
+  background: rgba(112,42,225,0.18);
+  border-color: rgba(150,110,255,0.4);
+  color: #c084fc;
+}
+.sp-helper-btn.used,
+.sp-helper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.sp-helper-btn.active {
+  background: rgba(112,42,225,0.25);
+  border-color: rgba(150,110,255,0.5);
+  color: #c084fc;
+}
+
+/* Phonics tip banner */
+.sp-phonics-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(250,200,80,0.07);
+  border: 1px solid rgba(250,200,80,0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  color: rgba(250,230,150,0.9);
+  overflow: hidden;
+}
+.sp-phonics-icon { font-size: 1.3rem; flex-shrink: 0; }
+.sp-phonics-tip strong { color: #fde68a; }
+
+/* Bee slots wrapper */
+.sp-bee-slots-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Override answer-row for bee's bigger slots */
+.sp-bee-slots {
+  justify-content: center;
+  min-height: 60px;
+  padding: 10px 14px;
+  gap: 8px;
+}
+
+/* Individual slot in SpellingBee block mode */
+.sp-bee-slot {
+  width: 44px;
+  height: 52px;
+  font-size: 1.25rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  cursor: default;
+}
+.sp-bee-slot.filled {
+  cursor: pointer;
+  background: rgba(112,42,225,0.22);
+  border-color: rgba(192,132,252,0.55);
+  box-shadow: 0 0 10px rgba(112,42,225,0.2);
+}
+.sp-bee-slot.hinted {
+  border-color: rgba(250,200,80,0.6);
+  background: rgba(250,200,80,0.12);
+}
+
+/* Letter bank for SpellingBee block mode — larger tiles */
+.sp-bee-bank {
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sp-bee-tile {
+  width: 52px !important;
+  height: 52px !important;
+  font-size: 1.25rem !important;
+  border-radius: 12px !important;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.sp-bee-tile:hover:not(.used) {
+  box-shadow: 0 4px 14px rgba(112,42,225,0.4);
+}
+
+/* Slot count hint label */
+.sp-slot-hint {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(204,195,216,0.4);
+  margin: 0;
+  text-align: center;
+}
+
+/* FillBlanks block mode — blank slots in the word row */
+.sp-blanks-block-row {
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+.sp-blank-block {
+  width: 40px;
+  height: 48px;
+  border-radius: 9px;
+  border: 1.5px solid rgba(150,110,255,0.4);
+  background: rgba(112,42,225,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #c084fc;
+  cursor: default;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  text-transform: uppercase;
+}
+.sp-blank-block.empty {
+  border-style: dashed;
+  border-color: rgba(150,110,255,0.3);
+}
+.sp-blank-block.filled {
+  cursor: pointer;
+  background: rgba(112,42,225,0.22);
+  border-color: rgba(192,132,252,0.55);
+  border-style: solid;
+  box-shadow: 0 0 10px rgba(112,42,225,0.2);
+}
+.sp-blank-block.filled:hover {
+  background: rgba(239,68,68,0.15);
+  border-color: rgba(239,68,68,0.45);
+}
+
+/* Letter bank for FillBlanks block mode */
+.sp-blank-bank {
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sp-blank-tile {
+  box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+}
+.sp-blank-tile:hover:not(.used) {
+  box-shadow: 0 4px 14px rgba(112,42,225,0.4);
+}
+
