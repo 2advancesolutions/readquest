@@ -77,37 +77,54 @@ type ReaderPhase = 'reading' | 'review' | 'quiz' | 'comprehension'
 
 /**
  * evaluateFullReading — batch algorithm run AFTER the student finishes speaking.
- * Aligns the full spoken transcript against all page words using a forward
- * greedy scan with a lookahead window. Much more accurate than real-time matching
- * because pauses, restarts, and interim noise don't cause false negatives.
+ * Uses dynamic-programming LCS (longest common subsequence) to align spoken
+ * words against page words. This is far more accurate than greedy scanning
+ * because it handles:
+ *   - Extra filler words inserted by speech recognition
+ *   - Skipped/missed words
+ *   - Slight reorderings or repeated words
+ * Only page words that participate in the LCS alignment get marked 'correct'.
+ * All others stay 'idle' (if unspoken) — NOT 'wrong' — so only the final
+ * statuses represent ground truth.
  */
 function evaluateFullReading(transcript: string, pageWords: string[]): WordStatus[] {
   const spoken = transcript.toLowerCase().split(/\s+/).filter(Boolean).map(normalize)
   const statuses: WordStatus[] = new Array(pageWords.length).fill('idle')
   if (!spoken.length) return statuses
 
-  let si = 0  // how far we've consumed in the spoken array
+  const targets = pageWords.map(normalize)
+  const m = targets.length  // page words
+  const n = spoken.length    // spoken words
 
-  for (let wi = 0; wi < pageWords.length; wi++) {
-    const target = normalize(pageWords[wi])
-    if (!target) continue
-
-    // Window: proportional lookahead so skipped filler words don't desync
-    const lookahead = target.length <= 3 ? 3 : 6
-    let matched = false
-
-    for (let offset = 0; offset < lookahead && si + offset < spoken.length; offset++) {
-      if (isClose(spoken[si + offset], target)) {
-        statuses[wi] = 'correct'
-        si += offset + 1
-        matched = true
-        break
+  // Build LCS DP table (m+1 × n+1)
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (targets[i - 1] && isClose(spoken[j - 1], targets[i - 1])) {
+        dp[i][j] = dp[i - 1][j - 1] + 1
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
       }
     }
+  }
 
-    if (!matched) {
-      // Word was skipped or mispronounced — mark wrong but don't advance spoken pointer
-      statuses[wi] = 'wrong'
+  // Backtrack to find which page words matched
+  let i = m, j = n
+  while (i > 0 && j > 0) {
+    if (targets[i - 1] && isClose(spoken[j - 1], targets[i - 1])) {
+      statuses[i - 1] = 'correct'
+      i--; j--
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--  // page word was skipped/missed
+    } else {
+      j--  // spoken word was extra (filler, repeated, etc.)
+    }
+  }
+
+  // Any page word NOT in the LCS that the student should have said → 'wrong'
+  for (let k = 0; k < m; k++) {
+    if (statuses[k] === 'idle' && targets[k]) {
+      statuses[k] = 'wrong'
     }
   }
 
@@ -142,6 +159,9 @@ export default function BookReader() {
   const [missedWords, setMissedWords] = useState<{ word: string; idx: number }[]>([])
   const [reviewIdx, setReviewIdx] = useState(0)
   const [reviewStarted, setReviewStarted] = useState(false)  // user must press Start first
+  // Tracks which missed-word indices the student successfully repeated during review.
+  // This is SEPARATE from wordStatuses so review practice never inflates the reading accuracy score.
+  const [reviewedWords, setReviewedWords] = useState<Set<number>>(new Set())
 
   const [xpToast, setXpToast] = useState<{ amount: number; id: number } | null>(null)
   const [sparkles, setSparkles] = useState<{ id: number; x: number; y: number }[]>([])
@@ -337,18 +357,50 @@ export default function BookReader() {
     }
   }, [mic.transcript, phase, mic.isListening])
 
-  // ── Live green progress highlighting ─────────────────────────────────────
-  // Count words spoken so far (final + interim) and mark that many green.
-  // No string comparison — O(1) per update. Fires on interimTranscript for
-  // real-time word-by-word highlighting as the student reads.
+  // ── Live green/red progress highlighting ─────────────────────────────────
+  // Compare spoken words against page words using a greedy forward match.
+  // Correct words → green immediately. Words the student skipped/misread
+  // (already passed by in the scan) → red immediately. Upcoming words → idle.
   useEffect(() => {
     if (phase !== 'reading' || !mic.isListening) return
     const combined = (mic.transcript + ' ' + mic.interimTranscript).trim()
     if (!combined) return
 
-    const spokenCount = combined.split(/\s+/).filter(Boolean).length
+    const spoken = combined.toLowerCase().split(/\s+/).filter(Boolean).map(normalize)
     const words = pageWordsRef.current
-    setWordStatuses(words.map((_, i) => (i < spokenCount ? 'correct' : 'idle')) as WordStatus[])
+    const targets = words.map(normalize)
+    const newStatuses: WordStatus[] = new Array(words.length).fill('idle')
+
+    // Greedy forward scan: for each spoken token, find the next matching page word
+    let wi = 0 // page word pointer — tracks how far into the page we've progressed
+    for (let si = 0; si < spoken.length && wi < targets.length; si++) {
+      // Skip page words that are empty after normalization (punctuation-only)
+      while (wi < targets.length && !targets[wi]) { wi++ }
+      if (wi >= targets.length) break
+
+      // Look ahead a few page words to handle minor desync
+      const lookahead = 4
+      let matched = false
+      for (let offset = 0; offset < lookahead && wi + offset < targets.length; offset++) {
+        if (targets[wi + offset] && isClose(spoken[si], targets[wi + offset])) {
+          // Mark any skipped page words (offset > 0) as WRONG — student missed them
+          for (let skip = 0; skip < offset; skip++) {
+            if (targets[wi + skip]) newStatuses[wi + skip] = 'wrong'
+          }
+          newStatuses[wi + offset] = 'correct'
+          wi = wi + offset + 1
+          matched = true
+          break
+        }
+      }
+      // If no match found at all for this spoken token, advance spoken pointer only
+      // (spoken word not in text — filler/noise). wi stays put — don't penalize yet.
+      if (!matched) {
+        // No action: spoken word wasn't in page text, just ignore it.
+      }
+    }
+
+    setWordStatuses(newStatuses)
   }, [mic.transcript, mic.interimTranscript, phase, mic.isListening])  // eslint-disable-line
 
   // When mic stops during reading phase → run batch evaluation
@@ -385,8 +437,13 @@ export default function BookReader() {
 
   // ── Auto-stop on silence → triggers batch evaluation ─────────────────────
   // Chrome SpeechRecognition with continuous=true never fires onend on its own.
-  // We reset a 2.5s timer on every speech event; when it fires the mic stops,
+  // We reset a silence timer on every speech event; when it fires the mic stops,
   // which flips isListening false, which triggers the batch evaluation above.
+  // Mobile gets a much longer timeout (10s) because:
+  //   1) Kids pause naturally between sentences while reading
+  //   2) The auto-restart gap between recognition sessions eats ~200ms each time
+  //   3) Single-shot mode means brief silent gaps between each segment
+  const SILENCE_TIMEOUT = isIOS || /Android/i.test(navigator.userAgent) ? 10000 : 3000
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!mic.isListening || phase !== 'reading') {
@@ -405,7 +462,7 @@ export default function BookReader() {
           }
         })
       }
-    }, 3000)
+    }, SILENCE_TIMEOUT)
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
     }
@@ -413,8 +470,22 @@ export default function BookReader() {
 
   // ── Review phase — MANUAL mic: TTS speaks word, student presses button to repeat ──
   const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reviewAutoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reviewMicReadyRef = useRef(false)   // grace period: ignore speech for 600ms after mic starts
+  const [reviewLiveHint, setReviewLiveHint] = useState('')  // live "I heard: ..." feedback
   // Track which review words have been spoken by TTS so we don't re-speak on re-renders
   const reviewSpokenRef = useRef<number>(-1)
+  // Saves the last full transcript so the "mic stopped" evaluator can read it
+  const lastReviewTranscriptRef = useRef('')
+  // Refs so setTimeout/useEffect callbacks always see the latest values (no stale closures)
+  const reviewIdxRef = useRef(reviewIdx)
+  const missedWordsRef = useRef(missedWords)
+  const wasReviewListeningRef = useRef(false)
+  // startQuizRef breaks the forward-reference issue: evaluateReviewTranscript is
+  // declared before startQuiz but needs to call it; the ref bridges the gap.
+  const startQuizRef = useRef<() => void>(() => {})
+  useEffect(() => { reviewIdxRef.current = reviewIdx }, [reviewIdx])
+  useEffect(() => { missedWordsRef.current = missedWords }, [missedWords])
 
   // Speak the current word when reviewIdx changes (or review starts)
   useEffect(() => {
@@ -426,6 +497,9 @@ export default function BookReader() {
     reviewSpokenRef.current = reviewIdx
     mic.stopListening()
     mic.resetTranscript()
+    setReviewLiveHint('')
+    lastReviewTranscriptRef.current = ''
+    reviewMicReadyRef.current = false
 
     // Strip punctuation for clean TTS pronunciation
     const cleanWord = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
@@ -440,61 +514,77 @@ export default function BookReader() {
   const handleReviewMicPress = useCallback(() => {
     if (mic.isListening) {
       mic.stopListening()
+      if (reviewAutoStopRef.current) clearTimeout(reviewAutoStopRef.current)
       return
     }
     tts.stop()
+    // Force-stop any previous session before resetting, avoiding stale recognition state
+    mic.stopListening()
     mic.resetTranscript()
+    setReviewLiveHint('')
+    lastReviewTranscriptRef.current = ''
+    reviewMicReadyRef.current = false
+    // Start listening SYNCHRONOUSLY — setTimeout breaks user-gesture chain on some browsers
     mic.startListening(storyLang)
-  }, [mic, tts])
+    // Grace period: don't evaluate speech until 600ms after mic opens
+    // This prevents TTS echo or ambient noise from counting as the answer
+    setTimeout(() => { reviewMicReadyRef.current = true }, 600)
+  }, [mic, tts, storyLang])
 
   // Called when student wants to hear the word again
   const handleReviewHearAgain = useCallback(() => {
     mic.stopListening()
     mic.resetTranscript()
+    setReviewLiveHint('')
+    lastReviewTranscriptRef.current = ''
+    reviewMicReadyRef.current = false
+    if (reviewAutoStopRef.current) clearTimeout(reviewAutoStopRef.current)
     const currentMissed = missedWords[reviewIdx]
     if (!currentMissed) return
     const cleanWord = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
     tts.speak(`${cleanWord}`, 'word')
   }, [reviewIdx, missedWords, tts, mic])
 
-  // Match detection — only when mic is actively listening
-  useEffect(() => {
-    if (phase !== 'review' || !mic.isListening) return
+  // ── Review match helper — more lenient than reading-phase matching ──────
+  // For single-word practice we allow up to 2 edit-distance for any word
+  // (including short ones) because speech recognition often mishears consonants
+  // e.g. "bat" → "back", "bad", "bag" all within 2 edits.
+  function reviewWordMatches(norm: string, target: string): boolean {
+    if (!norm || !target) return false
+    if (norm === target) return true
+    const dist = levenshtein(norm, target)
+    // Allow up to 2 edits for any length word in review mode
+    if (dist <= 2) return true
+    // Extra: prefix match for longer words (handles dropped endings)
+    if (target.length >= 5) {
+      const prefixLen = Math.ceil(target.length * 0.6)
+      if (norm.startsWith(target.slice(0, prefixLen))) return true
+    }
+    return false
+  }
 
-    const combined = (mic.transcript + ' ' + mic.interimTranscript).trim()
-    if (!combined) return
-
-    const spoken = combined.toLowerCase().split(/\s+/).filter(Boolean)
-    const currentMissed = missedWords[reviewIdx]
+  // ── Shared evaluator — called when mic stops, checks what the student said ──
+  // Uses refs so it always sees the latest reviewIdx/missedWords even from a timer.
+  const evaluateReviewTranscript = useCallback((combined: string) => {
+    const currentMissed = missedWordsRef.current[reviewIdxRef.current]
     if (!currentMissed) return
 
-    // Strip punctuation from stored word before matching
+    const spoken = combined.toLowerCase().split(/\s+/).filter(Boolean)
     const cleanTarget = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
     const target = normalize(cleanTarget)
+    const matched = spoken.some(w => reviewWordMatches(normalize(w), target))
 
-    // Check ALL spoken words (not just the last) so the user can say the
-    // word anywhere in their utterance (e.g. "Rio" or "I said Rio")
-    const matched = spoken.some(w => {
-      const norm = normalize(w)
-      // For very short words use 1-edit-distance instead of exact-only
-      if (target.length <= 3) return norm === target || levenshtein(norm, target) <= 1
-      return isClose(norm, target)
-    })
+    setReviewLiveHint('')
 
     if (matched) {
       if (reviewTimerRef.current) clearTimeout(reviewTimerRef.current)
-      mic.stopListening()
+      if (reviewAutoStopRef.current) clearTimeout(reviewAutoStopRef.current)
 
-      // Mark correct
-      setWordStatuses(prev => {
-        const next = [...prev]
-        next[currentMissed.idx] = 'correct'
-        return next
-      })
+      // Track review progress visually — does NOT modify wordStatuses (reading accuracy stays strict)
+      setReviewedWords(prev => new Set(prev).add(currentMissed.idx))
       sfx.playPop()
 
-      // Sparkle effect
-      const el = document.querySelector(`.review-word-card:nth-child(${reviewIdx + 1})`)
+      const el = document.querySelector(`.review-word-card:nth-child(${reviewIdxRef.current + 1})`)
       if (el) {
         const rect = el.getBoundingClientRect()
         const id = Date.now() + Math.random()
@@ -502,21 +592,69 @@ export default function BookReader() {
         setTimeout(() => setSparkles(s => s.filter(sp => sp.id !== id)), 1200)
       }
 
-      // Give positive feedback then advance
       tts.speak('Great job!', 'teacher')
-      const nextReview = reviewIdx + 1
-      if (nextReview < missedWords.length) {
-        reviewSpokenRef.current = -1  // allow next word to be spoken
+      const nextReview = reviewIdxRef.current + 1
+      if (nextReview < missedWordsRef.current.length) {
+        reviewSpokenRef.current = -1
         setTimeout(() => setReviewIdx(nextReview), 1200)
       } else {
         sfx.playCorrect()
         setTimeout(() => {
           tts.speak("Amazing! You got them all! Now let's see what you remember — quiz time!", 'teacher')
-          setTimeout(() => startQuiz(), 2500)
+          setTimeout(() => startQuizRef.current(), 2500)
         }, 1200)
       }
+    } else {
+      // No match — encourage retry and replay the word via TTS
+      const cleanWord = currentMissed.word.replace(/[^a-zA-Z'-]/g, '')
+      tts.speak(`Almost! The word is ${cleanWord}. Try again!`, 'teacher')
+      reviewSpokenRef.current = -1   // allow the word TTS to replay
     }
-  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening, reviewIdx, missedWords])  // eslint-disable-line
+  }, [sfx, tts])  // eslint-disable-line — startQuiz declared below; stable ref via closure
+
+  // ── Effect 1: live hint + silence-based auto-stop ─────────────────────────
+  // Runs on every transcript update while mic is ON and past the grace period.
+  // Saves what was heard into a ref, shows the live hint, and resets a 2-second
+  // silence timer. When the timer fires it stops the mic — Effect 2 then evaluates.
+  useEffect(() => {
+    if (phase !== 'review' || !mic.isListening) return
+    if (!reviewMicReadyRef.current) return  // still in grace period — ignore
+
+    const combined = (mic.transcript + ' ' + mic.interimTranscript).trim()
+    if (!combined) return
+
+    lastReviewTranscriptRef.current = combined   // save for evaluation on stop
+    setReviewLiveHint(combined)
+
+    // Silence detector: reset the 2s timer on every new speech chunk.
+    // When 2 seconds pass with no updates the mic stops, triggering Effect 2.
+    if (reviewAutoStopRef.current) clearTimeout(reviewAutoStopRef.current)
+    reviewAutoStopRef.current = setTimeout(() => {
+      if (mic.isListening) mic.stopListening()
+    }, 2000)
+  }, [mic.transcript, mic.interimTranscript, phase, mic.isListening])  // eslint-disable-line
+
+  // ── Effect 2: THE KEY FIX — evaluate when mic stops in review phase ───────
+  // Previously the match check had `if (!isListening) return` at the top, so
+  // when auto-stop fired it threw the transcript away. Now we save the transcript
+  // in a ref and evaluate it here once isListening flips to false.
+  useEffect(() => {
+    if (phase !== 'review') { wasReviewListeningRef.current = false; return }
+
+    if (mic.isListening) {
+      wasReviewListeningRef.current = true
+    } else if (wasReviewListeningRef.current) {
+      // Mic just stopped — evaluate the saved transcript
+      wasReviewListeningRef.current = false
+      if (reviewAutoStopRef.current) clearTimeout(reviewAutoStopRef.current)
+      const last = lastReviewTranscriptRef.current
+      lastReviewTranscriptRef.current = ''
+      if (last && reviewMicReadyRef.current) {
+        reviewMicReadyRef.current = false
+        evaluateReviewTranscript(last)
+      }
+    }
+  }, [mic.isListening, phase, evaluateReviewTranscript])
 
 
   // ── XP toast — shows animation AND persists to the global XP badge ──────
@@ -597,6 +735,7 @@ export default function BookReader() {
       setMissedWords(missed)
       setReviewIdx(0)
       setReviewStarted(false)  // show Start button
+      setReviewedWords(new Set())  // reset review progress
       setPhase('review')
       tts.stop()
       setTimeout(() => tts.speak(`Great reading! You missed ${missed.length} word${missed.length > 1 ? 's' : ''}. Press Start to practice them — you can do it!`, 'teacher'), 300)
@@ -623,6 +762,8 @@ export default function BookReader() {
       advancePage(newScores ?? pageScores)
     }
   }, [story, page, pageScores, tts])
+  // Keep the ref in sync so evaluateReviewTranscript (declared above) can call it
+  useEffect(() => { startQuizRef.current = startQuiz as () => void }, [startQuiz])
 
   // Handle finishing the review phase
   const handleFinishReview = useCallback(() => {
@@ -725,6 +866,11 @@ export default function BookReader() {
   // SYNC — recognition.start() must be in the direct click handler call stack.
   // Any await before it breaks the browser's user-gesture permission chain on mobile.
   const toggleMic = () => {
+    // During review phase, route all mic presses through the review handler
+    if (phase === 'review') {
+      handleReviewMicPress()
+      return
+    }
     if (mic.isListening) {
       sfx.playClick()
       mic.stopListening()
@@ -749,14 +895,20 @@ export default function BookReader() {
       // Update micPerm so the banner dismisses after first successful use
       if (micPerm === 'prompt') setMicPerm('granted')
 
-      // Start audio recording in parallel — this can be async, it's not permission-gated
-      navigator.mediaDevices?.getUserMedia({ audio: true })
-        .then(stream => {
-          mediaStreamRef.current?.getTracks().forEach(t => t.stop())
-          mediaStreamRef.current = stream
-          recorder.startRecording(stream)
-        })
-        .catch(() => { /* mic permission already handled by SpeechRecognition */ })
+      // Start audio recording for saving — DESKTOP ONLY.
+      // On mobile, the mic hook's MediaRecorder already captures all audio.
+      // A second getUserMedia call on iOS steals the track from the hook's
+      // recorder, causing silent audio capture failure (no green highlights).
+      const isMobileDevice = isIOS || /Android/i.test(navigator.userAgent)
+      if (!isMobileDevice) {
+        navigator.mediaDevices?.getUserMedia({ audio: true })
+          .then(stream => {
+            mediaStreamRef.current?.getTracks().forEach(t => t.stop())
+            mediaStreamRef.current = stream
+            recorder.startRecording(stream)
+          })
+          .catch(() => { /* mic permission already handled by SpeechRecognition */ })
+      }
     }
   }
 
@@ -1197,16 +1349,16 @@ export default function BookReader() {
               {/* Mini progress grid — all words with status dots */}
               <div className="review-words-grid">
                 {missedWords.map((mw, i) => {
-                  const status = wordStatuses[mw.idx]
+                  const reviewed = reviewedWords.has(mw.idx)
                   const isActive = reviewStarted && i === reviewIdx
                   const cleanWord = mw.word.replace(/[^a-zA-Z'-]/g, '')
                   return (
                     <motion.div key={mw.idx}
-                      className={`review-word-card ${status === 'correct' ? 'correct' : isActive ? 'active' : ''}`}
+                      className={`review-word-card ${reviewed ? 'correct' : isActive ? 'active' : ''}`}
                       initial={{scale:0.8,opacity:0}} animate={{scale:1,opacity:1}}
                       transition={{delay:i*0.05}}>
                       <span className="review-word-text">{cleanWord}</span>
-                      {status === 'correct' && <span className="review-check">✅</span>}
+                      {reviewed && <span className="review-check">✅</span>}
                     </motion.div>
                   )
                 })}
@@ -1245,7 +1397,15 @@ export default function BookReader() {
                         🎤
                       </motion.div>
                       <p className="review-mic-hint">Say the word out loud!</p>
-                      <button className="review-stop-btn" onClick={() => mic.stopListening()}>
+                      {reviewLiveHint && (
+                        <p style={{
+                          fontSize:'0.85rem', color:'rgba(255,255,255,0.7)',
+                          marginTop:6, fontStyle:'italic', minHeight:20
+                        }}>
+                          I heard: "<strong style={{color:'#a5f3fc'}}>{reviewLiveHint}</strong>"
+                        </p>
+                      )}
+                      <button className="review-stop-btn" onClick={() => { mic.stopListening(); if (reviewAutoStopRef.current) clearTimeout(reviewAutoStopRef.current) }}>
                         ✕ Cancel
                       </button>
                     </div>
@@ -1438,57 +1598,49 @@ export default function BookReader() {
           </div>
 
           {mic.isSupported && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
-              <button
-                className={`reader-mic-btn ${
-                  mic.isListening ? 'listening' :
-                  mic.permissionError ? 'mic-error' : ''
-                }`}
-                onClick={toggleMic}
-                title={mic.isListening ? 'Stop reading' : 'Tap to read aloud'}
-              >
-                {mic.isListening ? (
-                  /* Stop square — tap to end this session */
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="4" y="4" width="16" height="16" rx="2"/>
-                  </svg>
-                ) : mic.permissionError ? (
-                  /* Lock icon — mic blocked */
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17 11V7A5 5 0 0 0 7 7v4M5 11h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zm7 3v3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
-                  </svg>
-                ) : (
-                  /* Microphone SVG */
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="9" y="2" width="6" height="11" rx="3"/>
-                    <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
-                    <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="8" y1="22" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                )}
-              </button>
-              <span style={{
-                fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                color: mic.isListening ? '#fca5a5'
-                     : mic.permissionError ? '#f87171'
-                     : 'rgba(178,140,255,0.8)',
-              }}>
-                {mic.isListening ? 'Listening…'
+            <button
+              className={`reader-mic-btn${
+                mic.isListening ? ' listening' :
+                mic.permissionError ? ' mic-error' : ''
+              }`}
+              onClick={toggleMic}
+              title={mic.isListening ? 'Reading Mode On — tap to stop' : 'Reading Mode Off — tap to start'}
+              style={{
+                borderRadius: '999px',
+                width: 'auto',
+                padding: '0 18px 0 14px',
+                gap: '8px',
+                flexDirection: 'row',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+                minWidth: '62px',
+              }}
+            >
+              {mic.isListening ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{flexShrink:0}}>
+                  <rect x="4" y="4" width="16" height="16" rx="2"/>
+                </svg>
+              ) : mic.permissionError ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{flexShrink:0}}>
+                  <path d="M17 11V7A5 5 0 0 0 7 7v4M5 11h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zm7 3v3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{flexShrink:0}}>
+                  <rect x="9" y="2" width="6" height="11" rx="3"/>
+                  <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+                  <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  <line x1="8" y1="22" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              )}
+              <span>
+                {mic.isListening ? 'Reading Mode On'
                  : mic.permissionError ? '🔒 Allow mic'
-                 : 'Read Aloud'}
+                 : 'Reading Mode Off'}
               </span>
-              {mic.permissionError && (
-                <span style={{ fontSize: '9px', color: '#fca5a5', textAlign: 'center', maxWidth: '90px', lineHeight: 1.4, marginTop: 2 }}>
-                  {isIOS ? 'Settings → Safari → Mic' : 'Tap 🔒 → Site Settings → Mic'}
-                </span>
-              )}
-              {/* Chrome on iOS — uses server-side STT fallback, works but slightly slower */}
-              {isIOSChrome && !mic.isListening && !mic.permissionError && (
-                <span style={{ fontSize: '9px', color: '#a7f3d0', textAlign: 'center', maxWidth: '100px', lineHeight: 1.4, marginTop: 2 }}>
-                  🎤 Voice ready
-                </span>
-              )}
-            </div>
+            </button>
           )}
         </div>
 

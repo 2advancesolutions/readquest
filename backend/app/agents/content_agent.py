@@ -53,9 +53,65 @@ async def _upload_to_supabase(img_bytes: bytes, filename: str) -> Optional[str]:
         return None
 
 
+async def remove_background_from_bytes(img_bytes: bytes, white_threshold: int = 230) -> bytes:
+    """
+    Remove the white/near-white background from image bytes using Pillow.
+    Flood-fills from all four corners + centre edges to catch complex backgrounds.
+    Returns transparent PNG bytes.
+
+    Falls back to rembg (if installed) for non-white backgrounds.
+    """
+    import io
+    from PIL import Image, ImageFilter
+
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+    data = img.load()  # type: ignore
+    width, height = img.size
+
+    def _is_near_white(r: int, g: int, b: int) -> bool:
+        return r >= white_threshold and g >= white_threshold and b >= white_threshold
+
+    def _flood_fill(start_pixels: list[tuple[int, int]]) -> None:
+        """BFS flood-fill from given seed pixels — sets near-white pixels to transparent."""
+        queue = list(start_pixels)
+        visited: set[tuple[int, int]] = set(start_pixels)
+        while queue:
+            x, y = queue.pop()
+            r, g, b, a = data[x, y]
+            if not _is_near_white(r, g, b):
+                continue
+            # Feather edge — partial alpha for soft-edge anti-aliasing
+            brightness = (r + g + b) / 3
+            alpha = max(0, int((1 - (brightness - white_threshold) / (255 - white_threshold + 1)) * 255))
+            data[x, y] = (r, g, b, alpha)
+            for nx, ny in [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]:
+                if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited:
+                    nr, ng, nb, _ = data[nx, ny]
+                    if _is_near_white(nr, ng, nb):
+                        visited.add((nx, ny))
+                        queue.append((nx, ny))
+
+    # Seed from all four corners + mid-edges (catches most image backgrounds)
+    seeds = [
+        (0, 0), (width-1, 0), (0, height-1), (width-1, height-1),
+        (width//2, 0), (width//2, height-1), (0, height//2), (width-1, height//2),
+    ]
+    _flood_fill(seeds)
+
+    # Optional: slight de-fringe via a 1-pixel alpha blur on edges
+    try:
+        r_ch, g_ch, b_ch, a_ch = img.split()
+        a_ch = a_ch.filter(ImageFilter.SMOOTH_MORE)
+        img = Image.merge("RGBA", (r_ch, g_ch, b_ch, a_ch))
+    except Exception:
+        pass
+
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
 
 
-# ── State Schema ────────────────────────────────────────────────────────────
+
 class ContentState(TypedDict):
     grade: int
     theme: str
@@ -63,6 +119,7 @@ class ContentState(TypedDict):
     character_description: str   # e.g. "blonde braided hair, ice-blue dress, ice powers"
     character_universe: str      # e.g. "Frozen (Disney)"
     character_visual: str        # resolved = "{name} from {universe} — {description}" used by every FLUX call
+    character_image_url: str     # optional gallery portrait — use as cover if provided (skip FLUX cover gen)
     language: str
     art_style: str
     grade_vocab_desc: str
@@ -356,8 +413,9 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
 
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Truncate very long prompts (fal.ai handles most content fine, no aggressive filters)
-    image_prompt = prompt[:500]
+    # Use the full prompt — truncation is now handled upstream in image_prompt_node
+    # to guarantee the unique scene content is preserved per page.
+    image_prompt = prompt[:500]  # hard safety cap; upstream already keeps prompts ~490 chars
 
     try:
         import fal_client
@@ -372,7 +430,7 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
                 "prompt": image_prompt,
                 "image_size": "square_hd",       # 1024×1024
                 "num_inference_steps": 28,        # dev default — much higher quality
-                "guidance_scale": 3.5,            # stronger prompt adherence for characters
+                "guidance_scale": 4.5,            # stronger prompt adherence for characters
                 "num_images": 1,
                 "enable_safety_checker": True,
                 "output_format": "png",           # lossless for Supabase upload
@@ -418,11 +476,13 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
         return None
 
 
+
 async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
     """
     Remove the white background from image bytes using Pillow only.
-    Flood-fills from all 4 corners to identify background white pixels,
-    converts them to transparent — perfect for flat cartoon illustrations.
+    Flood-fills from all 4 corners to identify background white pixels
+    and makes them fully transparent. Uses a hard-edge mask — no feathering
+    that would destroy character details like light-colored fur or skin.
     Returns PNG bytes with a transparent background.
     Falls back to the original bytes if anything fails.
     """
@@ -434,19 +494,15 @@ async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
         img = Image.open(io.BytesIO(data)).convert("RGBA")
         arr = np.array(img)
 
-        # White-ish threshold — pixels where all RGB channels > 220 are "background"
-        r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
-        white_mask = (r > 220) & (g > 220) & (b > 220)
+        # Threshold: only pure/near-pure white pixels are background candidates
+        # Using 230 (not 220) so we don't accidentally catch light-colored fur/skin
+        r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+        white_mask = (r > 230) & (g > 230) & (b > 230)
 
-        # Flood fill from all 4 corners to get ONLY connected white background
-        # (avoids removing white pixels that are part of the character)
-        from PIL import ImageDraw
+        # Flood fill from all 4 corners to get ONLY the connected outer background
+        # (avoids removing white pixels that are INSIDE the character boundary)
         h, w = arr.shape[:2]
         flood_mask = np.zeros((h, w), dtype=bool)
-
-        # Use PIL's flood-fill by converting to L mode for speed
-        gray = img.convert("L")
-        gray_arr = np.array(gray)
 
         def flood_from(start_y, start_x):
             """BFS flood fill from corner through white pixels."""
@@ -469,14 +525,9 @@ async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
         flood_from(h - 1, 0)
         flood_from(h - 1, w - 1)
 
-        # Make flooded pixels transparent
+        # Hard-edge erase: set flooded background pixels to fully transparent
+        # NO feathering — feathering destroys character detail (light-colored fur, highlights)
         arr[flood_mask, 3] = 0
-
-        # Soft edge feathering — slightly fade near-white border pixels
-        near_white = (r > 200) & (g > 200) & (b > 200) & (~flood_mask)
-        brightness = (r[near_white].astype(float) + g[near_white].astype(float) + b[near_white].astype(float)) / 3.0
-        alpha_scale = np.clip((255.0 - brightness) / 35.0, 0.0, 1.0)
-        arr[near_white, 3] = (arr[near_white, 3] * alpha_scale).astype(np.uint8)
 
         result_img = Image.fromarray(arr, "RGBA")
         buf = io.BytesIO()
@@ -491,6 +542,7 @@ async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
     except Exception as e:
         print(f"[bg-remove] Failed (non-fatal, returning original): {e}")
         return img_bytes
+
 
 
 
@@ -550,72 +602,84 @@ async def image_prompt_node(state: ContentState) -> ContentState:
     # Pattern: [STYLE DECLARATION] + [CHARACTER AS MANDATORY FOREGROUND SUBJECT] + [SCENE] + [STYLE DETAILS]
     ART_STYLE_PROMPTS = {
         "cartoon": (
-            "Fun 2D illustrated children's book, colorful cartoon page spread. "
-            "CHARACTER (prominently centered foreground, full body, clearly recognizable): {cv}. "
+            "MASTERPIECE, 8K, colorful children's book illustration. fun 2D illustrated style. "
+            "MAIN CHARACTER (large foreground focus, full body, extremely sharp and clear): {cv}. "
             "Scene context: {scene}. "
-            "Bold black outlines, flat cel-shaded colors, bright saturation, modern cartoon sticker art, "
-            "safe for kids, no text, high resolution."
+            "Crisp bold black outlines, bright vivid colors, professional character design, "
+            "highly detailed setting, magical atmosphere, kids-friendly, no text, no grain, high resolution."
         ),
         "cinematic": (
-            "ULTRA-REALISTIC CINEMATIC LIVE-ACTION PHOTOGRAPH — NOT a cartoon, NOT animated, NOT illustrated. "
-            "Hollywood 4K IMAX cinematography, photorealistic detail, anamorphic film grain. "
-            "HERO IN FOREGROUND (large, dynamic action pose, unmistakably recognizable): {cv}. "
+            "MASTERPIECE, 8K, ULTRA-REALISTIC CINEMATIC PHOTO — not a cartoon. "
+            "Hollywood 4K IMAX cinematography, extremely sharp photorealistic detail, crisp focus. "
+            "HERO IN FOREGROUND (large 3D presence, dynamic, unmistakable likeness): {cv}. "
             "Scene action: {scene}. "
-            "Dramatic volumetric light beams, depth-of-field bokeh background, motion blur on action, "
-            "storm atmosphere, emergency lighting, sun breaking through clouds, DSLR 28mm lens, ultrasharp."
+            "Dramatic volumetric light, film texture, DSLR 35mm, high contrast, movie set detail, no logos."
         ),
         "pixar": (
-            "Pixar/Illumination 3D CGI film render, vibrant studio-quality animation — NOT a flat 2D cartoon. "
-            "MAIN CHARACTER (large foreground, expressive face, mid-action dynamic pose): {cv}. "
-            "Scene: {scene}. "
-            "Subsurface scattering skin shading, soft global illumination, cinematic depth of field, "
-            "highly detailed Pixar textures, exaggerated expressive motion, magical particle effects, 8K render."
+            "MASTERPIECE, 8k, Pixar/Illumination animation studio render, vibrant 3D CGI — NOT 2D. "
+            "MAIN CHARACTER (foreground center, expressive face, sharp textured fur/skin): {cv}. "
+            "Scene context: {scene}. "
+            "Magical subsurface scattering, soft global illumination, depth of field, Disney-level detail."
         ),
         "real": (
-            "GRITTY PHOTOREALISTIC LIVE-ACTION PHOTOGRAPHY — absolutely NOT a cartoon, NOT illustrated, NOT animated. "
-            "Real-world photojournalism, hyperrealistic detail, documentary style. "
-            "MAIN CHARACTER (intense expression, foreground center, unmistakably recognizable): {cv}. "
+            "MASTERPIECE, 8K, GRITTY PHOTOREALISTIC PHOTOGRAPHY — NOT illustrated. "
+            "Hyper-realistic, sharp documentary style, cinematic grit. "
+            "MAIN CHARACTER (foreground, intense focus, extremely detailed skin/fabric): {cv}. "
             "Scene: {scene}. "
-            "Wet pavement reflections, rain and sparks, nighttime urban grit, bokeh city lights, "
-            "DSLR 85mm f/1.8, shallow depth of field, high contrast, photorealistic fabric and skin texture, "
-            "8K ultra-sharp photography, zero illustration elements."
+            "Bokeh city lights, wet reflections, high dynamic range, sharp 8K resolution."
         ),
         "comic": (
-            "Dynamic Marvel/DC graphic novel comic book art, high-energy panel composition — NOT photorealistic. "
-            "MAIN CHARACTER (action foreground, bold thick ink outlines, iconic costume detail): {cv}. "
-            "Panel scene: {scene}. "
-            "Vivid halftone dot shading, ben-day dots, bold primary colors, speed lines, foreshortening, "
-            "impact burst energy effects integrated as art, Marvel/DC quality inking, no text overlay."
+            "MASTERPIECE, 8k, Dynamic Marvel/DC comic book art, high energy splash page. "
+            "MAIN CHARACTER (action-packed foreground, bold ink lines, extremely clear design): {cv}. "
+            "Scene: {scene}. "
+            "Vivid primary colors, speed lines, ben-day dots, professional comic inking, no text."
         ),
         "epic": (
-            "Blockbuster IMAX movie poster / key art, ultra-cinematic photorealistic scale — NOT a cartoon. "
-            "HERO (center stage, heroic stance, dramatic backlit silhouette, massive imposing scale): {cv}. "
-            "Scene: {scene}. "
-            "Catastrophic background destruction, explosions, collapsing skyline, helicopters, storm clouds, "
-            "bio-electric energy burst in brilliant blue-white, golden-hour sunset mixing with electric glow, "
-            "lens flares, volumetric god rays, cinematic color grade, movie poster composition, 8K ultra."
+            "MASTERPIECE, 8K, Blockbuster IMAX movie poster key art. Epic scale, ultra-sharp. "
+            "HERO (center grand entrance, heroic silhouette, glowing detail): {cv}. "
+            "Background: {scene}. "
+            "Catastrophic destruction, atmospheric lighting, movie poster grade coloring, cinematic master shot."
         ),
     }
     style_template = ART_STYLE_PROMPTS.get(art_style, ART_STYLE_PROMPTS['cartoon'])
 
     # ── Build per-page prompts ────────────────────────────────────────────────────────────
+    # IMPORTANT: Keep prompts short enough so scene content isn't truncated by fal.ai's 500-char
+    # limit. We build a compact scene-first prompt that guarantees the unique page content survives.
     prompts = []
-    for page in pages:
-        scene = (
-            f"{page['content'][:200]}. "
-            f"Setting/theme: {theme}. "
-            f"Grade {state['grade']} children's book."
+    for i, page in enumerate(pages):
+        # Use first 150 chars of content — this is the unique scene differentiator per page
+        scene_snippet = page['content'][:150].strip()
+        # Build a compact, scene-first prompt that fits well within 500 chars
+        # and is meaningfully different for each page
+        page_label = f"PAGE {i+1} OF {len(pages)}"
+        compact_prompt = (
+            f"{page_label}: {scene_snippet}. "
+            f"Featuring {character_visual} as the MAIN CHARACTER in foreground. "
+            f"Theme: {theme}. Art style: {art_style}. "
+            f"Children's book illustration, vibrant colors, high quality, no text."
         )
-        prompt = style_template.format(cv=character_visual, scene=scene)
-        prompts.append(prompt)
-    state["image_prompts"] = prompts
-    print(f"[image_prompt_node] Generating {len(prompts)} page images via FLUX in parallel...")
+        if len(compact_prompt) > 490:
+            compact_prompt = compact_prompt[:490]
+        prompts.append(compact_prompt)
 
-    # ── Generate ALL page images in parallel via FLUX.1 Dev ──────────────────────────────
-    tasks = [_generate_image_nano_banana2(p) for p in prompts]
-    image_urls = list(await asyncio.gather(*tasks, return_exceptions=True))
-    # Replace exceptions with None so the pipeline doesn't die on partial failures
-    image_urls = [u if isinstance(u, str) else None for u in image_urls]
+    state["image_prompts"] = prompts
+    print(f"[image_prompt_node] Generating {len(prompts)} unique page images via FLUX...")
+    for i, p in enumerate(prompts):
+        print(f"  Page {i+1} prompt ({len(p)} chars): {p[:120]}...")
+
+    # ── Generate ALL page images sequentially to avoid fal.ai dedup/caching ─────────────
+    # NOTE: fal.ai may return cached results for parallel calls with similar prompts.
+    # We generate sequentially with a small delay to guarantee distinct images per page.
+    import random as _random
+    image_urls: list = []
+    for i, p in enumerate(prompts):
+        # Add a unique seed hint to each prompt so fal.ai generates distinct images
+        seeded_prompt = f"{p} [unique_seed:{_random.randint(100000, 999999)}]"
+        url = await _generate_image_nano_banana2(seeded_prompt)
+        image_urls.append(url)
+        print(f"[image_prompt_node] Page {i+1}/{len(prompts)} FLUX image: {'OK' if url else 'FAILED'}")
+
     print(f"[image_prompt_node] FLUX done: {sum(1 for u in image_urls if u)} / {len(image_urls)} images OK")
     state["image_urls"] = image_urls
     return state
@@ -779,7 +843,7 @@ async def assemble_result_node(state: ContentState) -> ContentState:
     art_style = state.get('art_style', 'cartoon')
     story_title = state["story_parsed"].get("title", f"{state['character_name']}'s Adventure")
 
-    # ── Generate a dedicated FLUX cover image (hero portrait shoot) ─────────────
+    # ── Cover image: use gallery portrait if provided, otherwise generate via FLUX ──────────────
     COVER_TEMPLATES = {
         "cartoon": (
             "Children's book cover illustration. "
@@ -813,12 +877,19 @@ async def assemble_result_node(state: ContentState) -> ContentState:
             "Explosive '{theme}' background, god rays, lens flares, cinematic grade, 8K ultra, no text."
         ),
     }
-    cover_template = COVER_TEMPLATES.get(art_style, COVER_TEMPLATES['cartoon'])
-    cover_prompt = cover_template.format(cv=character_visual, theme=state['theme'])
 
-    print(f"[assemble_result_node] Generating FLUX cover image...")
-    cover_url = await _generate_image_nano_banana2(cover_prompt)
-    print(f"[assemble_result_node] Cover: {cover_url or 'FAILED — using page 1 fallback'}")
+    preselected_cover = (state.get('character_image_url') or '').strip()
+    if preselected_cover:
+        # User selected from the gallery — reuse that portrait as the story cover.
+        # Skips ~30s of FLUX generation AND guarantees the cover matches Step 1.
+        print(f"[assemble_result_node] Using gallery portrait as cover: {preselected_cover}")
+        cover_url = preselected_cover
+    else:
+        cover_template = COVER_TEMPLATES.get(art_style, COVER_TEMPLATES['cartoon'])
+        cover_prompt = cover_template.format(cv=character_visual, theme=state['theme'])
+        print(f"[assemble_result_node] Generating FLUX cover image...")
+        cover_url = await _generate_image_nano_banana2(cover_prompt)
+        print(f"[assemble_result_node] Cover: {cover_url or 'FAILED — using page 1 fallback'}")
 
     # Fallback to first page image if cover generation failed
     if not cover_url and state.get("image_urls"):
@@ -889,6 +960,7 @@ async def run_content_agent(
     art_style: str = "cartoon",
     character_description: Optional[str] = None,
     character_universe: Optional[str] = None,
+    character_image_url: Optional[str] = None,
 ) -> dict:
     """Entry point — run the content generation graph."""
     initial_state: ContentState = {
@@ -898,6 +970,7 @@ async def run_content_agent(
         "character_description": character_description or "",
         "character_universe": character_universe or "",
         "character_visual": "",          # resolved by image_prompt_node, used by all downstream nodes
+        "character_image_url": character_image_url or "",  # gallery portrait — used as cover if set
         "language": language,
         "art_style": art_style,
         "grade_vocab_desc": "",

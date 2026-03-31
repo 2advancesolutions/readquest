@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { examsApi } from '../services/api'
 import { supabase } from '../lib/supabase'
+import StudentDropdown from '../components/StudentDropdown'
 
 import { preloadSpellingWelcome } from '../lib/spellingWelcome'
 import {
@@ -54,72 +55,7 @@ const RELIABLE_CHARS = [
   { name: 'Toothless',    img: 'https://upload.wikimedia.org/wikipedia/en/thumb/9/96/Toothless_HTTYD.png/250px-Toothless_HTTYD.png' },
 ]
 
-// ── Child Switcher ────────────────────────────────────────────────────────────
 
-function ChildSwitcher({
-  children, activeId, onSwitch,
-}: {
-  children: Child[]
-  activeId: string
-  onSwitch: (child: Child) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const active = children.find(c => c.id === activeId)
-  const CHILD_COLORS = ['#702AE1','#F59E0B','#10B981','#3B82F6','#EC4899','#F97316']
-
-  if (children.length === 0) return null
-
-  return (
-    <div className="exam-child-switcher" style={{ position: 'relative' }}>
-      <button
-        className="exam-child-switcher-btn"
-        onClick={() => setOpen(v => !v)}
-        title="Switch student"
-      >
-        <span
-          className="exam-child-avatar"
-          style={{ background: CHILD_COLORS[children.findIndex(c => c.id === activeId) % CHILD_COLORS.length] }}
-        >
-          {(active?.name ?? '?')[0].toUpperCase()}
-        </span>
-        <span className="exam-child-name">{firstNameOnly(active?.name ?? '')}</span>
-        <span className="exam-child-grade-tag">
-          {GRADE_LABELS[active?.grade_level ?? 1] ?? `Grade ${active?.grade_level}`}
-        </span>
-        <span style={{ color: 'rgba(192,132,252,0.5)', fontSize: '0.7rem' }}>▾</span>
-      </button>
-
-      {open && (
-        <div className="exam-child-dropdown">
-          <div className="exam-child-dropdown-title">Switch Student</div>
-          {children.map((c, i) => (
-            <button
-              key={c.id}
-              className={`exam-child-dropdown-item${c.id === activeId ? ' active' : ''}`}
-              onClick={() => { onSwitch(c); setOpen(false) }}
-            >
-              <span
-                className="exam-child-avatar"
-                style={{ background: CHILD_COLORS[i % CHILD_COLORS.length] }}
-              >
-                {c.name[0].toUpperCase()}
-              </span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: '#e9e3f5', fontSize: '0.9rem' }}>
-                  {firstNameOnly(c.name)}
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'rgba(192,132,252,0.55)' }}>
-                  {GRADE_LABELS[c.grade_level] ?? `Grade ${c.grade_level}`}
-                </div>
-              </div>
-              {c.id === activeId && <span style={{ color: '#4ade80', fontSize: '0.8rem' }}>✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Voice Tutorial Hook (manual 🔊 button) ──────────────────────────────────────────
 
@@ -1060,8 +996,15 @@ export default function ReadingExams() {
           >
             📊 Scores
           </button>
-          {/* Child switcher */}
-          <ChildSwitcher children={children} activeId={studentId} onSwitch={switchStudent} />
+          {/* Student switcher */}
+          {children.length > 0 && (
+            <StudentDropdown
+              children={children}
+              selected={children.find(c => c.id === studentId) ?? null}
+              onChange={(child) => child && switchStudent(child)}
+              allowAll={false}
+            />
+          )}
           {/* Voice tutorial */}
           <button className="exam-voice-tutorial-btn" onClick={playTutorial} title={speaking ? 'Stop' : 'Hear how this works'}>
             {speaking ? <><div className="exam-voice-dot" /> Stop</> : <><span className="btn-icon">🔊</span> How to use</>}

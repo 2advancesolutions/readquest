@@ -52,14 +52,16 @@ export const studentsApi = {
 export const storiesApi = {
   analyzeCharacter: (character: string) =>
     api.post('/stories/analyze-character', { character }),
+  removeBackground: (imageUrl: string) =>
+    api.post<{ transparent_url: string }>('/stories/remove-background', { image_url: imageUrl }, { timeout: 60000 }),
   generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon') =>
     api.post('/stories/generate',
       { grade, theme, character_name, language, art_style: artStyle },
       { timeout: 300000 }, // 5 min — story text + 5 images
     ),
-  generateBackground: (theme: string, characterName?: string, sceneDescription?: string) =>
+  generateBackground: (theme: string, characterName?: string, sceneDescription?: string, characterDescription?: string) =>
     api.post('/stories/generate-background',
-      { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null },
+      { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null, character_description: characterDescription ?? null },
       { timeout: 120000 }), // 2 min — allow for cold-start + image generation on mobile
   list: () => deduplicate('stories:list', () => api.get('/stories')),
   get: (id: string) => deduplicate(`stories:${id}`, () => api.get(`/stories/${id}`)),
@@ -335,6 +337,11 @@ export const spellingApi = {
     api.get<SpellingStatsOut>('/spelling/stats', {
       headers: { 'X-Student-ID': studentId },
     }),
+
+  getHistory: (studentId: string) =>
+    api.get<SpellingSessionOut[]>('/spelling/history', {
+      headers: { 'X-Student-ID': studentId },
+    }),
 }
 
 // ── Spelling API types ─────────────────────────────────────────────────────
@@ -360,6 +367,18 @@ export interface SpellingStatsOut {
   total_attempts: number
   correct_attempts: number
   accuracy_pct: number
+}
+
+export interface SpellingSessionOut {
+  session_id: string
+  character_name: string
+  total_words: number
+  correct_count: number
+  accuracy_pct: number
+  xp_earned: number
+  completed_at: string | null
+  started_at: string | null
+  missed_words: string[]   // words the student got wrong in this session
 }
 
 

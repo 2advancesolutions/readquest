@@ -3,162 +3,222 @@ import { motion } from 'framer-motion'
 
 interface CharEntry {
   name: string
-  img: string
+  emoji: string      // fallback if image fails to load
+  img: string        // AI-generated artwork — every character is unique
+  visualDesc: string  // precise visual description for AI image generation consistency
 }
 
-// Wikipedia EN thumbnail helper
-const WE = (path: string, w = 250) =>
-  `https://upload.wikimedia.org/wikipedia/en/thumb/${path}/${w}px-${path.split('/').pop()}`
-
-// Wikimedia Commons thumbnail helper
-const WC = (path: string, w = 250) =>
-  `https://upload.wikimedia.org/wikipedia/commons/thumb/${path}/${w}px-${path.split('/').pop()}`
-
-// Full pool — verified Wikipedia CDN URLs
+// ─────────────────────────────────────────────────────────────────────────────
+//  COMPLETE CHARACTER ROSTER — ordered K → 8th grade
+//  ◉ K–2  : cute, whimsical, Pixar-style originals
+//  ◉ 3–5  : adventure & classic archetypes
+//  ◉ 6–8  : comic-book & cinematic teen heroes (unique new artworks)
+//  Zero copyrighted IP. Zero duplicate image paths.
+//  Every character has a `visualDesc` that locks in their exact appearance
+//  so the AI image generator renders the SAME character across all story pages.
+// ─────────────────────────────────────────────────────────────────────────────
 export const ALL_CHARACTERS: CharEntry[] = [
-  { name: 'Stitch',          img: 'https://upload.wikimedia.org/wikipedia/en/thumb/d/d2/Stitch_%28Lilo_%26_Stitch%29.svg/250px-Stitch_%28Lilo_%26_Stitch%29.svg.png' },
-  { name: 'Moana',           img: 'https://upload.wikimedia.org/wikipedia/en/5/56/Moana_%28character%29.png' },
-  { name: 'Elsa',            img: 'https://upload.wikimedia.org/wikipedia/en/5/5e/Elsa_from_Disney%27s_Frozen.png' },
-  { name: 'Anna',            img: 'https://upload.wikimedia.org/wikipedia/en/thumb/8/8a/Anna_Frozen.png/250px-Anna_Frozen.png' },
-  { name: 'Simba',           img: 'https://upload.wikimedia.org/wikipedia/en/9/94/Simba_%28_Disney_character_-_adult%29.png' },
-  { name: 'Ariel',           img: 'https://upload.wikimedia.org/wikipedia/en/7/77/Ariel_disney.png' },
-  { name: 'Rapunzel',        img: 'https://upload.wikimedia.org/wikipedia/en/thumb/6/6a/Rapunzel_tangled.png/250px-Rapunzel_tangled.png' },
-  { name: 'Buzz Lightyear',  img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/Buzz_Lightyear_sculpture_of_Toy_Story_Hotel_Shanghai_%28cropped%29.jpg/250px-Buzz_Lightyear_sculpture_of_Toy_Story_Hotel_Shanghai_%28cropped%29.jpg' },
-  { name: 'Woody',           img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Woody_at_Toy_Story_Land%2C_Hong_Kong.jpg/250px-Woody_at_Toy_Story_Land%2C_Hong_Kong.jpg' },
-  { name: 'Mickey Mouse',    img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Mickey_Mouse_%28poster_version%29.svg/250px-Mickey_Mouse_%28poster_version%29.svg.png' },
-  { name: 'SpongeBob',       img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/SpongeBob_SquarePants_character.png/250px-SpongeBob_SquarePants_character.png' },
-  { name: 'Dora',            img: 'https://upload.wikimedia.org/wikipedia/en/9/99/Dora_the_Explorer_%28character%29.webp' },
-  { name: 'Bluey',           img: 'https://upload.wikimedia.org/wikipedia/en/thumb/4/48/Bluey_%282018_TV_series%29_title_card.jpg/250px-Bluey_%282018_TV_series%29_title_card.jpg' },
-  { name: 'Peppa Pig',       img: 'https://upload.wikimedia.org/wikipedia/en/thumb/8/86/Peppa_Pig_logo.svg/500px-Peppa_Pig_logo.svg.png' },
-  { name: 'Spider-Man',      img: 'https://upload.wikimedia.org/wikipedia/en/thumb/2/21/Web_of_Spider-Man_Vol_1_129-1.png/250px-Web_of_Spider-Man_Vol_1_129-1.png' },
-  { name: 'Iron Man',        img: 'https://upload.wikimedia.org/wikipedia/en/thumb/4/47/Iron_Man_%28circa_2018%29.png/250px-Iron_Man_%28circa_2018%29.png' },
-  { name: 'Thor',            img: 'https://upload.wikimedia.org/wikipedia/en/1/1a/Thor_%28Marvel_Comics%29.png' },
-  { name: 'Hulk',            img: 'https://upload.wikimedia.org/wikipedia/en/a/aa/Hulk_%28circa_2019%29.png' },
-  { name: 'Pikachu',         img: 'https://upload.wikimedia.org/wikipedia/en/thumb/a/a6/Pok%C3%A9mon_Pikachu_art.png/250px-Pok%C3%A9mon_Pikachu_art.png' },
-  { name: 'Mario',           img: 'https://upload.wikimedia.org/wikipedia/en/thumb/5/5c/Mario_by_Shigehisa_Nakaue.png/250px-Mario_by_Shigehisa_Nakaue.png' },
-  { name: 'Belle',           img: WE('f/f4/Beauty_and_the_Beast_Belle.png') },
-  { name: 'Jasmine',         img: WE('c/c8/Jasmine_disney.png') },
-  { name: 'Mulan',           img: WE('7/72/Mulan_disney.png') },
-  { name: 'Merida',          img: WE('8/8a/Merida_from_Disney-Pixar_Brave.png') },
-  { name: 'Tiana',           img: WE('e/e7/Tiana_disney.png') },
-  { name: 'Cinderella',      img: WE('2/25/Cinderella_disney.png') },
-  { name: 'Pocahontas',      img: WE('2/28/Pocahontas_disney.png') },
-  { name: 'Mirabel',         img: WE('7/72/Mirabel_Madrigal.png') },
-  { name: 'Nemo',            img: WE('3/33/Finding_Nemo_character_Nemo.png') },
-  { name: 'Dory',            img: WE('8/8e/Dory_Finding_Nemo.png') },
-  { name: 'WALL-E',          img: WE('d/d4/WALL-E_character.png') },
-  { name: 'Tinker Bell',     img: WE('7/7e/Tinker_Bell.png') },
-  { name: 'Peter Pan',       img: WE('e/ec/Peter_Pan_%28Disney_character%29.png') },
-  { name: 'Winnie Pooh',     img: WC('1/1a/Winnie-the-Pooh-and-Tigger.png') },
-  { name: 'Dumbo',           img: WE('a/a5/Dumbo_disney_character.png') },
-  { name: 'Lilo',            img: WE('1/1c/Lilo_Pelekai.png') },
-  { name: 'Baymax',          img: WE('f/f7/Baymax_bigherob6.png') },
-  { name: 'McQueen',         img: WE('f/f8/Lightning_McQueen_rsq.png') },
-  { name: 'Remy',            img: WE('2/2e/Remy_ratatouille.png') },
-  { name: 'Sulley',          img: WE('6/61/Sulley_and_Mike_-_Monsters_Inc.png') },
-  { name: 'Mike Wazowski',   img: WE('7/7e/Mike_Wazowski.png') },
-  { name: 'Captain America', img: WE('3/35/Captain_america_%28comics%29.png') },
-  { name: 'Black Panther',   img: WE('6/6c/Blackpanthermarvel.png') },
-  { name: 'Wonder Woman',    img: WE('8/89/WW_Rebirth_design.png') },
-  { name: 'Captain Marvel',  img: WE('5/57/CaptainMarvelVolume7.png') },
-  { name: 'Batman',          img: WE('2/2c/BatmanArkhamKnight.png') },
-  { name: 'Superman',        img: WE('7/71/Superman_man_of_steel.jpg') },
-  { name: 'Avatar Aang',     img: WE('d/d3/AvatarAang.png') },
-  { name: 'Bingo',           img: WE('a/a6/Bingo_bluey.png') },
-  { name: 'Patrick Star',    img: WE('3/3c/Patrick_Star.png') },
-  { name: 'Finn',            img: WE('e/e5/Finn_the_Human_-_Adventure_Time.png') },
-  { name: 'Jake the Dog',    img: WE('3/37/Jake_the_Dog_Adventure_Time_character.png') },
-  { name: 'Kim Possible',    img: WE('1/1e/Kim_Possible_character.png') },
-  { name: 'Phineas',         img: WE('5/5e/Phineas_and_Ferb_characters.png') },
-  { name: 'Scooby-Doo',      img: WE('8/8b/Scooby-Doo_and_Shaggy.png') },
-  { name: 'Bugs Bunny',      img: WC('4/40/Bugs_Bunny.png') },
-  { name: 'Naruto',          img: WE('0/0d/Naruto_Uzumaki_so.png') },
-  { name: 'Totoro',          img: WE('4/4c/My_Neighbor_Totoro_-_Tonari_no_Totoro_%28Movie_Poster%29.jpg') },
-  { name: 'Luigi',           img: WE('d/dc/Super_Mario_Bros._35th_Anniversary_Luigi.png') },
-  { name: 'Princess Peach',  img: WE('a/ab/Princess_Peach.png') },
-  { name: 'Sonic',           img: WE('4/4a/Sonic_the_Hedgehog_-_rendering.png') },
-  { name: 'Kirby',           img: WE('7/70/Kirby_SSB4_%28cropped%29.png') },
-  { name: 'Harry Potter',    img: WC('8/82/Harry_Potter_Daniel_Radcliffe_%28cropped%29.jpg') },
-  { name: 'Hermione',        img: WC('6/6f/Emma_Watson_2013_%28cropped%29.jpg') },
-  { name: 'Katniss',         img: WE('f/fd/Katniss_Everdeen.png') },
-  { name: 'Paddington',      img: WC('7/7e/Paddington_Bear_in_Boots_2.jpg') },
-  { name: 'Shrek',           img: WE('b/b7/Shrek.png') },
-  { name: 'Puss in Boots',   img: WE('1/13/Puss_in_boots.png') },
-  { name: 'Kung Fu Panda',   img: WE('7/7e/Kung_Fu_Panda_Po.png') },
-  { name: 'Toothless',       img: WE('9/96/Toothless_HTTYD.png') },
-  { name: 'Hiccup',          img: WE('9/9f/Hiccup_Horrendous_Haddock_III.png') },
-  { name: 'Gru',             img: WE('a/a6/Gru_%28Despicable_Me%29.png') },
-  { name: 'Minion Bob',      img: WE('9/9a/Minion_Bob.png') },
-  { name: 'Donald Duck',     img: WC('1/18/Donald_Duck.png') },
-  { name: 'Goofy',           img: WC('4/45/Goofy_newest_look-modified.png') },
-  { name: 'Minnie Mouse',    img: WC('4/41/Minnie%27s_Bow-Toons.png') },
-  { name: 'Hercules',        img: WE('5/5d/Hercules_Disney.png') },
-  { name: 'Aladdin',         img: WE('0/01/Aladdin_disney.png') },
-  { name: 'Pinocchio',       img: WE('b/b8/Pinocchio_character.png') },
-  { name: 'Bambi',           img: WE('e/e4/Bambi_%28character%29.png') },
-  { name: 'Tigger',          img: WE('2/2b/Tigger.png') },
-  { name: 'Piglet',          img: WE('5/5d/Piglet-Pooh.png') },
-  { name: 'Hiro Hamada',     img: WE('7/70/Hiro_Hamada.png') },
-  { name: 'Raya',            img: WE('8/83/Raya_and_the_Last_Dragon.png') },
-  { name: 'Korra',           img: WE('6/6e/Korra_%28character%29.png') },
-  { name: 'Steven Universe', img: WE('4/41/Steven_Universe_%28character%29.png') },
-  { name: 'Hilda',           img: WE('5/55/Hilda_%28character%29.png') },
-  { name: 'Chase',           img: WE('4/4b/Chase_paw_patrol.png') },
-  { name: 'Ponyo',           img: WE('1/13/Ponyo_%28character%29.png') },
-  { name: 'Chihiro',         img: WE('d/d5/Spirited_Away_%28Sen_to_Chihiro%29.png') },
+
+  // ── Kindergarten ─────────────────────────────────────────────────────────
+  { name: 'Sparkle',         emoji: '🦄', img: '/char_icons/unicorn.webp',
+    visualDesc: 'Sparkle the unicorn — cute cartoon white unicorn with a rainbow mane in pink, purple, blue and yellow, a golden spiraling horn, big sparkling purple eyes, rosy cheeks, and a fluffy pastel tail' },
+  { name: 'Bindi Bunny',     emoji: '🐰', img: '/char_icons/bunny.webp',
+    visualDesc: 'Bindi Bunny — adorable cartoon white bunny with long floppy ears tipped in soft pink, big round blue eyes, a small pink nose, wearing a tiny yellow flower crown' },
+  { name: 'Pip the Penguin', emoji: '🐧', img: '/char_icons/penguin.webp',
+    visualDesc: 'Pip the Penguin — cute cartoon baby penguin with black-and-white body, round orange beak, big shiny dark eyes, small flappy wings, wearing a tiny red scarf' },
+
+  // ── Grade 1 ──────────────────────────────────────────────────────────────
+  { name: 'Dino Rex',        emoji: '🦕', img: '/char_icons/dinosaur.webp',
+    visualDesc: 'Dino Rex — friendly cartoon green T-Rex dinosaur with big amber eyes, tiny arms, a wide toothy grin, orange belly, and small spikes along the back, playful and cute' },
+  { name: 'Leo the Lion',    emoji: '🦁', img: '/char_icons/lion.webp',
+    visualDesc: 'Leo the Lion — brave cartoon lion cub with a golden-orange fluffy mane, warm brown eyes, a pink nose, tawny fur, and a tufted tail tip' },
+  { name: 'Sage the Owl',    emoji: '🦉', img: '/char_icons/owl.webp',
+    visualDesc: 'Sage the Owl — wise cartoon owl with brown-and-cream feathers, large round golden eyes with spectacle-like markings, a small orange beak, and tufted ear feathers' },
+
+  // ── Grade 2 ──────────────────────────────────────────────────────────────
+  { name: 'Lily the Fairy',  emoji: '🧚', img: '/char_icons/fairy.webp',
+    visualDesc: 'Lily the Fairy — cute young fairy girl with long flowing blonde hair, sparkling blue eyes, translucent iridescent butterfly wings, wearing a pink-and-purple petal dress, holding a glowing magic wand with a star tip' },
+  { name: 'Marina',          emoji: '🧜', img: '/char_icons/mermaid.webp',
+    visualDesc: 'Marina the Mermaid — young cartoon mermaid girl with flowing turquoise-blue hair decorated with seashells, green eyes, wearing a purple seashell top, a shimmering teal-and-green fish tail, pearl necklace' },
+  { name: 'Zap the Robot',   emoji: '🤖', img: '/char_icons/robot.webp',
+    visualDesc: 'Zap the Robot — friendly cartoon robot with a boxy silver-blue metal body, a rounded head with two large glowing green circular eyes, antenna on top, articulated arms with claw hands, and a small LED panel chest' },
+
+  // ── Grade 3 ──────────────────────────────────────────────────────────────
+  { name: 'Wizard Kid',      emoji: '🧙', img: '/char_icons/young_wizard.webp',
+    visualDesc: 'Wizard Kid — young boy wizard with messy brown hair, bright green eyes, wearing a purple pointed wizard hat with gold stars, a long blue-purple robe with gold trim, holding a wooden magic staff with a glowing crystal' },
+  { name: 'Zoom',            emoji: '⚡', img: '/char_icons/kid_hero.webp',
+    visualDesc: 'Zoom the Kid Hero — energetic young boy with spiky blonde hair, bright blue eyes, wearing a red-and-yellow superhero suit with a lightning bolt emblem on the chest, a small red cape, and blue boots' },
+  { name: 'Captain Mia',     emoji: '🏴‍☠️', img: '/char_icons/pirate.webp',
+    visualDesc: 'Captain Mia — adventurous young girl pirate with wavy red hair in a ponytail, freckles, green eyes, wearing a brown leather tricorn pirate hat, a white ruffled shirt, brown vest, and a toy cutlass at her belt' },
+
+  // ── Grade 4 ──────────────────────────────────────────────────────────────
+  { name: 'Crystal Mage',    emoji: '🔮', img: '/char_icons/mage.webp',
+    visualDesc: 'Crystal Mage — young sorceress with long silver-white hair, glowing violet eyes, wearing a deep purple hooded cloak with crystal embroidery, holding a floating purple crystal orb, magical energy swirling around her hands' },
+  { name: 'Princess Kira',   emoji: '⚔️', img: '/char_icons/knight_girl.webp',
+    visualDesc: 'Princess Kira — brave young warrior princess with long dark brown braided hair, brown eyes, wearing silver knight armor with gold accents, a red royal cape, and carrying a silver sword and shield with a lion crest' },
+  { name: 'Shadow Fox',      emoji: '🦊', img: '/char_icons/fox.webp',
+    visualDesc: 'Shadow Fox — sleek anthropomorphic fox with dark reddish-brown fur, piercing amber-gold eyes, a bushy tail with a white tip, wearing a dark hooded cloak, stealthy and mysterious, ninja-like' },
+
+  // ── Grade 5 ──────────────────────────────────────────────────────────────
+  { name: 'Robin Hood',      emoji: '🏹', img: '/char_icons/explorer.webp',
+    visualDesc: 'Robin Hood — young adventurer with tousled brown hair, hazel eyes, wearing a green tunic and brown leather vest, a green feathered cap, brown boots, carrying a wooden bow and a quiver of arrows on the back' },
+  { name: 'Jade Dragon',     emoji: '🐉', img: '/char_icons/dragon.webp',
+    visualDesc: 'Jade Dragon — majestic emerald-green dragon with jade-colored scales, golden eyes with slit pupils, two curved ivory horns, large green wings with golden membrane, a long serpentine tail, breathing jade-green fire' },
+  { name: 'Coral Diver',     emoji: '🌊', img: '/char_icons/coral_diver.webp',
+    visualDesc: 'Coral Diver — young deep-sea diver kid with short dark hair, brown eyes, wearing a teal-blue diving suit with orange accents, a clear dome diving helmet, flippers, carrying an underwater flashlight, surrounded by coral' },
+
+  // ── Grade 6 — Comic-book style ───────────────────────────────────────────
+  { name: 'Merlin',          emoji: '✨', img: '/char_icons/merlin.webp',
+    visualDesc: 'Merlin — elderly wise wizard with a long flowing white beard, deep blue eyes under bushy eyebrows, wearing a tall pointed midnight-blue hat adorned with silver stars and moons, long blue robes, holding a gnarled wooden staff' },
+  { name: 'Nova Pulse',      emoji: '💜', img: '/char_icons/nova_pulse.webp',
+    visualDesc: 'Nova Pulse — Black teenage girl superhero with dark curly natural afro hair, amber-golden eyes, freckles on her cheeks, wearing a sleek purple high-tech armored bodysuit with glowing blue neon circuit lines and a stylized R emblem on the chest, comic-book art style' },
+  { name: 'Athena',          emoji: '🦉', img: '/char_icons/goddess.webp',
+    visualDesc: 'Athena — regal young goddess with long flowing dark hair adorned with a golden laurel wreath crown, wise grey eyes, wearing white-and-gold Greek armor with a golden breastplate, holding a golden spear and a round shield with an owl emblem' },
+
+  // ── Grade 7 — Cinematic realistic ────────────────────────────────────────
+  { name: 'Sky Knight',      emoji: '🛡️', img: '/char_icons/warrior.webp',
+    visualDesc: 'Sky Knight — young male warrior with short dark hair, determined brown eyes, wearing gleaming silver plate armor with blue cape and gold shoulder pauldrons, holding a longsword and a kite shield with a wing crest, heroic stance' },
+  { name: 'Cipher',          emoji: '🔵', img: '/char_icons/cipher.webp',
+    visualDesc: 'Cipher — mysterious teen hacker with short styled dark hair with a blue streak, wearing a dark hoodie and a glowing blue holographic visor over the eyes, digital code particles floating around, cyberpunk aesthetic' },
+  { name: 'Alice',           emoji: '🐇', img: '/char_icons/alice.webp',
+    visualDesc: 'Alice — curious young girl with long blonde hair held back by a blue headband, big blue eyes, wearing a classic blue-and-white pinafore dress with a white apron, black shoes, holding a small pocket watch, wonderland fantasy style' },
+
+  // ── Grade 8 — Epic cinematic ─────────────────────────────────────────────
+  { name: 'Sherlock',        emoji: '🔍', img: '/char_icons/sherlock.webp',
+    visualDesc: 'Sherlock — young teen detective with wavy dark brown hair, sharp intelligent grey-green eyes, wearing a long brown tweed overcoat, a dark scarf, holding a magnifying glass, deerstalker cap, Victorian-era inspired outfit' },
+  { name: 'Nova Scout',      emoji: '🚀', img: '/char_icons/nova.webp',
+    visualDesc: 'Nova Scout — young cartoon kid astronaut with messy blue-and-orange tipped hair sticking out of a clear space helmet, big bright blue eyes, freckles, wearing a white-and-orange space suit with a SCOUT name badge, blue gloves, jetpack on back, floating in a colorful galaxy' },
+  { name: 'Sovereign',       emoji: '👑', img: '/char_icons/sovereign.webp',
+    visualDesc: 'Sovereign — regal young ruler with flowing golden hair, piercing blue eyes, wearing an ornate gold-and-crimson royal suit of armor with a fur-trimmed cape, a jeweled golden crown, holding a scepter with a glowing gem' },
 ]
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  COPYRIGHT KEYWORD BLOCKLIST
+// ─────────────────────────────────────────────────────────────────────────────
+export const BLOCKED_IP_TERMS: string[] = [
+  // Disney classic
+  'mickey mouse','minnie mouse','donald duck','goofy','pluto','dumbo','bambi',
+  'cinderella','sleeping beauty','snow white','ariel','belle','beast','aladdin',
+  'jasmine','simba','mufasa','nala','pocahontas','mulan','lilo','stitch','moana',
+  'encanto','mirabel','raya','elsa','anna','olaf','rapunzel','flynn rider',
+  'tinker bell','peter pan','wendy','pinocchio','jiminy cricket',
+  'winnie the pooh','tigger','piglet','buzz lightyear',
+  'woody','jessie','sully','mike wazowski','nemo','dory','remy','wall-e',
+  'mcqueen','mater','baymax','hiro hamada','joy','sadness','tiana',
+  'merida','hades','tarzan','zootopia','judy hopps',
+  'nick wilde','wreck it ralph','vanellope',
+  // Marvel
+  'spider-man','spiderman','peter parker','iron man','tony stark',
+  'captain america','steve rogers','thor','hulk','bruce banner','black widow',
+  'natasha romanoff','hawkeye','clint barton','black panther','tchalla',
+  'doctor strange','ant-man','scarlet witch','wanda maximoff','vision',
+  'wolverine','deadpool','wade wilson','x-men','cyclops','jean grey',
+  'magneto','professor x','fantastic four','avengers','thanos','loki',
+  'nick fury','captain marvel','carol danvers','guardians of the galaxy',
+  'star-lord','groot','rocket raccoon','gamora','drax','nebula','shazam',
+  // Star Wars
+  'luke skywalker','darth vader','princess leia','han solo','yoda',
+  'obi-wan','obi wan','r2-d2','r2d2','c-3po','c3po','chewbacca','boba fett',
+  'mandalorian','grogu','baby yoda','rey','kylo ren','palpatine',
+  // Nintendo
+  'mario','luigi','princess peach','bowser','yoshi','toad','donkey kong',
+  'link','zelda','ganondorf','samus','kirby','pikachu','mewtwo','charizard',
+  'pokemon','eevee','bulbasaur','squirtle','charmander',
+  'fox mccloud','inkling','animal crossing','isabelle','tom nook',
+  // DC
+  'superman','batman','wonder woman','the flash','aquaman','green lantern',
+  'joker','lex luthor','harley quinn','catwoman','robin','nightwing',
+  'cyborg','green arrow','teen titans',
+  // DreamWorks / Universal
+  'shrek','fiona','puss in boots','kung fu panda','po','hiccup',
+  'toothless','minion','gru','madagascar','trolls','boss baby',
+  // Sony / Gaming
+  'kratos','nathan drake','joel','ellie','aloy','ratchet','clank',
+  'crash bandicoot','spyro','master chief','marcus fenix','banjo kazooie',
+  'sonic','tails','knuckles','amy rose','shadow the hedgehog','dr eggman',
+  'mega man','ryu','chun-li','ken masters','lara croft','cloud strife',
+  'tifa lockhart','aerith','sephiroth','kingdom hearts',
+  // Anime
+  'goku','vegeta','naruto','sasuke','luffy','zoro','sailor moon','bleach',
+  'eren','mikasa','tanjiro','deku','izuku midoriya','edward elric','light yagami',
+  'itadori','sword art online','genos','saitama','evangelion','rei','asuka',
+  // TV
+  'bart simpson','homer simpson','stewie griffin','rick sanchez','morty',
+  'aang','korra','spongebob','peppa pig','paw patrol','bluey','bingo',
+  'stranger things','eleven','game of thrones','jon snow','daenerys',
+  // Movies / Other
+  'harry potter','hermione','ron weasley','dumbledore','voldemort',
+  'frodo','gandalf','aragorn','legolas','gimli','transformers','optimus prime',
+  'ghostbusters','tmnt','teenage mutant ninja turtles','power rangers',
+  'terminator','ronald mcdonald',
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Component
+// ─────────────────────────────────────────────────────────────────────────────
 interface Props {
   onSelect: (name: string) => void
-  onHoverChar?: (img: string) => void
+  onHoverChar?: (name: string) => void
   onHoverLeave?: () => void
   onVerified?: (chars: CharEntry[]) => void
 }
 
+function CharCard({ char, onSelect, onHoverChar, onHoverLeave, onVerified, all }: {
+  char: CharEntry
+  onSelect: (n: string) => void
+  onHoverChar?: (n: string) => void
+  onHoverLeave?: () => void
+  onVerified?: (chars: CharEntry[]) => void
+  all: CharEntry[]
+}) {
+  const [imgFailed, setImgFailed] = useState(false)
+
+  return (
+    <motion.button
+      className="cgal-circle-wrap"
+      whileHover={{ scale: 1.12, y: -6 }}
+      whileTap={{ scale: 0.92 }}
+      onClick={() => { onVerified?.(all); onSelect(char.name) }}
+      onMouseEnter={() => onHoverChar?.(char.name)}
+      onMouseLeave={() => onHoverLeave?.()}
+      title={`Choose ${char.name} as your hero`}
+    >
+      <div className={`cgal-circle ${!imgFailed ? 'cgal-img-circle' : 'cgal-emoji-circle'}`}>
+        {!imgFailed ? (
+          <img
+            src={char.img}
+            alt={char.name}
+            className="cgal-circle-img"
+            loading="lazy"
+            decoding="async"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <span className="cgal-char-emoji">{char.emoji}</span>
+        )}
+      </div>
+      <span className="cgal-circle-name">{char.name}</span>
+    </motion.button>
+  )
+}
+
 export default function CharacterGallery({ onSelect, onHoverChar, onHoverLeave, onVerified }: Props) {
-  // Track which characters failed to load so we can hide them
-  const [failedimgs, setFailedImgs] = useState<Set<string>>(new Set())
-
-  const handleError = (name: string) => {
-    setFailedImgs(prev => new Set(prev).add(name))
-  }
-
-  // Inform parent of all visible characters immediately (those not yet failed)
-  // We call onVerified once on mount with the full list — parent can filter later
-  const visibleChars = ALL_CHARACTERS.filter(c => !failedimgs.has(c.name))
-
   return (
     <div className="cgal-section">
       <div className="cgal-header">
-        <span className="cgal-label">
-          Characters kids love — click one to make them your hero!
-        </span>
+        <span className="cgal-label">Pick your hero — click one to start! ✨</span>
       </div>
-
-      {/* All characters shown immediately; broken ones hide via CSS */}
       <div className="cgal-grid">
         {ALL_CHARACTERS.map(char => (
-          <motion.button
+          <CharCard
             key={char.name}
-            className="cgal-circle-wrap"
-            style={{ display: failedimgs.has(char.name) ? 'none' : undefined }}
-            whileHover={{ scale: 1.12, y: -4 }}
-            whileTap={{ scale: 0.94 }}
-            onClick={() => { onVerified?.(visibleChars); onSelect(char.name) }}
-            onMouseEnter={() => onHoverChar?.(char.img)}
-            onMouseLeave={() => onHoverLeave?.()}
-            title={`Use ${char.name} as your hero`}
-          >
-            <div className="cgal-circle">
-              <img
-                src={char.img}
-                alt={char.name}
-                className="cgal-circle-img"
-                onError={() => handleError(char.name)}
-              />
-            </div>
-            <span className="cgal-circle-name">{char.name}</span>
-          </motion.button>
+            char={char}
+            all={ALL_CHARACTERS}
+            onSelect={onSelect}
+            onHoverChar={onHoverChar}
+            onHoverLeave={onHoverLeave}
+            onVerified={onVerified}
+          />
         ))}
       </div>
     </div>

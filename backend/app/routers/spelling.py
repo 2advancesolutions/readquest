@@ -11,7 +11,7 @@ from app.models.vocabulary import VocabularyWord
 from app.models.student import Student
 from app.schemas.spelling import (
     CreateSessionRequest, SubmitAttemptRequest,
-    SpellingWordOut, CreateSessionOut, AttemptResultOut, SpellingStatsOut,
+    SpellingWordOut, CreateSessionOut, AttemptResultOut, SpellingStatsOut, SpellingSessionOut,
 )
 from app.data.spelling_words import get_grade_words
 import uuid
@@ -296,3 +296,79 @@ async def get_stats(
         correct_attempts=correct_attempts,
         accuracy_pct=accuracy_pct,
     )
+
+
+# ── GET /spelling/history ─────────────────────────────────────
+
+@router.get("/history", response_model=List[SpellingSessionOut])
+async def get_history(
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return all completed spelling sessions for a student, newest first,
+    including the list of words the student got wrong in each session."""
+    sessions_q = await db.execute(
+        select(SpellingSession)
+        .where(SpellingSession.student_id == x_student_id)
+        .order_by(SpellingSession.started_at.desc())
+        .limit(50)
+    )
+    sessions = sessions_q.scalars().all()
+
+    result = []
+    for s in sessions:
+        accuracy = round((s.correct_count / s.total_words * 100), 1) if s.total_words > 0 else 0.0
+
+        # Collect distinct words that were attempted but never answered correctly
+        # (any attempt where is_correct=False and the word was NOT correctly answered later)
+        attempts_q = await db.execute(
+            select(SpellingAttempt.word, SpellingAttempt.is_correct)
+            .where(SpellingAttempt.session_id == s.id)
+            .order_by(SpellingAttempt.word)
+        )
+        attempts = attempts_q.all()
+        correct_words = {a.word.lower() for a in attempts if a.is_correct}
+        missed_words = sorted({a.word for a in attempts if not a.is_correct and a.word.lower() not in correct_words})
+
+        result.append(SpellingSessionOut(
+            session_id=s.id,
+            character_name=s.character_name,
+            total_words=s.total_words,
+            correct_count=s.correct_count,
+            accuracy_pct=accuracy,
+            xp_earned=s.xp_earned,
+            completed_at=s.completed_at,
+            started_at=s.started_at,
+            missed_words=missed_words,
+        ))
+    return result
+
+
+# ── GET /spelling/sessions/{session_id}/missed-words ──────────────────────────
+
+@router.get("/sessions/{session_id}/missed-words")
+async def get_missed_words(
+    session_id: str,
+    x_student_id: str = Header(...),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return the list of words that were not answered correctly in a session."""
+    # Verify ownership
+    session_q = await db.execute(
+        select(SpellingSession)
+        .where(SpellingSession.id == session_id, SpellingSession.student_id == x_student_id)
+    )
+    session = session_q.scalar_one_or_none()
+    if session is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    attempts_q = await db.execute(
+        select(SpellingAttempt.word, SpellingAttempt.is_correct)
+        .where(SpellingAttempt.session_id == session_id)
+    )
+    attempts = attempts_q.all()
+    correct_words = {a.word.lower() for a in attempts if a.is_correct}
+    missed_words = sorted({a.word for a in attempts if not a.is_correct and a.word.lower() not in correct_words})
+
+    return {"session_id": session_id, "missed_words": missed_words}

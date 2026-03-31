@@ -7,9 +7,28 @@ import api from '../services/api'
 import CharacterGallery from '../components/CharacterGallery'
 import HeroCharDisplay from '../components/HeroCharDisplay'
 import WelcomeVoice, { STEP2_SCRIPTS } from '../components/WelcomeVoice'
-import { ALL_CHARACTERS } from '../components/CharacterGallery'
+import { ALL_CHARACTERS, BLOCKED_IP_TERMS } from '../components/CharacterGallery'
+import { removeBackground } from '../lib/removeBackground'
+import StudentDropdown from '../components/StudentDropdown'
 import '../styles/generator.css'
 import '../styles/imm-steps.css'
+
+/**
+ * Resolves a character portrait URL to a renderable src string.
+ * Handles 4 cases in priority order:
+ *  1. data: URLs   — result of removeBackground() canvas processing, use as-is
+ *  2. http(s): URLs — remote AI-generated/Supabase images, use as-is
+ *  3. /char_icons/ — Vite public-folder local assets, use as-is
+ *  4. /static/...  — backend-served paths, prepend VITE_API_URL
+ */
+function resolvePortraitSrc(url: string | null | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('data:'))         return url   // Canvas data URL from removeBackground
+  if (url.startsWith('http'))          return url   // Remote URL (Supabase, fal.ai, etc.)
+  if (url.startsWith('/char_icons/'))  return url   // Vite public folder asset
+  return `${import.meta.env.VITE_API_URL}${url}`    // Backend /static/ path
+}
+
 
 /* ── Wizard Fill Loader — outline fills with color from the bottom up ── */
 const HAT_CONE  = 'M75,3 L46,46 L104,46 Z'
@@ -104,7 +123,7 @@ const ART_STYLES = [
     id: 'cartoon',
     label: 'Cartoon',
     emoji: '🎨',
-    img: '/icon_cartoon.png',
+    img: '/icon_cartoon.webp',
     desc: 'Fun 2D illustrated look',
     flavor: 'Bright colors, bold outlines, playful & wholesome',
     badge: '⭐ Most Popular',
@@ -113,7 +132,7 @@ const ART_STYLES = [
     id: 'cinematic',
     label: 'Cinematic',
     emoji: '🎬',
-    img: '/icon_cinematic.png',
+    img: '/icon_cinematic.webp',
     desc: 'Ultra-realistic cinematic action',
     flavor: 'Dramatic lighting, slow-motion moments, movie-quality',
     badge: '🔥 Action',
@@ -122,7 +141,7 @@ const ART_STYLES = [
     id: 'pixar',
     label: 'Pixar / Animated',
     emoji: '🦄',
-    img: '/icon_pixar.png',
+    img: '/icon_pixar.webp',
     desc: 'Stylized Pixar 3D animation',
     flavor: 'Heart + humor + emotion, exaggerated expressive motion',
     badge: '✨ Family',
@@ -131,7 +150,7 @@ const ART_STYLES = [
     id: 'real',
     label: 'Realistic',
     emoji: '📸',
-    img: '/icon_realistic.png',
+    img: '/icon_realistic.webp',
     desc: 'Gritty, photorealistic live-action',
     flavor: 'Rain, sparks, real stakes — every win is earned',
     badge: '💪 Intense',
@@ -140,7 +159,7 @@ const ART_STYLES = [
     id: 'comic',
     label: 'Comic Book Style',
     emoji: '💥',
-    img: '/icon_comic.png',
+    img: '/icon_comic.webp',
     desc: 'Bold Marvel/DC comic book art',
     flavor: 'WHAM! ZZAP! Halftone dots, speed lines, iconic panels',
     badge: '🦸 Hero',
@@ -149,35 +168,118 @@ const ART_STYLES = [
     id: 'epic',
     label: 'Epic Blockbuster',
     emoji: '⚡',
-    img: '/icon_epic.png',
+    img: '/icon_epic.webp',
     desc: 'Blockbuster trailer-style key art',
     flavor: 'Massive scale, explosions, bio-electric finale, sunset',
     badge: '🏆 Epic',
   },
 ]
 
+// ─── 100 story worlds — each has a gradient background ─────────────────────
 const THEME_OPTIONS = [
-  { id: 'magical rainbow forest',          label: 'Magic Forest',      emoji: '🌲' },
-  { id: 'outer space adventure',           label: 'Space Explorer',    emoji: '🚀' },
-  { id: 'under the ocean',                 label: 'Ocean Deep',        emoji: '🌊' },
-  { id: 'friendly dinosaur park',          label: 'Dino World',        emoji: '🦕' },
-  { id: 'fantasy kingdom castle',          label: 'Fantasy Castle',    emoji: '🏰' },
-  { id: 'jungle with wild animals',        label: 'Wild Jungle',       emoji: '🦁' },
-  { id: 'pirate treasure hunt',            label: 'Pirate Quest',      emoji: '🏴‍☠️' },
-  { id: 'superhero city rescue',           label: 'Superhero City',    emoji: '🦸' },
-  { id: 'enchanted candy land',            label: 'Candy Kingdom',     emoji: '🍭' },
-  { id: 'icy arctic polar bears',          label: 'Arctic Ice',        emoji: '🐻‍❄️' },
-  { id: 'time travel history adventure',   label: 'Time Travel',       emoji: '⏰' },
-  { id: 'robot factory future world',      label: 'Robot World',       emoji: '🤖' },
-  { id: 'underwater mermaid kingdom',     label: 'Mermaid Cove',      emoji: '🧜' },
-  { id: 'haunted friendly ghost town',     label: 'Ghost Town',        emoji: '👻' },
-  { id: 'safari africa animals',           label: 'Safari Trek',       emoji: '🦒' },
-  { id: 'cloud kingdom sky adventure',     label: 'Sky Kingdom',       emoji: '☁️' },
-  { id: 'racing cars championship',        label: 'Race Day',          emoji: '🏎️' },
-  { id: 'fairy garden magic flowers',      label: 'Fairy Garden',      emoji: '🧚' },
-  { id: 'underwater treasure cave',        label: 'Treasure Dive',     emoji: '💎' },
-  { id: 'volcano island lava adventure',   label: 'Volcano Isle',      emoji: '🌋' },
+  // ── Fantasy ──────────────────────────────────────────────────────────────
+  { id: 'magical rainbow forest',          label: 'Magic Forest',      emoji: '🌲', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#134e1b,#1a6b2a,#2d8a3e)' },
+  { id: 'fantasy kingdom castle',          label: 'Fantasy Castle',    emoji: '🏰', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#3b1d6b,#5a2d9b,#7c3aed)' },
+  { id: 'enchanted fairy village',         label: 'Fairy Village',     emoji: '🧚', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#6b1d5a,#9b2d80,#ec4899)' },
+  { id: 'dragon mountain lair',            label: 'Dragon Mountain',   emoji: '🐉', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#6b1a00,#9b2d00,#c2410c)' },
+  { id: 'enchanted mushroom forest',       label: 'Mushroom Grove',    emoji: '🍄', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#3d1a5c,#6b2fa0,#a855f7)' },
+  { id: 'wizard magic school',             label: 'Magic Academy',     emoji: '🧙', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#1a1a5c,#2d3080,#4338ca)' },
+  { id: 'unicorn rainbow meadow',          label: 'Unicorn Meadow',    emoji: '🦄', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#5c1a4a,#ec4899,#f9a8d4)' },
+  { id: 'ancient magic ruins',             label: 'Ancient Ruins',     emoji: '🗿', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#3d2a00,#6b4a00,#92400e)' },
+  { id: 'giant beanstalk sky castle',      label: 'Sky Castle',        emoji: '🌱', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#0c4a0a,#16a34a,#86efac)' },
+  { id: 'talking animal village',          label: 'Animal Kingdom',    emoji: '🦊', cat: 'Fantasy',    bg: 'linear-gradient(135deg,#4a2000,#7c3a00,#b45309)' },
+  // ── Space ─────────────────────────────────────────────────────────────────
+  { id: 'outer space adventure',           label: 'Space Explorer',    emoji: '🚀', cat: 'Space',     bg: 'linear-gradient(135deg,#050014,#0d0030,#1e0060)' },
+  { id: 'alien planet civilization',       label: 'Alien Planet',      emoji: '👽', cat: 'Space',     bg: 'linear-gradient(135deg,#001a0d,#003320,#065f46)' },
+  { id: 'moon base colony',               label: 'Moon Base',          emoji: '🌕', cat: 'Space',     bg: 'linear-gradient(135deg,#1c1c2e,#2d2d44,#4a4a6a)' },
+  { id: 'supernova nebula cloud',          label: 'Nebula Galaxy',     emoji: '🌌', cat: 'Space',     bg: 'linear-gradient(135deg,#2d0050,#6b21a8,#9333ea)' },
+  { id: 'asteroid mining belt',            label: 'Asteroid Belt',     emoji: '☄️', cat: 'Space',     bg: 'linear-gradient(135deg,#1a0a00,#3b1500,#6b2600)' },
+  { id: 'space station zero gravity',      label: 'Space Station',     emoji: '🛸', cat: 'Space',     bg: 'linear-gradient(135deg,#000d1a,#001f3f,#003d82)' },
+  { id: 'wormhole time jump',              label: 'Wormhole Jump',     emoji: '🌀', cat: 'Space',     bg: 'linear-gradient(135deg,#0a0050,#3730a3,#6366f1)' },
+  { id: 'galactic senate planet',          label: 'Galactic Senate',   emoji: '⭐', cat: 'Space',     bg: 'linear-gradient(135deg,#0d0030,#4a1d96,#7c3aed)' },
+  { id: 'saturn ring adventure',           label: 'Saturn Rings',      emoji: '🪐', cat: 'Space',     bg: 'linear-gradient(135deg,#4a2900,#b45309,#d97706)' },
+  { id: 'robot planet future world',       label: 'Robot Planet',      emoji: '🤖', cat: 'Space',     bg: 'linear-gradient(135deg,#0d1117,#1e293b,#334155)' },
+  // ── Ocean ─────────────────────────────────────────────────────────────────
+  { id: 'under the ocean',                 label: 'Ocean Deep',        emoji: '🌊', cat: 'Ocean',     bg: 'linear-gradient(135deg,#001f3f,#003d82,#0055b3)' },
+  { id: 'underwater mermaid kingdom',      label: 'Mermaid Cove',      emoji: '🧜', cat: 'Ocean',     bg: 'linear-gradient(135deg,#0a2b4a,#0e5a8a,#38bdf8)' },
+  { id: 'underwater treasure cave',        label: 'Treasure Dive',     emoji: '💎', cat: 'Ocean',     bg: 'linear-gradient(135deg,#003322,#006644,#059669)' },
+  { id: 'giant squid deep sea',            label: 'Deep Sea Monster',  emoji: '🦑', cat: 'Ocean',     bg: 'linear-gradient(135deg,#000d1a,#001a33,#003366)' },
+  { id: 'coral reef paradise',             label: 'Coral Reef',        emoji: '🐠', cat: 'Ocean',     bg: 'linear-gradient(135deg,#0c4a4a,#065f6b,#0891b2)' },
+  { id: 'pirate ship ocean battle',        label: 'Pirate Ship',       emoji: '⚓', cat: 'Ocean',     bg: 'linear-gradient(135deg,#1c1400,#3b2900,#6b4a00)' },
+  { id: 'sunken city ruins underwater',    label: 'Sunken City',       emoji: '🏛️', cat: 'Ocean',     bg: 'linear-gradient(135deg,#0a1f3d,#143d6e,#1d6fa4)' },
+  { id: 'whale whale watching adventure',  label: 'Whale Watch',       emoji: '🐳', cat: 'Ocean',     bg: 'linear-gradient(135deg,#001a3d,#003380,#0050c8)' },
+  { id: 'sea turtle island lagoon',        label: 'Turtle Lagoon',     emoji: '🐢', cat: 'Ocean',     bg: 'linear-gradient(135deg,#002b1a,#005e37,#059669)' },
+  { id: 'beach island paradise',           label: 'Tropical Island',   emoji: '🏝️', cat: 'Ocean',     bg: 'linear-gradient(135deg,#005e7a,#0891b2,#38bdf8)' },
+  // ── Adventure ─────────────────────────────────────────────────────────────
+  { id: 'pirate treasure hunt',            label: 'Pirate Quest',      emoji: '🏴‍☠️', cat: 'Adventure', bg: 'linear-gradient(135deg,#1a0f00,#4a2700,#7c4500)' },
+  { id: 'safari africa animals',           label: 'Safari Trek',       emoji: '🦒', cat: 'Adventure', bg: 'linear-gradient(135deg,#4a2800,#8a5200,#d97706)' },
+  { id: 'mountain climbing expedition',    label: 'Mountain Trek',     emoji: '⛰️', cat: 'Adventure', bg: 'linear-gradient(135deg,#1a3040,#2d4d63,#4a7a8a)' },
+  { id: 'jungle with wild animals',        label: 'Wild Jungle',       emoji: '🦁', cat: 'Adventure', bg: 'linear-gradient(135deg,#0a2a00,#1a5c00,#2d8a00)' },
+  { id: 'superhero city rescue',           label: 'Superhero City',    emoji: '🦸', cat: 'Adventure', bg: 'linear-gradient(135deg,#0d0030,#1a0060,#3b00c8)' },
+  { id: 'racing cars championship',        label: 'Race Day',          emoji: '🏎️', cat: 'Adventure', bg: 'linear-gradient(135deg,#3d0000,#800000,#cc0000)' },
+  { id: 'ninja training dojo',             label: 'Ninja Dojo',        emoji: '🥷', cat: 'Adventure', bg: 'linear-gradient(135deg,#0d0d0d,#1a1a1a,#2d2d2d)' },
+  { id: 'spy secret mission world',        label: 'Secret Mission',    emoji: '🕵️', cat: 'Adventure', bg: 'linear-gradient(135deg,#0a1a0a,#1a3a1a,#0f5f0f)' },
+  { id: 'treasure map desert journey',     label: 'Desert Quest',      emoji: '🗺️', cat: 'Adventure', bg: 'linear-gradient(135deg,#4a2900,#8a5a00,#c27a00)' },
+  { id: 'lost city jungle expedition',     label: 'Lost City',         emoji: '🏺', cat: 'Adventure', bg: 'linear-gradient(135deg,#1a3300,#2d5c00,#3f8000)' },
+  // ── Nature ────────────────────────────────────────────────────────────────
+  { id: 'friendly dinosaur park',          label: 'Dino World',        emoji: '🦕', cat: 'Nature',    bg: 'linear-gradient(135deg,#0a3300,#1a5c00,#2d8000)' },
+  { id: 'icy arctic polar bears',          label: 'Arctic Ice',        emoji: '🐻‍❄️', cat: 'Nature',    bg: 'linear-gradient(135deg,#0a2040,#1a3d6b,#2b6cb0)' },
+  { id: 'volcano island lava adventure',   label: 'Volcano Isle',      emoji: '🌋', cat: 'Nature',    bg: 'linear-gradient(135deg,#3d0000,#7a0a00,#c0280a)' },
+  { id: 'rainforest amazon wildlife',      label: 'Amazon Rainforest', emoji: '🌿', cat: 'Nature',    bg: 'linear-gradient(135deg,#002b00,#005c00,#008000)' },
+  { id: 'snowy mountain winter wonder',    label: 'Winter Wonderland', emoji: '❄️', cat: 'Nature',    bg: 'linear-gradient(135deg,#1a2a4a,#2d4a7a,#6b9ac4)' },
+  { id: 'autumn harvest pumpkin farm',     label: 'Harvest Farm',      emoji: '🎃', cat: 'Nature',    bg: 'linear-gradient(135deg,#4a1e00,#8a3d00,#b86000)' },
+  { id: 'underwater kelp forest',          label: 'Kelp Forest',       emoji: '🌾', cat: 'Nature',    bg: 'linear-gradient(135deg,#002b1a,#005c37,#008055)' },
+  { id: 'spring flower garden blooms',     label: 'Flower Garden',     emoji: '🌸', cat: 'Nature',    bg: 'linear-gradient(135deg,#4a003d,#8a0070,#c800a8)' },
+  { id: 'giant redwood forest ancient',    label: 'Redwood Forest',    emoji: '🌳', cat: 'Nature',    bg: 'linear-gradient(135deg,#1a0c00,#3d2000,#6b3800)' },
+  { id: 'animal wildlife sanctuary',       label: 'Wildlife Sanctuary',emoji: '🦋', cat: 'Nature',    bg: 'linear-gradient(135deg,#003300,#006600,#009900)' },
+  // ── Ancient ───────────────────────────────────────────────────────────────
+  { id: 'ancient egypt pyramids pharaoh',  label: 'Ancient Egypt',     emoji: '🛕', cat: 'Ancient',   bg: 'linear-gradient(135deg,#4a2800,#8a5200,#bf8c00)' },
+  { id: 'ancient rome colosseum warrior',  label: 'Ancient Rome',      emoji: '⚔️', cat: 'Ancient',   bg: 'linear-gradient(135deg,#3d1a00,#7a3a00,#b35c00)' },
+  { id: 'viking norse mythology longship', label: 'Viking Saga',       emoji: '🪓', cat: 'Ancient',   bg: 'linear-gradient(135deg,#0d1a2a,#1a3040,#2d4d63)' },
+  { id: 'samurai feudal japan village',    label: 'Samurai Japan',     emoji: '⛩️', cat: 'Ancient',   bg: 'linear-gradient(135deg,#3d0000,#7a0a00,#c01010)' },
+  { id: 'aztec mayan pyramid jungle',      label: 'Aztec Temple',      emoji: '🏛️', cat: 'Ancient',   bg: 'linear-gradient(135deg,#1a3300,#2d5c00,#3d7a00)' },
+  { id: 'ancient greek olympus gods',      label: 'Mount Olympus',     emoji: '⚡', cat: 'Ancient',   bg: 'linear-gradient(135deg,#1a1a3d,#2d2d80,#4040c0)' },
+  { id: 'medieval knight tournament',      label: 'Medieval Kingdom',  emoji: '🛡️', cat: 'Ancient',   bg: 'linear-gradient(135deg,#1a0f2a,#2d1a4a,#4a2d7a)' },
+  { id: 'ancient china dynasty palace',    label: 'Imperial China',    emoji: '🐼', cat: 'Ancient',   bg: 'linear-gradient(135deg,#4a0000,#8a0000,#cc0000)' },
+  { id: 'atlantis lost island civilization',label: 'Atlantis',         emoji: '🌐', cat: 'Ancient',   bg: 'linear-gradient(135deg,#002244,#003d80,#0055c0)' },
+  { id: 'ancient inca mountain city',      label: 'Inca Citadel',      emoji: '🦅', cat: 'Ancient',   bg: 'linear-gradient(135deg,#2a1500,#5a2d00,#8a4500)' },
+  // ── Future ────────────────────────────────────────────────────────────────
+  { id: 'robot factory future world',      label: 'Robot World',       emoji: '🤖', cat: 'Future',    bg: 'linear-gradient(135deg,#0d1117,#1e293b,#334155)' },
+  { id: 'time travel history adventure',   label: 'Time Travel',       emoji: '⏰', cat: 'Future',    bg: 'linear-gradient(135deg,#1a0044,#3d00b3,#6600ff)' },
+  { id: 'futuristic neon cyber city',      label: 'Cyber City',        emoji: '🏙️', cat: 'Future',    bg: 'linear-gradient(135deg,#001a3d,#003380,#0055c8)' },
+  { id: 'hologram virtual reality world',  label: 'VR Hologram World', emoji: '🥽', cat: 'Future',    bg: 'linear-gradient(135deg,#001a3d,#0033a0,#00aaff)' },
+  { id: 'underwater dome future city',     label: 'Future Dome City',  emoji: '🔬', cat: 'Future',    bg: 'linear-gradient(135deg,#001a4a,#003399,#0055ee)' },
+  { id: 'flying cars skyway city',         label: 'Skyway City',       emoji: '🚁', cat: 'Future',    bg: 'linear-gradient(135deg,#0d0030,#220080,#4400cc)' },
+  { id: 'quantum computer brain world',    label: 'Quantum World',     emoji: '💻', cat: 'Future',    bg: 'linear-gradient(135deg,#001a2a,#003d6b,#0070c0)' },
+  { id: 'genetic lab dna scientist',       label: 'Science Lab',       emoji: '🧬', cat: 'Future',    bg: 'linear-gradient(135deg,#001a00,#003300,#00660a)' },
+  { id: 'ai city robot companions',        label: 'AI City',           emoji: '🦾', cat: 'Future',    bg: 'linear-gradient(135deg,#0a0a2e,#1a1a66,#2a2aaa)' },
+  { id: 'space colony terraformed planet', label: 'New Earth',         emoji: '🌍', cat: 'Future',    bg: 'linear-gradient(135deg,#002b00,#005500,#008800)' },
+  // ── Spooky ────────────────────────────────────────────────────────────────
+  { id: 'haunted friendly ghost town',     label: 'Ghost Town',        emoji: '👻', cat: 'Spooky',    bg: 'linear-gradient(135deg,#0d0d0d,#1a0a2a,#2d1a4a)' },
+  { id: 'friendly vampire castle night',   label: 'Vampire Castle',    emoji: '🧛', cat: 'Spooky',    bg: 'linear-gradient(135deg,#1a0000,#3d0000,#660000)' },
+  { id: 'zombie abandoned city fun',       label: 'Zombie Town',       emoji: '🧟', cat: 'Spooky',    bg: 'linear-gradient(135deg,#0a1a00,#1a3300,#005500)' },
+  { id: 'witch forest potion cauldron',    label: 'Witch Forest',      emoji: '🧙‍♀️', cat: 'Spooky',    bg: 'linear-gradient(135deg,#0d0020,#1a0040,#2d0066)' },
+  { id: 'haunted carnival fun house',      label: 'Haunted Carnival',  emoji: '🎪', cat: 'Spooky',    bg: 'linear-gradient(135deg,#2a0040,#4a0070,#6600a8)' },
+  { id: 'mystery detective foggy city',    label: 'Mystery Fog City',  emoji: '🔍', cat: 'Spooky',    bg: 'linear-gradient(135deg,#0d1a1a,#1a3030,#2d4a4a)' },
+  { id: 'monster school friendly',         label: 'Monster School',    emoji: '👾', cat: 'Spooky',    bg: 'linear-gradient(135deg,#1a0030,#3d0070,#6600b8)' },
+  { id: 'dark forest firefly magic night', label: 'Firefly Night',     emoji: '✨', cat: 'Spooky',    bg: 'linear-gradient(135deg,#001a00,#003300,#004d00)' },
+  { id: 'pirate ghost ship ocean mist',    label: 'Ghost Ship',        emoji: '🚢', cat: 'Spooky',    bg: 'linear-gradient(135deg,#0d1a2a,#1a3040,#1f4060)' },
+  { id: 'abandoned toy factory magic',     label: 'Toy Factory',       emoji: '🪆', cat: 'Spooky',    bg: 'linear-gradient(135deg,#1a0a00,#3d1a00,#662a00)' },
+  // ── Seasonal ──────────────────────────────────────────────────────────────
+  { id: 'enchanted candy land',            label: 'Candy Kingdom',     emoji: '🍭', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#4a003d,#8c0080,#cc44bb)' },
+  { id: 'christmas north pole santa',      label: 'North Pole',        emoji: '🎅', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#001a3d,#003399,#cc0000)' },
+  { id: 'halloween pumpkin spooky village',label: 'Halloween Town',    emoji: '🎃', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#1a0000,#3d0800,#6b1800)' },
+  { id: 'summer beach surfing fun',        label: 'Summer Beach',      emoji: '🏄', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#003d7a,#0070cc,#009fff)' },
+  { id: 'spring cherry blossom japan',     label: 'Cherry Blossom',    emoji: '🌸', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#4a0040,#8a1070,#d44da0)' },
+  { id: 'thanksgiving harvest festival',   label: 'Harvest Festival',  emoji: '🦃', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#3d1a00,#7a3800,#b86000)' },
+  { id: 'new year fireworks celebration',  label: 'New Year Gala',     emoji: '🎆', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#0d003d,#2200a0,#4400ff)' },
+  { id: 'valentines love heart world',     label: 'Valentine World',   emoji: '💖', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#4a0020,#8a003d,#cc0066)' },
+  { id: 'cloud kingdom sky adventure',     label: 'Sky Kingdom',       emoji: '☁️', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#003366,#0055a8,#4488cc)' },
+  { id: 'circus amazing big top show',     label: 'Big Top Circus',    emoji: '🎡', cat: 'Seasonal',  bg: 'linear-gradient(135deg,#3d0020,#7a1040,#b84470)' },
 ]
+
+const THEME_CATEGORIES = ['Fantasy', 'Space', 'Ocean', 'Adventure', 'Nature', 'Ancient', 'Future', 'Spooky', 'Seasonal']
+
 
 const CHILD_COLORS = ['#702AE1','#F59E0B','#10B981','#3B82F6','#EC4899','#F97316']
 
@@ -240,12 +342,27 @@ const PROHIBITED_WORDS = [
 
 function validateContent(text: string): string | null {
   const lower = text.toLowerCase()
+
+  // ── Check copyright / IP blocklist first ──────────────────────────────────
+  for (const term of BLOCKED_IP_TERMS) {
+    if (lower.includes(term.toLowerCase())) {
+      const display = term.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      return [
+        `🚫 Copyright Protection — "${display}" is a trademarked character owned by a major studio or publisher.`,
+        `ReadQuest cannot use copyrighted IP to keep your child's stories legal and original.`,
+        `✨ Please choose a different hero — try an original name like "Zara the Explorer" or "Leo the Lion"!`,
+      ].join(' ')
+    }
+  }
+
+  // ── Kid-safe content check ────────────────────────────────────────────────
   for (const word of PROHIBITED_WORDS) {
     const regex = new RegExp(`\\b${word}\\b`, 'i')
     if (regex.test(lower)) {
       return `⚠️ Please keep the story kid-friendly! The word "${word}" isn't allowed.`
     }
   }
+
   return null
 }
 
@@ -372,6 +489,7 @@ export default function StoryGenerator() {
   const [analyzeError, setAnalyzeError] = useState('')
   const [charLoadingMsg, setCharLoadingMsg] = useState(CHAR_LOADING_MSGS[0])
   const [charLoading, setCharLoading] = useState(false)
+  const [charBgRemoving, setCharBgRemoving] = useState(false)  // true while waiting for server bg-removal
   const [sceneDescription, setSceneDescription] = useState('')
   const [sceneError, setSceneError] = useState('')
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
@@ -392,9 +510,13 @@ export default function StoryGenerator() {
   const bgAbortRef = useRef<AbortController | null>(null)
   const portraitAbortRef = useRef<AbortController | null>(null)
 
+  // ── Theme picker filter state ─────────────────────────────────────────────
+  const [themeSearch, setThemeSearch] = useState('')
+  const [themeCat, setThemeCat] = useState('Fantasy')
+
   // Hero character — pick from a small curated seed pool of reliable images on mount
   // (Gallery hover or onVerified will update this dynamically)
-  const RELIABLE_SEEDS = ['SpongeBob', 'Mickey Mouse', 'Pikachu', 'Mario', 'Stitch', 'Elsa', 'Simba']
+  const RELIABLE_SEEDS = ['Luna Star', 'Leo the Lion', 'Sky Knight', 'Alice', 'Athena', 'Jade Dragon', 'Nova Scout']
   const [heroChar, setHeroChar] = useState(() => {
     const seed = RELIABLE_SEEDS[Math.floor(Math.random() * RELIABLE_SEEDS.length)]
     return ALL_CHARACTERS.find(c => c.name === seed) ?? ALL_CHARACTERS[0]
@@ -514,18 +636,21 @@ export default function StoryGenerator() {
 
   const charMsgIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Gallery quick-select: shows loader while calling analyze to get real visual data ────────────
+  // ── Gallery quick-select — transitions to Step 2 and removes bg via API ───────────────────────────
   const handleGallerySelect = useCallback((name: string) => {
     const found = ALL_CHARACTERS.find(c => c.name === name)
     setCharacterInput(name)
     setAnalyzeError('')
-    // Pre-populate with gallery image immediately so the scene step shows something
+
+    const galleryImg = found?.img ?? null
+
+    // Set data immediately (no portrait yet — null triggers the loader on Step 2)
     setCharacterData({
       character_name: name,
-      universe: 'Adventure',
+      universe: found ? 'Adventure' : 'Original Story',
       description: `${name} — ready for an epic adventure!`,
-      visual_appearance: name,
-      character_media_url: found?.img ?? null,
+      visual_appearance: found?.visualDesc ?? name,
+      character_media_url: null,   // will be set after bg removal completes
       scenes: [],
     })
     if (found) { setHeroChar(found); setHoveredHeroSrc(null) }
@@ -533,18 +658,44 @@ export default function StoryGenerator() {
     setSelectedTheme(null)
     setThemeBackground(null)
     setStep('scene')
-    // Fire analyze in background to enrich the character data with real visual info
+
+    // ── Server-side background removal ──────────────────────────────────────
+    // Show loader on Step 2 while API removes the background.
+    // Falls back to raw gallery image if the API fails.
+    if (galleryImg) {
+      setCharBgRemoving(true)
+      storiesApi.removeBackground(galleryImg)
+        .then(res => {
+          const transparentUrl = res.data?.transparent_url
+          setCharacterData(prev => prev
+            ? { ...prev, character_media_url: transparentUrl ?? galleryImg }
+            : prev
+          )
+        })
+        .catch(() => {
+          // Fallback — show original gallery image if bg removal fails
+          setCharacterData(prev => prev
+            ? { ...prev, character_media_url: galleryImg }
+            : prev
+          )
+        })
+        .finally(() => setCharBgRemoving(false))
+    }
+
+    // Fire analyze in background ONLY to enrich metadata (universe/description).
+    // Never overwrite character_media_url — the gallery transparent portrait is authoritative.
     storiesApi.analyzeCharacter(name)
       .then(res => {
         const d = res.data
-        setCharacterData(prev => ({
+        setCharacterData(prev => prev ? ({
+          ...prev,
           character_name: d.character_name ?? name,
-          universe: d.universe ?? prev?.universe ?? 'Adventure',
-          description: d.description ?? prev?.description ?? `${name} — ready for adventure!`,
-          visual_appearance: d.visual_appearance ?? name,
-          character_media_url: d.character_image_url ?? d.character_media_url ?? prev?.character_media_url ?? null,
-          scenes: d.scenes ?? [],
-        }))
+          universe: d.universe ?? prev.universe ?? 'Adventure',
+          description: d.description ?? prev.description ?? `${name} — ready for adventure!`,
+          visual_appearance: prev.visual_appearance || d.visual_appearance || name,
+          scenes: d.scenes ?? prev.scenes ?? [],
+          // character_media_url intentionally NOT touched — gallery transparent portrait wins
+        }) : prev)
       })
       .catch(() => { /* keep pre-populated data */ })
   }, [])
@@ -562,12 +713,15 @@ export default function StoryGenerator() {
     try {
       const res = await storiesApi.analyzeCharacter(characterInput.trim())
       const d = res.data
+      const rawUrl = d.character_image_url ?? d.character_media_url ?? null
+      // Remove white background from AI-generated portrait before displaying
+      const transparentUrl = rawUrl ? await removeBackground(rawUrl) : null
       setCharacterData({
         character_name: d.character_name ?? characterInput.trim(),
         universe: d.universe ?? 'Original Story',
         description: d.description ?? `The amazing ${characterInput.trim()}!`,
         visual_appearance: d.visual_appearance ?? characterInput.trim(),
-        character_media_url: d.character_image_url ?? d.character_media_url ?? null,
+        character_media_url: transparentUrl,
         scenes: d.scenes ?? [],
       })
     } catch {
@@ -600,9 +754,12 @@ export default function StoryGenerator() {
     try {
       const res = await storiesApi.analyzeCharacter(characterData.character_name)
       const d = res.data
+      const rawUrl = d.character_image_url ?? d.character_media_url ?? null
+      // Remove white background from regenerated portrait
+      const transparentUrl = rawUrl ? await removeBackground(rawUrl) : null
       setCharacterData(prev => prev ? {
         ...prev,
-        character_media_url: d.character_image_url ?? d.character_media_url ?? null,
+        character_media_url: transparentUrl,
       } : prev)
     } catch {
       // Keep existing data, just clear the image
@@ -701,27 +858,43 @@ export default function StoryGenerator() {
     const ctrl = new AbortController()
     portraitAbortRef.current = ctrl
     setPortraitLoading(true)
-    // Clear existing portrait so loader appears
+
+    // Capture the current gallery portrait so we can restore it if the API doesn't return one.
+    // Gallery portrait = a /char_icons/ path or a data: URL from removeBackground.
+    // We only clear it temporarily to show the loading indicator — it is NOT discarded.
+    const galleryPortrait = characterData?.character_media_url ?? null
+    const isGalleryPortrait = galleryPortrait
+      && (galleryPortrait.startsWith('/char_icons/') || galleryPortrait.startsWith('data:'))
+
+    // Temporarily clear portrait to trigger the loading indicator in the preview
     setCharacterData(prev => prev ? { ...prev, character_media_url: null } : prev)
+
     const theme = THEME_OPTIONS.find(t => t.id === selectedTheme)
     const label = theme?.label ?? selectedTheme
     const charName = (characterData?.character_name ?? characterInput.trim()) || undefined
-    // Use sceneDescription if filled, otherwise just the theme label drives the scene
     const sceneDetail = sceneDescription.trim() || undefined
-    storiesApi.generateBackground(label, charName, sceneDetail)
+    // Pass the precise visual description so the backend renders the correct character
+    const visualDesc = characterData?.visual_appearance || undefined
+
+    storiesApi.generateBackground(label, charName, sceneDetail, visualDesc)
       .then(res => {
         if (!ctrl.signal.aborted) {
           if (res.data?.background_url) setThemeBackground(res.data.background_url)
-          if (res.data?.portrait_url) {
-            setCharacterData(prev => prev
-              ? { ...prev, character_media_url: res.data.portrait_url }
-              : prev
-            )
-          }
+          // Prefer: if we had a locked gallery portrait, restore it (scene portrait is bonus context).
+          // Otherwise use the freshly generated portrait from the API.
+          const newPortrait = isGalleryPortrait ? galleryPortrait : (res.data?.portrait_url ?? galleryPortrait)
+          setCharacterData(prev => prev
+            ? { ...prev, character_media_url: newPortrait }
+            : prev
+          )
         }
       })
       .catch((err) => {
-        if (!ctrl.signal.aborted) console.warn('[generate scene] failed (non-fatal):', err?.message)
+        if (!ctrl.signal.aborted) {
+          console.warn('[generate scene] failed (non-fatal):', err?.message)
+          // Restore gallery portrait on error
+          setCharacterData(prev => prev ? { ...prev, character_media_url: galleryPortrait } : prev)
+        }
       })
       .finally(() => { if (!ctrl.signal.aborted) setPortraitLoading(false) })
   }, [selectedTheme, sceneDescription, characterData, characterInput])
@@ -762,6 +935,8 @@ export default function StoryGenerator() {
           art_style: selectedArtStyle ?? 'cartoon',
           character_description: characterData?.visual_appearance ?? characterData?.description ?? undefined,
           character_universe: characterData?.universe ?? undefined,
+          // Pass the gallery portrait so the backend uses it as the cover directly
+          character_image_url: characterData?.character_media_url ?? undefined,
         },
         { timeout: 300000, headers },
       )
@@ -828,21 +1003,12 @@ export default function StoryGenerator() {
             {childrenLoaded && children.length > 0 && (
               <div className="gen-child-selector">
                 <div className="gen-child-selector-label">Story is for</div>
-                {children.map((child, i) => (
-                  <button
-                    key={child.id}
-                    className={`gen-child-btn ${selectedChild?.id === child.id ? 'active' : ''}`}
-                    onClick={() => setSelectedChild(child)}
-                  >
-                    <div className="gen-child-avatar" style={{ background: CHILD_COLORS[i % CHILD_COLORS.length] }}>
-                      {child.name.charAt(0)}
-                    </div>
-                    <div className="gen-child-info">
-                      <div className="gen-child-name">{child.name}</div>
-                      <div className="gen-child-grade">Grade {child.grade_level}</div>
-                    </div>
-                  </button>
-                ))}
+                <StudentDropdown
+                  children={children}
+                  selected={selectedChild}
+                  onChange={(child) => setSelectedChild(child)}
+                  allowAll={false}
+                />
               </div>
             )}
           </aside>
@@ -881,7 +1047,7 @@ export default function StoryGenerator() {
                     <div className="step1-badge">Magic Story Workshop</div>
                     {/* Hero photo — static on load, changes ONLY on gallery hover */}
                     <HeroCharDisplay
-                      src={hoveredHeroSrc ?? heroChar.img}
+                      src={hoveredHeroSrc ?? heroChar.img ?? heroChar.emoji}
                       size={96}
                     />
                     <h1 className="step1-headline">
@@ -901,7 +1067,7 @@ export default function StoryGenerator() {
                     <div className={`step1-portal-bar ${analyzeError ? 'step1-portal-error' : ''} ${charLoading ? 'step1-portal-loading' : ''}`}>
                       <input
                         className="step1-portal-input"
-                        placeholder="e.g. Luna, Spiderman, Dora, Pikachu..."
+                        placeholder="e.g. Luna Star, Sky Knight, Jade Dragon, Nova Scout..."
                         value={characterInput}
                         onChange={e => {
                           const val = e.target.value
@@ -949,23 +1115,16 @@ export default function StoryGenerator() {
                       </div>
                     </div>
 
-                    {/* Child selector */}
-                    {childrenLoaded && children.length > 1 && (
+                    {/* Child selector in step 1 */}
+                    {childrenLoaded && children.length > 0 && (
                       <div className="step1-child-row">
-                        <span className="step1-picks-label">Story for:</span>
-                        <div className="step1-chips">
-                          {children.map((child, i) => (
-                            <motion.button key={child.id}
-                              className={`step1-child-chip ${selectedChild?.id === child.id ? 'active' : ''}`}
-                              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                              onClick={() => setSelectedChild(child)}>
-                              <span className="step1-child-avatar" style={{ background: CHILD_COLORS[i % CHILD_COLORS.length] }}>
-                                {child.name.charAt(0)}
-                              </span>
-                              {child.name} · Gr {child.grade_level}
-                            </motion.button>
-                          ))}
-                        </div>
+                        <StudentDropdown
+                          children={children}
+                          selected={selectedChild}
+                          onChange={(child) => setSelectedChild(child)}
+                          allowAll={false}
+                          label="Story for:"
+                        />
                       </div>
                     )}
                   </div>
@@ -974,7 +1133,10 @@ export default function StoryGenerator() {
                 {/* ── GALLERY — full width below split ── */}
                 <CharacterGallery
                   onSelect={handleGallerySelect}
-                  onHoverChar={(img) => setHoveredHeroSrc(img)}
+                  onHoverChar={(name) => {
+                      const ch = ALL_CHARACTERS.find(c => c.name === name)
+                      setHoveredHeroSrc(ch?.img ?? ch?.emoji ?? null)
+                    }}
                   onHoverLeave={() => setHoveredHeroSrc(null)}
                   onVerified={(chars) => { if (chars[0]) setHeroChar(chars[0]) }}
                 />
@@ -1067,45 +1229,79 @@ export default function StoryGenerator() {
                   ))}
                 </div>
 
-                {/* ── LEFT floating glass panel: Theme Picker ── */}
-                <div className="scene2-left-panel">
-                  <div className="scene2-panel-title">✨ Choose Your Theme</div>
+                {/* ── WORLD PICKER — full-width, search + category tabs + 6-col gradient grid ── */}
+                <div className="scene2-left-panel world-picker-panel">
+                  {/* Header */}
+                  <div className="wp-header">
+                    <div className="wp-title">🌍 Choose Your World</div>
+                    <div className="wp-subtitle">Pick a setting — scroll to explore {THEME_OPTIONS.length} worlds</div>
+                  </div>
 
-                  {/* Mobile-only: show generated background as a thumbnail banner */}
-                  {selectedTheme && (
-                    bgLoading ? (
-                      <div className="scene2-mobile-bg-loading">
-                        <span style={{ fontSize: '1.1rem' }}>🎨</span>
-                        AI painting your world…
-                      </div>
-                    ) : themeBackground ? (
-                      <img
-                        src={themeBackground}
-                        alt="Theme background preview"
-                        className="scene2-mobile-bg-preview"
-                      />
-                    ) : null
-                  )}
+                  {/* Search */}
+                  <div className="wp-search-wrap">
+                    <span className="wp-search-icon">🔍</span>
+                    <input
+                      className="wp-search-input"
+                      placeholder="Search worlds…"
+                      value={themeSearch}
+                      onChange={e => setThemeSearch(e.target.value)}
+                    />
+                    {themeSearch && (
+                      <button className="wp-search-clear" onClick={() => setThemeSearch('')}>✕</button>
+                    )}
+                  </div>
 
-                  {/* Theme Picker — compact 4-column scrollable grid */}
-                  <div className="scene2-theme-grid">
-                    {THEME_OPTIONS.map(t => (
-                      <motion.button key={t.id}
-                        className={`scene2-theme-tile ${selectedTheme === t.id ? 'selected' : ''} ${bgLoading && selectedTheme === t.id ? 'scene2-theme-tile-loading' : ''}`}
-                        whileHover={{ scale: 1.06, y: -2 }} whileTap={{ scale: 0.92 }}
-                        onClick={() => handleThemeSelect(t.id)}>
-                        <span className="scene2-tile-emoji">{t.emoji}</span>
-                        <span className="scene2-tile-label">{t.label}</span>
-                        {selectedTheme === t.id && !bgLoading && <span className="scene2-tile-check">✓</span>}
-                        {selectedTheme === t.id && bgLoading && <span className="scene2-tile-check scene2-tile-spinner">⏳</span>}
-                      </motion.button>
+                  {/* Category tabs */}
+                  <div className="wp-cat-tabs">
+                    {THEME_CATEGORIES.map(cat => (
+                      <button
+                        key={cat}
+                        className={`wp-cat-tab ${themeCat === cat ? 'active' : ''}`}
+                        onClick={() => setThemeCat(cat)}
+                      >
+                        {cat}
+                      </button>
                     ))}
                   </div>
 
-                  {/* ── Custom theme input: type anything, auto-fires after 3s ── */}
+                  {/* 6-column world card grid */}
+                  <div className="wp-grid">
+                    {THEME_OPTIONS
+                      .filter(t =>
+                        (themeCat === 'All' || t.cat === themeCat) &&
+                        (themeSearch === '' || t.label.toLowerCase().includes(themeSearch.toLowerCase()))
+                      )
+                      .map(t => (
+                        <motion.button key={t.id}
+                          className={`wp-card ${selectedTheme === t.id ? 'selected' : ''}`}
+                          style={{ background: t.bg }}
+                          whileHover={{ scale: 1.06, y: -3 }}
+                          whileTap={{ scale: 0.94 }}
+                          onClick={() => handleThemeSelect(t.id)}
+                        >
+                          <span className="wp-card-emoji">{t.emoji}</span>
+                          <div className="wp-card-overlay">
+                            <span className="wp-card-label">{t.label}</span>
+                          </div>
+                          {selectedTheme === t.id && (
+                            <span className="wp-card-check">
+                              {bgLoading ? '⏳' : '✓'}
+                            </span>
+                          )}
+                        </motion.button>
+                      ))}
+                    {THEME_OPTIONS.filter(t =>
+                      (themeCat === 'All' || t.cat === themeCat) &&
+                      (themeSearch === '' || t.label.toLowerCase().includes(themeSearch.toLowerCase()))
+                    ).length === 0 && (
+                      <div className="wp-empty">No worlds found — try a different search!</div>
+                    )}
+                  </div>
+
+                  {/* ── Custom theme input ── */}
                   <div className="scene2-custom-theme-wrap">
                     <label className="scene2-custom-theme-label">
-                      ✏️ Or type your own theme
+                      ✏️ Or describe your own world
                       {bgLoading && selectedTheme === '__custom__' && (
                         <span className="scene2-custom-theme-loading">AI painting…</span>
                       )}
@@ -1197,9 +1393,20 @@ export default function StoryGenerator() {
 
                 </div>
 
-                {/* ── CENTER: Character Stage — invite prompt until Generate is clicked ── */}
+                {/* ── CENTER: Character Stage — loader → portrait → invite ── */}
                 <AnimatePresence>
-                  {characterData?.character_media_url ? (
+                  {charBgRemoving ? (
+                    // Server is removing background — show spinner
+                    <motion.div key="bg-removing" className="scene2-center-stage"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+                      <div className="scene2-bgrm-loader">
+                        <div className="scene2-bgrm-spinner" />
+                        <div className="scene2-bgrm-name">{characterData?.character_name ?? 'Hero'}</div>
+                        <div className="scene2-bgrm-label">✨ Making transparent…</div>
+                      </div>
+                    </motion.div>
+                  ) : characterData?.character_media_url ? (
                     // Portrait ready — show it blended into background
                     <motion.div key="char-stage" className="scene2-center-stage"
                       initial={{ opacity: 0, scale: 0.85, y: 20 }}
@@ -1208,9 +1415,7 @@ export default function StoryGenerator() {
                       transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}>
                       <div className="scene2-portrait-frame">
                         <PortraitImage
-                          src={characterData.character_media_url.startsWith('http')
-                            ? characterData.character_media_url
-                            : `${import.meta.env.VITE_API_URL}${characterData.character_media_url}`}
+                          src={resolvePortraitSrc(characterData.character_media_url)}
                           alt={characterData.character_name}
                         />
                       </div>
@@ -1491,9 +1696,7 @@ export default function StoryGenerator() {
               {characterData?.character_media_url ? (
                 <img
                   className="gpv-char-img"
-                  src={characterData.character_media_url.startsWith('http')
-                    ? characterData.character_media_url
-                    : `${import.meta.env.VITE_API_URL}${characterData.character_media_url}`}
+                  src={resolvePortraitSrc(characterData.character_media_url)}
                   alt={characterData.character_name}
                 />
               ) : (

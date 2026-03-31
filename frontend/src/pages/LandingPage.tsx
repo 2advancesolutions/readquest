@@ -1,575 +1,1057 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { studentsApi } from '../services/api'
-import { supabase } from '../lib/supabase'
+import { motion, useInView, AnimatePresence } from 'framer-motion'
 import '../styles/landing.css'
 
-// ── 10 books per grade K–8 (Open Library ISBN covers, shuffled on mount) ──
-type BookEntry = { title: string; cover: string; grade: string; genre: string; progress: number }
-
-const BOOKS_BY_GRADE: BookEntry[] = [
-  // ─ Kindergarten ──────────────────────────────────────────────────
-  { title: 'The Very Hungry Caterpillar',    cover: 'https://covers.openlibrary.org/b/isbn/0399226907-L.jpg',  grade: 'K', genre: 'Picture Book', progress: 88 },
-  { title: 'Goodnight Moon',                 cover: 'https://covers.openlibrary.org/b/isbn/0064430170-L.jpg',  grade: 'K', genre: 'Bedtime',      progress: 95 },
-  { title: 'Where the Wild Things Are',      cover: 'https://covers.openlibrary.org/b/isbn/0064431789-L.jpg',  grade: 'K', genre: 'Picture Book', progress: 80 },
-  { title: 'The Cat in the Hat',             cover: 'https://covers.openlibrary.org/b/isbn/0679873503-L.jpg',  grade: 'K', genre: 'Rhyme',        progress: 76 },
-  { title: 'Green Eggs and Ham',             cover: 'https://covers.openlibrary.org/b/isbn/0394800168-L.jpg',  grade: 'K', genre: 'Rhyme',        progress: 92 },
-  { title: 'Brown Bear, Brown Bear',         cover: 'https://covers.openlibrary.org/b/isbn/0805047905-L.jpg',  grade: 'K', genre: 'Picture Book', progress: 97 },
-  { title: 'If You Give a Mouse a Cookie',   cover: 'https://covers.openlibrary.org/b/isbn/0060245867-L.jpg',  grade: 'K', genre: 'Picture Book', progress: 84 },
-  { title: 'Chicka Chicka Boom Boom',        cover: 'https://covers.openlibrary.org/b/isbn/0689835477-L.jpg',  grade: 'K', genre: 'Alphabet',     progress: 91 },
-  { title: 'Corduroy',                       cover: 'https://covers.openlibrary.org/b/isbn/0670241334-L.jpg',  grade: 'K', genre: 'Picture Book', progress: 78 },
-  { title: 'The Snowy Day',                  cover: 'https://covers.openlibrary.org/b/isbn/0670654000-L.jpg',  grade: 'K', genre: 'Picture Book', progress: 85 },
-
-  // ─ Grade 1 ───────────────────────────────────────────────────────
-  { title: 'Frog and Toad Are Friends',      cover: 'https://covers.openlibrary.org/b/isbn/0064440206-L.jpg',  grade: 'Grade 1', genre: 'Early Reader', progress: 74 },
-  { title: 'The Giving Tree',               cover: 'https://covers.openlibrary.org/b/isbn/0060256656-L.jpg',  grade: 'Grade 1', genre: 'Classic',      progress: 89 },
-  { title: 'Harold and the Purple Crayon',   cover: 'https://covers.openlibrary.org/b/isbn/0064430227-L.jpg',  grade: 'Grade 1', genre: 'Picture Book', progress: 93 },
-  { title: 'Horton Hears a Who!',           cover: 'https://covers.openlibrary.org/b/isbn/0394800788-L.jpg',  grade: 'Grade 1', genre: 'Rhyme',        progress: 82 },
-  { title: 'The Polar Express',              cover: 'https://covers.openlibrary.org/b/isbn/0395389496-L.jpg',  grade: 'Grade 1', genre: 'Holiday',      progress: 71 },
-  { title: 'Sylvester & the Magic Pebble',  cover: 'https://covers.openlibrary.org/b/isbn/0671662694-L.jpg',  grade: 'Grade 1', genre: 'Picture Book', progress: 67 },
-  { title: "Don't Let the Pigeon Drive",    cover: 'https://covers.openlibrary.org/b/isbn/0786820012-L.jpg',  grade: 'Grade 1', genre: 'Humor',        progress: 96 },
-  { title: 'Click, Clack, Moo',            cover: 'https://covers.openlibrary.org/b/isbn/0689832133-L.jpg',  grade: 'Grade 1', genre: 'Farm',         progress: 88 },
-  { title: 'Amelia Bedelia',                cover: 'https://covers.openlibrary.org/b/isbn/0064441555-L.jpg',  grade: 'Grade 1', genre: 'Humor',        progress: 79 },
-  { title: 'Alexander and the Terrible Day',cover: 'https://covers.openlibrary.org/b/isbn/0689711735-L.jpg',  grade: 'Grade 1', genre: 'Humor',        progress: 72 },
-
-  // ─ Grade 2 ───────────────────────────────────────────────────────
-  { title: 'Ramona the Pest',               cover: 'https://covers.openlibrary.org/b/isbn/0380709163-L.jpg',  grade: 'Grade 2', genre: 'Chapter Book', progress: 61 },
-  { title: 'Magic Tree House #1',           cover: 'https://covers.openlibrary.org/b/isbn/0679824111-L.jpg',  grade: 'Grade 2', genre: 'Adventure',    progress: 55 },
-  { title: 'Nate the Great',               cover: 'https://covers.openlibrary.org/b/isbn/0440400414-L.jpg',  grade: 'Grade 2', genre: 'Mystery',      progress: 70 },
-  { title: 'The Boxcar Children',           cover: 'https://covers.openlibrary.org/b/isbn/0807508527-L.jpg',  grade: 'Grade 2', genre: 'Mystery',      progress: 48 },
-  { title: 'Junie B. Jones',               cover: 'https://covers.openlibrary.org/b/isbn/0679826963-L.jpg',  grade: 'Grade 2', genre: 'Humor',        progress: 66 },
-  { title: 'Stuart Little',                cover: 'https://covers.openlibrary.org/b/isbn/0064400468-L.jpg',  grade: 'Grade 2', genre: 'Classic',      progress: 43 },
-  { title: "My Father's Dragon",           cover: 'https://covers.openlibrary.org/b/isbn/0394890485-L.jpg',  grade: 'Grade 2', genre: 'Fantasy',      progress: 58 },
-  { title: "Mr. Popper's Penguins",        cover: 'https://covers.openlibrary.org/b/isbn/0316058432-L.jpg',  grade: 'Grade 2', genre: 'Classic',      progress: 77 },
-  { title: 'Henry and Mudge',              cover: 'https://covers.openlibrary.org/b/isbn/0689810040-L.jpg',  grade: 'Grade 2', genre: 'Early Reader', progress: 83 },
-  { title: 'Flat Stanley',                 cover: 'https://covers.openlibrary.org/b/isbn/0064420264-L.jpg',  grade: 'Grade 2', genre: 'Adventure',    progress: 60 },
-
-  // ─ Grade 3 ───────────────────────────────────────────────────────
-  { title: "Charlotte's Web",              cover: 'https://covers.openlibrary.org/b/isbn/0064400557-L.jpg',  grade: 'Grade 3', genre: 'Classic',      progress: 54 },
-  { title: 'James and the Giant Peach',    cover: 'https://covers.openlibrary.org/b/isbn/0142410381-L.jpg',  grade: 'Grade 3', genre: 'Fantasy',      progress: 47 },
-  { title: 'Matilda',                      cover: 'https://covers.openlibrary.org/b/isbn/0142410314-L.jpg',  grade: 'Grade 3', genre: 'Fantasy',      progress: 63 },
-  { title: 'Little House on the Prairie',  cover: 'https://covers.openlibrary.org/b/isbn/9780064400022-L.jpg', grade: 'Grade 3', genre: 'Historical',   progress: 38 },
-  { title: 'The BFG',                      cover: 'https://covers.openlibrary.org/b/isbn/0140328726-L.jpg',  grade: 'Grade 3', genre: 'Fantasy',      progress: 71 },
-  { title: 'Because of Winn-Dixie',        cover: 'https://covers.openlibrary.org/b/isbn/0763617229-L.jpg',  grade: 'Grade 3', genre: 'Realistic',    progress: 57 },
-  { title: 'Sarah, Plain and Tall',        cover: 'https://covers.openlibrary.org/b/isbn/0064402053-L.jpg',  grade: 'Grade 3', genre: 'Historical',   progress: 44 },
-  { title: 'Encyclopedia Brown',           cover: 'https://covers.openlibrary.org/b/isbn/0553158937-L.jpg',  grade: 'Grade 3', genre: 'Mystery',      progress: 65 },
-  { title: 'Shiloh',                       cover: 'https://covers.openlibrary.org/b/isbn/0440407524-L.jpg',  grade: 'Grade 3', genre: 'Realistic',    progress: 52 },
-  { title: 'The Phantom Tollbooth',        cover: 'https://covers.openlibrary.org/b/isbn/0394820371-L.jpg',  grade: 'Grade 3', genre: 'Fantasy',      progress: 40 },
-
-  // ─ Grade 4 ───────────────────────────────────────────────────────
-  { title: "Harry Potter & the Sorcerer's",cover: 'https://covers.openlibrary.org/b/isbn/0439708184-L.jpg',  grade: 'Grade 4', genre: 'Fantasy',      progress: 41 },
-  { title: 'The Lion, the Witch & Wardrobe',cover:'https://covers.openlibrary.org/b/isbn/0064404994-L.jpg', grade: 'Grade 4', genre: 'Fantasy',      progress: 33 },
-  { title: 'Diary of a Wimpy Kid',         cover: 'https://covers.openlibrary.org/b/isbn/0810993139-L.jpg',  grade: 'Grade 4', genre: 'Humor',        progress: 62 },
-  { title: 'Where the Red Fern Grows',     cover: 'https://covers.openlibrary.org/b/isbn/0553274295-L.jpg',  grade: 'Grade 4', genre: 'Classic',      progress: 29 },
-  { title: 'Island of the Blue Dolphins',  cover: 'https://covers.openlibrary.org/b/isbn/9780395536803-L.jpg', grade: 'Grade 4', genre: 'Adventure',    progress: 55 },
-  { title: 'Mrs. Frisby and the Rats',     cover: 'https://covers.openlibrary.org/b/isbn/0689710682-L.jpg',  grade: 'Grade 4', genre: 'Fantasy',      progress: 37 },
-  { title: 'Tuck Everlasting',             cover: 'https://covers.openlibrary.org/b/isbn/0374480095-L.jpg',  grade: 'Grade 4', genre: 'Fantasy',      progress: 48 },
-  { title: 'The Trumpet of the Swan',      cover: 'https://covers.openlibrary.org/b/isbn/0064410226-L.jpg',  grade: 'Grade 4', genre: 'Classic',      progress: 66 },
-  { title: 'The Witches',                  cover: 'https://covers.openlibrary.org/b/isbn/0141301104-L.jpg',  grade: 'Grade 4', genre: 'Fantasy',      progress: 74 },
-  { title: 'My Side of the Mountain',      cover: 'https://covers.openlibrary.org/b/isbn/0439153883-L.jpg',  grade: 'Grade 4', genre: 'Adventure',    progress: 42 },
-
-  // ─ Grade 5 ───────────────────────────────────────────────────────
-  { title: 'Percy Jackson: Lightning Thief',cover:'https://covers.openlibrary.org/b/isbn/0786838655-L.jpg',  grade: 'Grade 5', genre: 'Mythology',    progress: 29 },
-  { title: 'Wonder',                       cover: 'https://covers.openlibrary.org/b/isbn/0375869026-L.jpg',  grade: 'Grade 5', genre: 'Realistic',    progress: 72 },
-  { title: 'Hatchet',                      cover: 'https://covers.openlibrary.org/b/isbn/0689840926-L.jpg',  grade: 'Grade 5', genre: 'Survival',     progress: 53 },
-  { title: 'Number the Stars',             cover: 'https://covers.openlibrary.org/b/isbn/0395510600-L.jpg',  grade: 'Grade 5', genre: 'Historical',   progress: 67 },
-  { title: 'Bridge to Terabithia',         cover: 'https://covers.openlibrary.org/b/isbn/0064401847-L.jpg',  grade: 'Grade 5', genre: 'Realistic',    progress: 44 },
-  { title: 'A Wrinkle in Time',            cover: 'https://covers.openlibrary.org/b/isbn/0312367554-L.jpg',  grade: 'Grade 5', genre: 'Sci-Fi',       progress: 38 },
-  { title: 'From Mixed-Up Files of Mrs. B',cover: 'https://covers.openlibrary.org/b/isbn/0689711816-L.jpg',  grade: 'Grade 5', genre: 'Mystery',      progress: 61 },
-  { title: 'The Watsons Go to Birmingham', cover: 'https://covers.openlibrary.org/b/isbn/0440414121-L.jpg',  grade: 'Grade 5', genre: 'Historical',   progress: 50 },
-  { title: 'Maniac Magee',                 cover: 'https://covers.openlibrary.org/b/isbn/0316809063-L.jpg',  grade: 'Grade 5', genre: 'Realistic',    progress: 34 },
-  { title: 'Bud, Not Buddy',               cover: 'https://covers.openlibrary.org/b/isbn/0440418186-L.jpg',  grade: 'Grade 5', genre: 'Historical',   progress: 46 },
-
-  // ─ Grade 6 ───────────────────────────────────────────────────────
-  { title: 'Holes',                        cover: 'https://covers.openlibrary.org/b/isbn/0440414806-L.jpg',  grade: 'Grade 6', genre: 'Adventure',    progress: 45 },
-  { title: 'Roll of Thunder, Hear My Cry', cover: 'https://covers.openlibrary.org/b/isbn/0142401129-L.jpg',  grade: 'Grade 6', genre: 'Historical',   progress: 31 },
-  { title: 'Harriet the Spy',             cover: 'https://covers.openlibrary.org/b/isbn/0440414008-L.jpg',  grade: 'Grade 6', genre: 'Realistic',    progress: 57 },
-  { title: 'The True Confessions of Charlotte Doyle', cover:'https://covers.openlibrary.org/b/isbn/0380714752-L.jpg', grade:'Grade 6', genre:'Adventure', progress: 39 },
-  { title: 'Walk Two Moons',              cover: 'https://covers.openlibrary.org/b/isbn/0064405176-L.jpg',  grade: 'Grade 6', genre: 'Realistic',    progress: 62 },
-  { title: 'The Hobbit',                  cover: 'https://covers.openlibrary.org/b/isbn/0618968636-L.jpg',  grade: 'Grade 6', genre: 'Fantasy',      progress: 28 },
-  { title: 'Anne of Green Gables',        cover: 'https://covers.openlibrary.org/b/isbn/0553213113-L.jpg',  grade: 'Grade 6', genre: 'Classic',      progress: 53 },
-  { title: 'The Secret Garden',           cover: 'https://covers.openlibrary.org/b/isbn/0064401383-L.jpg',  grade: 'Grade 6', genre: 'Classic',      progress: 47 },
-  { title: 'Tom Sawyer',                  cover: 'https://covers.openlibrary.org/b/isbn/0486400778-L.jpg',  grade: 'Grade 6', genre: 'Classic',      progress: 36 },
-  { title: 'The Witch of Blackbird Pond',  cover: 'https://covers.openlibrary.org/b/isbn/0547550294-L.jpg',  grade: 'Grade 6', genre: 'Historical',   progress: 42 },
-
-  // ─ Grade 7 ───────────────────────────────────────────────────────
-  { title: 'The Giver',                   cover: 'https://covers.openlibrary.org/b/isbn/0440237688-L.jpg',  grade: 'Grade 7', genre: 'Dystopia',     progress: 58 },
-  { title: 'The Outsiders',               cover: 'https://covers.openlibrary.org/b/isbn/0140385614-L.jpg',  grade: 'Grade 7', genre: 'Classic',      progress: 49 },
-  { title: 'Animal Farm',                 cover: 'https://covers.openlibrary.org/b/isbn/0451526341-L.jpg',  grade: 'Grade 7', genre: 'Allegory',     progress: 37 },
-  { title: 'Diary of Anne Frank',         cover: 'https://covers.openlibrary.org/b/isbn/0553577123-L.jpg',  grade: 'Grade 7', genre: 'Memoir',       progress: 64 },
-  { title: 'A Separate Peace',            cover: 'https://covers.openlibrary.org/b/isbn/0743253973-L.jpg',  grade: 'Grade 7', genre: 'Classic',      progress: 29 },
-  { title: 'Johnny Tremain',              cover: 'https://covers.openlibrary.org/b/isbn/0440442079-L.jpg',  grade: 'Grade 7', genre: 'Historical',   progress: 41 },
-  { title: 'The Hunger Games',            cover: 'https://covers.openlibrary.org/b/isbn/0439023483-L.jpg',  grade: 'Grade 7', genre: 'Dystopia',     progress: 73 },
-  { title: 'Divergent',                   cover: 'https://covers.openlibrary.org/b/isbn/0062024027-L.jpg',  grade: 'Grade 7', genre: 'Dystopia',     progress: 56 },
-  { title: 'The House on Mango Street',   cover: 'https://covers.openlibrary.org/b/isbn/0679734775-L.jpg',  grade: 'Grade 7', genre: 'Classic',      progress: 44 },
-  { title: 'Flowers for Algernon',        cover: 'https://covers.openlibrary.org/b/isbn/0156030306-L.jpg',  grade: 'Grade 7', genre: 'Sci-Fi',       progress: 61 },
-
-  // ─ Grade 8 ───────────────────────────────────────────────────────
-  { title: 'To Kill a Mockingbird',       cover: 'https://covers.openlibrary.org/b/isbn/0446310786-L.jpg',  grade: 'Grade 8', genre: 'Classic',      progress: 33 },
-  { title: 'Lord of the Flies',           cover: 'https://covers.openlibrary.org/b/isbn/0399501487-L.jpg',  grade: 'Grade 8', genre: 'Classic',      progress: 45 },
-  { title: '1984',                        cover: 'https://covers.openlibrary.org/b/isbn/0451524934-L.jpg',  grade: 'Grade 8', genre: 'Dystopia',     progress: 28 },
-  { title: 'The Catcher in the Rye',      cover: 'https://covers.openlibrary.org/b/isbn/0316769487-L.jpg',  grade: 'Grade 8', genre: 'Classic',      progress: 52 },
-  { title: 'Fahrenheit 451',              cover: 'https://covers.openlibrary.org/b/isbn/1451673310-L.jpg',  grade: 'Grade 8', genre: 'Dystopia',     progress: 39 },
-  { title: 'The Maze Runner',             cover: 'https://covers.openlibrary.org/b/isbn/0385737955-L.jpg',  grade: 'Grade 8', genre: 'Sci-Fi',       progress: 67 },
-  { title: 'Of Mice and Men',             cover: 'https://covers.openlibrary.org/b/isbn/0140177396-L.jpg',  grade: 'Grade 8', genre: 'Classic',      progress: 48 },
-  { title: 'The Great Gatsby',            cover: 'https://covers.openlibrary.org/b/isbn/0743273567-L.jpg',  grade: 'Grade 8', genre: 'Classic',      progress: 31 },
-  { title: 'Romeo and Juliet',            cover: 'https://covers.openlibrary.org/b/isbn/0743477111-L.jpg',  grade: 'Grade 8', genre: 'Drama',        progress: 55 },
-  { title: 'The Alchemist',               cover: 'https://covers.openlibrary.org/b/isbn/0062315005-L.jpg',  grade: 'Grade 8', genre: 'Adventure',    progress: 42 },
-]
-
-// Fisher-Yates shuffle — runs once to build the random play-order
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
+// ── Floating particles — pure CSS, zero JS animation cost ─────────────────
+function Particles({ count = 8 }: { count?: number }) {
+  const items = useRef(
+    Array.from({ length: count }, (_, i) => ({
+      x: 5 + Math.random() * 90,
+      y: 5 + Math.random() * 90,
+      size: 3 + Math.random() * 4,
+      dur: 3 + Math.random() * 4,
+      delay: Math.random() * 3,
+      id: i,
+    }))
+  ).current
+  return (
+    <>
+      {items.map(p => (
+        <div
+          key={p.id}
+          className="lp-particle"
+          style={{
+            left: `${p.x}%`, top: `${p.y}%`,
+            width: p.size, height: p.size,
+            animationDuration: `${p.dur}s`,
+            animationDelay: `${p.delay}s`,
+          }}
+        />
+      ))}
+    </>
+  )
 }
 
-const GRADE_DATA = [
-  { label: 'K',   full: 'Kindergarten', emoji: '🌱', color: '#4ADE80' },
-  { label: '1st', full: '1st Grade',    emoji: '⭐', color: '#FBBF24' },
-  { label: '2nd', full: '2nd Grade',    emoji: '🦋', color: '#F87171' },
-  { label: '3rd', full: '3rd Grade',    emoji: '🚀', color: '#38BDF8' },
-  { label: '4th', full: '4th Grade',    emoji: '🦁', color: '#A78BFA' },
-  { label: '5th', full: '5th Grade',    emoji: '🐉', color: '#2DD4BF' },
-  { label: '6th', full: '6th Grade',    emoji: '🔮', color: '#F59E0B' },
-  { label: '7th', full: '7th Grade',    emoji: '🏆', color: '#EC4899' },
-  { label: '8th', full: '8th Grade',    emoji: '🌟', color: '#c09cff' },
-]
-
+// ── Feature card data ──────────────────────────────────────────────────────
+// ── Feature card mini-previews ──────────────────────────────────────────────
 const FEATURES = [
   {
-    emoji: '📚',
-    title: 'AI-Powered Reading',
-    desc: 'Custom stories generated just for your child — tailored to their grade, interests, and reading level.',
-    bg: 'rgba(124,58,237,0.12)',
-    color: '#c09cff',
-    glow: 'radial-gradient(circle at 20% 80%, rgba(124,58,237,0.08) 0%, transparent 60%)',
-    shadow: '0 8px 24px rgba(124,58,237,0.15)',
+    icon: '🎬',
+    title: 'Movie Studio',
+    desc: 'Transform stories into animated films with AI-generated art and voiceovers.',
+    color: 'var(--nb-pink)',
+    glow: 'rgba(236,72,153,0.18)',
+    tag: 'Fan Favorite',
+    tagColor: 'rgba(236,72,153,0.8)',
+    preview: () => (
+      <div className="fp-movie-full">
+        {/* ── Mini sidebar ── */}
+        <div className="fp-mf-sidebar">
+          <div className="fp-mf-logo">
+            <span style={{ fontSize: '0.85rem' }}>✨</span>
+            <span className="fp-mf-logo-text">ReadQuest</span>
+          </div>
+          {[
+            { icon: '🏠', label: 'Home' },
+            { icon: '📚', label: 'Library' },
+            { icon: '⭐', label: 'Rewards' },
+            { icon: '🎮', label: 'Games' },
+            { icon: '🎬', label: 'Studio', active: true },
+            { icon: '✨', label: 'Create' },
+          ].map(n => (
+            <div key={n.label} className={`fp-mf-nav${n.active ? ' active' : ''}`}>
+              <span>{n.icon}</span>
+              <span>{n.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* ── Main area ── */}
+        <div className="fp-mf-main">
+          <div className="fp-mf-board-title">🎞️ Your Storyboard — 5 Frames</div>
+          <div className="fp-mf-frames">
+            {['A brave hero discovers…', 'Fireflies lead the way…', 'A dragon offers help…', 'Hidden treasure found!', 'Stars fill the sky…'].map((scene, i) => (
+              <div key={i} className="fp-mf-frame">
+                <div className="fp-mf-card">
+                  <div className="fp-mf-badge">{i + 1}</div>
+                  <div className="fp-mf-strip"><div/><div/><div/></div>
+                  {/* CSS-animated reel — no JS */}
+                  <div className="fp-mf-reel fp-mf-reel-css" style={{ animationDuration: `${5 + i * 0.8}s` }}>🎬</div>
+                  <div className="fp-mf-scan fp-mf-scan-css" style={{ animationDuration: `${2.2 + i * 0.3}s` }} />
+                </div>
+                <div className="fp-mf-scene">{scene}</div>
+                <div className="fp-mf-chip">✨ AI Gen Soon</div>
+              </div>
+            ))}
+          </div>
+          <div className="fp-mf-actions">
+            <div className="fp-mf-create fp-mf-create-pulse">🎬 Create Movie</div>
+            <div className="fp-mf-btn">⬇️ Download</div>
+            <div className="fp-mf-btn">🔗 Share</div>
+          </div>
+        </div>
+      </div>
+    ),
   },
   {
-    emoji: '🎯',
-    title: 'Smart Comprehension',
-    desc: 'After each story, interactive quizzes and comprehension checks adapt to ensure real understanding.',
-    bg: 'rgba(56,189,248,0.12)',
-    color: '#7dd3fc',
-    glow: 'radial-gradient(circle at 80% 20%, rgba(56,189,248,0.08) 0%, transparent 60%)',
-    shadow: '0 8px 24px rgba(56,189,248,0.12)',
+    icon: '📖',
+    title: 'Story Creator',
+    desc: 'Co-create AI-powered personalized stories where your child is the hero.',
+    color: 'var(--nb-purple)',
+    glow: 'rgba(124,58,237,0.18)',
+    tag: 'Most Popular',
+    tagColor: 'rgba(124,58,237,0.8)',
+    preview: () => (
+      <div className="fp-story">
+        <div className="fp-story-page">
+          <img className="fp-story-char" src="/char_icons/nova.webp" alt="Nova Scout" loading="lazy" />
+          <div className="fp-story-lines">
+            {['Nova soared across', 'the midnight sky,', 'searching for home…'].map((l, i) => (
+              <div key={i} className="fp-story-line fp-story-line-anim" style={{ animationDelay: `${i * 0.5}s` }}>{l}</div>
+            ))}
+          </div>
+        </div>
+        <div className="fp-story-pages">{'● ○ ○ ○ ○'}</div>
+      </div>
+    ),
   },
   {
-    emoji: '🏆',
-    title: 'Rewards & Streaks',
-    desc: 'Keep kids coming back with XP points, streak badges, and a leaderboard that makes reading a game.',
-    bg: 'rgba(245,158,11,0.12)',
-    color: '#FCD34D',
-    glow: 'radial-gradient(circle at 50% 100%, rgba(245,158,11,0.08) 0%, transparent 60%)',
-    shadow: '0 8px 24px rgba(245,158,11,0.12)',
+    icon: '🔤',
+    title: 'Spelling Arena',
+    desc: 'Gamified vocabulary that adapts to your child\'s reading level in real time.',
+    color: 'var(--nb-blue)',
+    glow: 'rgba(56,189,248,0.18)',
+    tag: 'Builds Skills',
+    tagColor: 'rgba(56,189,248,0.8)',
+    preview: () => (
+      <div className="fp-spell">
+        <div className="fp-spell-word">
+          {['A','D','V','E','N','T','U','R','E'].map((letter, i) => (
+            <div key={i} className={`fp-spell-tile${i < 5 ? ' done' : i === 5 ? ' active fp-spell-active-css' : ''}`}>{letter}</div>
+          ))}
+        </div>
+        <div className="fp-spell-hint">🔊 &quot;ad · ven · ture&quot;</div>
+        <div className="fp-spell-score">
+          <div className="fp-spell-streak">🔥 5 streak</div>
+          <div className="fp-spell-pts">+50 XP</div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    icon: '🧠',
+    title: 'Adaptive Exams',
+    desc: 'Smart comprehension checks woven into story flow — no stress, pure growth.',
+    color: 'var(--nb-green)',
+    glow: 'rgba(16,185,129,0.18)',
+    tag: 'AI Powered',
+    tagColor: 'rgba(16,185,129,0.8)',
+    preview: () => (
+      <div className="fp-exam">
+        <div className="fp-exam-q">What did Nova find in the forest?</div>
+        {['A glowing map', 'A sleeping dragon', 'A golden key'].map((opt, i) => (
+          <div key={i} className={`fp-exam-opt${i === 0 ? ' correct fp-exam-correct-css' : i === 1 ? ' selected' : ''}`}>
+            {i === 0 ? '✓ ' : i === 1 ? '✗ ' : '○ '}{opt}
+          </div>
+        ))}
+        <div className="fp-exam-result">🎉 Correct! +25 XP</div>
+      </div>
+    ),
+  },
+  {
+    icon: '🎮',
+    title: 'Educational Games',
+    desc: 'Mini-games that unlock character rewards while teaching core literacy skills.',
+    color: 'var(--nb-gold)',
+    glow: 'rgba(251,191,36,0.18)',
+    tag: 'Kids Love It',
+    tagColor: 'rgba(251,191,36,0.8)',
+    preview: () => (
+      <div className="fp-game">
+        <div className="fp-game-header">
+          <span className="fp-game-name">🏆 Word Blaster</span>
+          <span className="fp-game-lives">❤️❤️❤️</span>
+        </div>
+        <div className="fp-game-board">
+          {['sky', 'moon', '???', 'star', 'sun', '???'].map((w, i) => (
+            <div key={i} className={`fp-game-tile${w === '???' ? ' blank fp-game-blank-css' : ''}`}>{w}</div>
+          ))}
+        </div>
+        <div className="fp-game-score">Score: <strong>1,240</strong> &nbsp;🔥 Level 7</div>
+      </div>
+    ),
+  },
+  {
+    icon: '🏆',
+    title: 'Leaderboard',
+    desc: 'Safe, family-closed rankings that celebrate reading milestones together.',
+    color: 'var(--nb-lavender)',
+    glow: 'rgba(167,139,250,0.18)',
+    tag: 'Community',
+    tagColor: 'rgba(167,139,250,0.8)',
+    preview: () => (
+      <div className="fp-board">
+        {[
+          { rank: '🥇', name: 'Emma', xp: '4,820', you: false },
+          { rank: '🥈', name: 'Liam', xp: '3,940', you: false },
+          { rank: '🥉', name: 'You!', xp: '3,210', you: true },
+          { rank: '4',  name: 'Sofia', xp: '2,890', you: false },
+        ].map((r, i) => (
+          <div key={i} className={`fp-board-row${r.you ? ' you fp-board-you-css' : ''}`}>
+            <span className="fp-board-rank">{r.rank}</span>
+            <span className="fp-board-name">{r.name}</span>
+            <span className="fp-board-xp">⭐ {r.xp} XP</span>
+          </div>
+        ))}
+      </div>
+    ),
   },
 ]
 
-const HOW_STEPS = [
-  { emoji: '👶', label: 'Create Profile', desc: 'Set up in seconds. No credit card needed.' },
-  { emoji: '🎨', label: 'Pick a Story',   desc: 'Choose a theme, character & language.' },
-  { emoji: '📖', label: 'Start Reading',  desc: 'AI narrates, then your child reads aloud.' },
-  { emoji: '⭐', label: 'Earn Rewards',   desc: 'Collect XP, badges & climb the leaderboard.' },
+
+
+// Mini-preview character list — all original AI-generated artworks, zero copyrighted IP
+const PREVIEW_CHARS = [
+  { name: 'Sparkle',      img: '/char_icons/unicorn.webp'      },
+  { name: 'Leo the Lion', img: '/char_icons/lion.webp'         },
+  { name: 'Princess Kira',img: '/char_icons/knight_girl.webp'  },
+  { name: 'Nova Pulse',   img: '/char_icons/nova_pulse.webp'   },
+  { name: 'Marina',       img: '/char_icons/mermaid.webp'      },
+  { name: 'Jade Dragon',  img: '/char_icons/dragon.webp'       },
+  { name: 'Merlin',       img: '/char_icons/merlin.webp'       },
+  { name: 'Coral Diver',  img: '/char_icons/coral_diver.webp'  },
+  { name: 'Sovereign',    img: '/char_icons/sovereign.webp'    },
+  { name: 'Cipher',       img: '/char_icons/cipher.webp'       },
+  { name: 'Shadow Fox',   img: '/char_icons/fox.webp'          },
+  { name: 'Zap the Robot',img: '/char_icons/robot.webp'        },
 ]
 
-// Generate random star positions (stable via ref)
-function useStars(count = 40) {
-  const ref = useRef<{ x: number; y: number; size: number; dur: number; delay: number; op: number }[]>([])
-  if (!ref.current.length) {
-    ref.current = Array.from({ length: count }, () => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 2 + 1,
-      dur: 3 + Math.random() * 5,
-      delay: Math.random() * 6,
-      op: 0.3 + Math.random() * 0.65,
-    }))
-  }
-  return ref.current
+const PREVIEW_THEMES = [
+  { emoji: '🚀', label: 'Space Explorer' },
+  { emoji: '🌲', label: 'Magic Forest' },
+  { emoji: '🌊', label: 'Ocean Deep' },
+  { emoji: '🏰', label: 'Fantasy Castle' },
+  { emoji: '🦕', label: 'Dino World' },
+  { emoji: '🦸', label: 'Superhero City' },
+  { emoji: '🏴‍☠️', label: 'Pirate Quest' },
+  { emoji: '🤖', label: 'Robot World' },
+  { emoji: '🍭', label: 'Candy Kingdom' },
+]
+
+const STATS = [
+  { value: '50K+', label: 'Stories Created', icon: '📚' },
+  { value: '97%', label: 'Parent Satisfaction', icon: '⭐' },
+  { value: '10', label: 'Languages Supported', icon: '🌍' },
+  { value: '1M+', label: 'Words Read', icon: '🎯' },
+]
+
+// ── Animated counter ───────────────────────────────────────────────────────
+function AnimatedStat({ value, label, icon, delay }: { value: string; label: string; icon: string; delay: number }) {
+  const ref = useRef(null)
+  const inView = useInView(ref, { once: true })
+  return (
+    <motion.div
+      ref={ref}
+      className="lp-stat-item"
+      initial={{ opacity: 0, y: 30 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.6, delay }}
+    >
+      <span className="lp-stat-icon">{icon}</span>
+      <span className="lp-stat-value">{value}</span>
+      <span className="lp-stat-label">{label}</span>
+    </motion.div>
+  )
 }
 
 export default function LandingPage() {
   const navigate = useNavigate()
-  const [step, setStep] = useState<'hero' | 'name' | 'grade'>('hero')
-  const [name, setName] = useState('')
-  const [nameError, setNameError] = useState('')
-  const [selectedGrade, setSelectedGrade] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [session, setSession] = useState<any>(null)
-  const [bookIndex, setBookIndex] = useState(0)
-  const [bookVisible, setBookVisible] = useState(true)
-  const stars = useStars(45)
-  // Shuffle once on mount so each page visit has a different order
-  const shuffledBooks = useRef<BookEntry[]>([])
-  if (!shuffledBooks.current.length) shuffledBooks.current = shuffle(BOOKS_BY_GRADE)
-  const currentBook = shuffledBooks.current[bookIndex]
+  const [email, setEmail] = useState('')
+  const [scrolled, setScrolled] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const particles = useRef(
+    Array.from({ length: 18 }, (_, i) => ({
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: 3 + Math.random() * 5,
+      delay: Math.random() * 2,
+      id: i,
+    }))
+  ).current
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => subscription.unsubscribe()
+    const onScroll = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', onScroll)
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Auto-rotate book every 3.5 seconds with a fade transition
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setBookVisible(false)
-      setTimeout(() => {
-        setBookIndex(i => (i + 1) % shuffledBooks.current.length)
-        setBookVisible(true)
-      }, 350)
-    }, 3500)
-    return () => clearInterval(interval)
-  }, [])
+  const heroRef = useRef(null)
+  const featuresRef = useRef(null)
+  const stepsRef = useRef(null)
+  // Looser margins so sections animate in earlier — reduces perceived lag
+  const featuresInView = useInView(featuresRef, { once: true, margin: '0px' })
+  const stepsInView = useInView(stepsRef, { once: true, margin: '0px' })
 
-  const handleNameNext = () => {
-    if (name.trim().length < 2) { setNameError('Please enter at least 2 characters.'); return }
-    setNameError('')
-    setStep('grade')
-  }
-
-  const handleGradeSelect = async (gradeIndex: number) => {
-    setSelectedGrade(gradeIndex)
-    setLoading(true)
-    try {
-      const res = await studentsApi.create(name.trim(), gradeIndex)
-      localStorage.setItem('readquest_student_id', res.data.id)
-      localStorage.setItem('readquest_student_name', name.trim())
-      localStorage.setItem('readquest_grade', String(gradeIndex))
-      setTimeout(() => navigate('/dashboard'), 600)
-    } catch {
-      localStorage.setItem('readquest_student_id', 'demo-student-1')
-      localStorage.setItem('readquest_student_name', name.trim())
-      localStorage.setItem('readquest_grade', String(gradeIndex))
-      setTimeout(() => navigate('/dashboard'), 600)
-    }
-  }
-
-  const handleSignOut = async () => { await supabase.auth.signOut(); setSession(null) }
 
   return (
-    <div className="landing-root">
+    <div className="lp-root">
 
-      {/* ── Star particles ── */}
-      <div className="landing-stars" aria-hidden>
-        {stars.map((s, i) => (
-          <div key={i} className="landing-star" style={{
-            left: `${s.x}%`, top: `${s.y}%`,
-            width: s.size, height: s.size,
-            '--dur': `${s.dur}s`, '--delay': `${s.delay}s`, '--op': s.op,
-          } as React.CSSProperties} />
-        ))}
-      </div>
+      {/* ── Ambient background ── */}
+      <div className="lp-bg-orb lp-orb-1" />
+      <div className="lp-bg-orb lp-orb-2" />
+      <div className="lp-bg-orb lp-orb-3" />
+      {/* CSS-only particles — no JS animation overhead */}
+      <Particles count={8} />
 
-      {/* ══ NAV ══ */}
-      <nav className="landing-nav">
-        <div className="nav-container">
-          <div className="landing-logo" onClick={() => setStep('hero')}>
-            <span className="logo-icon">✨</span>
-            Read<span className="logo-accent">Quest</span>
+      {/* ════════════════ NAV ════════════════ */}
+      <nav className={`lp-nav${scrolled ? ' lp-nav-scrolled' : ''}`}>
+        <div className="lp-nav-inner">
+          <div className="lp-nav-logo">
+            <span className="lp-logo-icon">✨</span>
+            <span className="lp-logo-text">ReadQuest</span>
           </div>
-          <div className="nav-links">
-            <button className="nav-link" onClick={() => setStep('hero')}>Home</button>
-            <button className="nav-link">Features</button>
-            <button className="nav-link">Pricing</button>
-            {session ? (
-              <>
-                <button className="nav-link nav-special" onClick={() => navigate('/dashboard')}>My Dashboard →</button>
-                <button className="btn-ghost" onClick={handleSignOut}>Sign Out</button>
-              </>
-            ) : (
-              <>
-                <button className="nav-link" onClick={() => navigate('/login')}>Log In</button>
-                <button className="btn-solid" onClick={() => navigate('/signup')}>Sign Up Free</button>
-              </>
-            )}
+          <div className="lp-nav-links">
+            <a href="#features" className="lp-nav-link">Features</a>
+            <a href="#how" className="lp-nav-link">How It Works</a>
+            <a href="#cta" className="lp-nav-link">Pricing</a>
           </div>
+          <div className="lp-nav-actions">
+            <button className="lp-btn-ghost" onClick={() => navigate('/login')}>Sign In</button>
+            <button className="lp-btn-primary" onClick={() => navigate('/signup')}>Start Free →</button>
+          </div>
+          <button className="lp-hamburger" onClick={() => setMobileMenuOpen(o => !o)}>
+            <span /><span /><span />
+          </button>
         </div>
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              className="lp-mobile-menu"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+              <a href="#how" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
+              <button className="lp-btn-primary w-full" onClick={() => navigate('/signup')}>Start Free →</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
-      {/* ══ MAIN ══ */}
-      <main className="landing-main">
-        <AnimatePresence mode="wait">
+      {/* ════════════════ HERO ════════════════ */}
+      <section className="lp-hero" ref={heroRef}>
+        <div className="lp-hero-inner">
 
-          {/* ── HERO ── */}
-          {step === 'hero' && (
-            <motion.div key="hero" className="view-hero"
-              initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.4 }}>
+          {/* Left copy */}
+          <div className="lp-hero-copy">
+            <motion.div
+              className="lp-hero-badge"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              🚀 AI-Powered Learning Platform
+            </motion.div>
 
-              {/* Hero Columns */}
-              <div className="hero-columns">
+            <motion.h1
+              className="lp-hero-headline"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.1 }}
+            >
+              Where Stories
+              <span className="lp-gradient-text"> Come Alive</span>
+            </motion.h1>
 
-                {/* Left */}
-                <div className="hero-text-col">
-                  <motion.div className="badge-pill"
-                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                    <span className="badge-pill-dot" />
-                    🚀 AI-Powered Kids Reading Platform
-                  </motion.div>
+            <motion.p
+              className="lp-hero-sub"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.2 }}
+            >
+              AI-powered reading adventures personalized for every child. Pick a character, choose a theme, and watch the magic begin.
+            </motion.p>
 
-                  <motion.h1 className="hero-heading"
-                    initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-                    Where Stories<br />Come <span className="text-gradient">Alive.</span>
-                  </motion.h1>
+            <motion.div
+              className="lp-hero-actions"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.3 }}
+            >
+              <button className="lp-btn-gold" onClick={() => navigate('/signup')}>
+                Create a Story →
+              </button>
+              <a href="#how" className="lp-btn-outline">
+                See How It Works
+              </a>
+            </motion.div>
 
-                  <motion.p className="hero-subtext"
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}>
-                    Ignite your child's imagination with personalized, AI-powered reading adventures that grow with them — from Kindergarten to 8th Grade.
-                  </motion.p>
-
-                  <motion.div className="hero-actions"
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-                    {session ? (
-                      <button className="btn-solid btn-large" onClick={() => navigate('/dashboard')}>
-                        Go to Dashboard 🚀
-                      </button>
-                    ) : (
-                      <>
-                        <button className="btn-solid btn-large" onClick={() => navigate('/signup')}>
-                          Get Started Free ✨
-                        </button>
-                        <button className="btn-outline btn-large" onClick={() => navigate('/login')}>
-                          Log In
-                        </button>
-                      </>
-                    )}
-                  </motion.div>
-
-                  <motion.div className="hero-stats"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-                    <div className="stat-block">
-                      <strong>10K+</strong>
-                      <span>Stories Created</span>
-                    </div>
-                    <div className="stat-block">
-                      <strong>Grade K–8</strong>
-                      <span>Skill Levels</span>
-                    </div>
-                    <div className="stat-block">
-                      <strong>98%</strong>
-                      <span>Parent Satisfaction</span>
-                    </div>
-                  </motion.div>
+            <motion.div
+              className="lp-hero-pills"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.5 }}
+            >
+              {[
+                { icon: '📚', text: '50K+ Stories Created' },
+                { icon: '🌍', text: '10 Languages' },
+                { icon: '🎯', text: '1M Words Read' },
+              ].map(p => (
+                <div className="lp-hero-pill" key={p.text}>
+                  <span>{p.icon}</span>
+                  <span>{p.text}</span>
                 </div>
+              ))}
+            </motion.div>
+          </div>
 
-                {/* Right — floating book card */}
-                <motion.div className="hero-image-col"
-                  initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
-                  <div className="image-wrapper">
-                    <div className="image-glow" />
-                    {/* Rotating real children's book card */}
-                    <div className="hero-book-card" style={{ transition: 'opacity 0.35s ease', opacity: bookVisible ? 1 : 0 }}>
-                      <div className="book-card-cover" style={{ background: 'none', padding: 0 }}>
+          {/* Right visual */}
+          <motion.div
+            className="lp-hero-visual"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.9, delay: 0.2 }}
+          >
+            <div className="lp-book-card">
+              <div className="lp-book-glow" />
+              <div className="lp-book-inner">
+                <div className="lp-book-cover">
+                  <div className="lp-book-carousel">
+                    {[
+                      { isbn: '0399226907', title: 'Very Hungry Caterpillar' },
+                      { isbn: '0064430170', title: 'Goodnight Moon' },
+                      { isbn: '0064431789', title: 'Where the Wild Things Are' },
+                      { isbn: '0395389496', title: 'The Polar Express' },
+                      { isbn: '0064400557', title: "Charlotte's Web" },
+                      { isbn: '0142410381', title: 'James and the Giant Peach' },
+                      { isbn: '0064440206', title: 'Frog and Toad' },
+                      { isbn: '0440412072', title: 'The Giver' },
+                    ].map((book, i) => (
+                      <motion.img
+                        key={book.isbn}
+                        src={`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`}
+                        alt={book.title}
+                        loading="lazy"
+                        className="lp-carousel-img"
+                        initial={{ opacity: 0 }}
+                        animate={{
+                          opacity: [0, 1, 1, 0],
+                          scale: [0.94, 1, 1, 0.97],
+                        }}
+                        transition={{
+                          duration: 3,
+                          delay: i * 2.5,
+                          repeat: Infinity,
+                          repeatDelay: (8 - 1) * 2.5 - 3,
+                          ease: 'easeInOut',
+                        }}
+                      />
+                    ))}
+                    <div className="lp-carousel-badge">
+                      <span>⭐ 4.9</span>
+                      <span className="lp-carousel-count">50K+ books</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="lp-book-spine" />
+                <div className="lp-book-pages">
+                  <div className="lp-book-page-line" />
+                  <div className="lp-book-page-line lp-line-2" />
+                  <div className="lp-book-page-line lp-line-3" />
+                </div>
+              </div>
+              {/* Floating character chips */}
+              <motion.div className="lp-float-chip lp-chip-1" animate={{ y: [-4, 4, -4] }} transition={{ duration: 2.5, repeat: Infinity }}>
+                🦁 Leo the Lion
+              </motion.div>
+              <motion.div className="lp-float-chip lp-chip-2" animate={{ y: [4, -4, 4] }} transition={{ duration: 3, repeat: Infinity }}>
+                🚀 Nova Scout
+              </motion.div>
+              <motion.div className="lp-float-chip lp-chip-3" animate={{ y: [-6, 6, -6] }} transition={{ duration: 3.5, repeat: Infinity }}>
+                🐉 Jade Dragon
+              </motion.div>
+              {/* Sparkles */}
+              {['✦', '✦', '★', '✦'].map((s, i) => (
+                <motion.span key={i} className={`lp-sparkle lp-sp-${i + 1}`}
+                  animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 }}
+                >{s}</motion.span>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Scroll indicator */}
+        <motion.div className="lp-scroll-hint"
+          animate={{ y: [0, 6, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>
+          <div className="lp-scroll-dot" />
+        </motion.div>
+      </section>
+
+      {/* ════════════════ HOW IT WORKS ════════════════ */}
+      <section id="how" className="lp-section lp-how-section" ref={stepsRef}>
+        <div className="lp-section-inner">
+          <motion.div
+            className="lp-section-header"
+            initial={{ opacity: 0, y: 20 }}
+            animate={stepsInView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="lp-section-badge">🪄 How It Works</div>
+            <h2 className="lp-section-title">3 Simple Steps<br /><span className="lp-gradient-text">to Magic</span></h2>
+            <p className="lp-section-sub">From character selection to immersive reading — the whole experience in under 60 seconds.</p>
+          </motion.div>
+
+          {/* ── Step timeline ── */}
+          <div className="lp-step-timeline">
+            {[
+              { n: '01', label: 'Pick Your Hero' },
+              { n: '02', label: 'Choose a Theme' },
+              { n: '03', label: 'Start Reading' },
+            ].map(({ n, label }, i) => (
+              <div key={n} className="lp-timeline-node">
+                <div className="lp-timeline-bubble-wrap">
+                  <div className="lp-timeline-bubble">{n}</div>
+                  <div className="lp-timeline-step-label">{label}</div>
+                </div>
+                {i < 2 && <div className="lp-timeline-line" />}
+              </div>
+            ))}
+          </div>
+
+          {/* ── 3 mini app previews ── */}
+          <div className="lp-previews">
+
+            {/* ── STEP 1: Character Gallery ── */}
+            <motion.div
+              className="lp-preview-wrap"
+              initial={{ opacity: 0, y: 40 }}
+              animate={stepsInView ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6, delay: 0 }}
+            >
+              <div className="lp-preview-label">
+                <span className="lp-preview-step">Step 1</span>
+                <span className="lp-preview-title">Pick Your Hero</span>
+                <span className="lp-preview-sub">Choose from 80+ beloved characters</span>
+              </div>
+              <div className="lp-app-window">
+                <div className="lp-app-titlebar">
+                  <div className="lp-tb-dots"><span/><span/><span/></div>
+                  <div className="lp-tb-label">🦸 Choose Your Character</div>
+                </div>
+                <div className="lp-app-body lp-char-preview">
+                  <div className="lp-prev-search">
+                    <span className="lp-prev-search-icon">🔍</span>
+                    <span className="lp-prev-search-text">Search characters...</span>
+                  </div>
+                  <div className="lp-prev-chars-label">Characters kids love — click one to make them your hero!</div>
+                  <div className="lp-prev-char-grid">
+                    {PREVIEW_CHARS.slice(0, 12).map((c, idx) => (
+                      <motion.div
+                        key={c.name}
+                        className={`lp-prev-char${idx === 0 ? ' lp-prev-char-selected' : ''}`}
+                        whileHover={{ scale: 1.08, y: -2 }}
+                      >
+                        <div className="lp-prev-char-circle">
+                          <img src={c.img} alt={c.name} className="lp-prev-char-img" loading="lazy" decoding="async" />
+                        </div>
+                        <span className="lp-prev-char-name">{c.name}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ── STEP 2: Theme Picker ── */}
+            <motion.div
+              className="lp-preview-wrap"
+              initial={{ opacity: 0, y: 40 }}
+              animate={stepsInView ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6, delay: 0.15 }}
+            >
+              <div className="lp-preview-label">
+                <span className="lp-preview-step">Step 2</span>
+                <span className="lp-preview-title">Choose a Theme</span>
+                <span className="lp-preview-sub">20+ adventure worlds to explore</span>
+              </div>
+              <div className="lp-app-window">
+                <div className="lp-app-titlebar">
+                  <div className="lp-tb-dots"><span/><span/><span/></div>
+                  <div className="lp-tb-label">🌍 Pick an Adventure Theme</div>
+                </div>
+                <div className="lp-app-body lp-theme-preview">
+                  <div className="lp-prev-section-label">🎨 Choose a Theme</div>
+                  <div className="lp-prev-theme-grid">
+                    {PREVIEW_THEMES.map((t, idx) => (
+                      <motion.div
+                        key={t.label}
+                        className={`lp-prev-theme-card${idx === 1 ? ' lp-prev-theme-selected' : ''}`}
+                        whileHover={{ scale: 1.04, y: -2 }}
+                      >
+                        {idx === 1 && <div className="lp-prev-theme-check">✓</div>}
+                        <span className="lp-prev-theme-emoji">{t.emoji}</span>
+                        <span className="lp-prev-theme-label">{t.label}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                  <div className="lp-prev-gen-btn">
+                    <span>✨</span> Create My Story
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ── STEP 3: Story Reader ── */}
+            <motion.div
+              className="lp-preview-wrap"
+              initial={{ opacity: 0, y: 40 }}
+              animate={stepsInView ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6, delay: 0.3 }}
+            >
+              <div className="lp-preview-label">
+                <span className="lp-preview-step">Step 3</span>
+                <span className="lp-preview-title">Start Reading</span>
+                <span className="lp-preview-sub">AI voices, art &amp; quizzes — live</span>
+              </div>
+              <div className="lp-app-window">
+                <div className="lp-app-titlebar">
+                  <div className="lp-tb-dots"><span/><span/><span/></div>
+                  <div className="lp-tb-label">📖 Nova's Space Adventure · Page 1</div>
+                </div>
+                <div className="lp-app-body lp-reader-preview">
+                  <div className="lp-reader-layout">
+                    <div className="lp-reader-img-col">
+                      <div className="lp-reader-scene-img">
                         <img
-                          key={currentBook.cover}
-                          src={currentBook.cover}
-                          alt={currentBook.title}
-                          style={{
-                            width: '100%', height: '100%',
-                            objectFit: 'cover',
-                            borderRadius: 16,
-                            display: 'block',
-                          }}
-                          onError={e => {
-                            (e.target as HTMLImageElement).style.display = 'none'
-                          }}
+                          src="/char_icons/nova.webp"
+                          alt="Nova Scout"
+                          className="lp-reader-char-img"
+                          loading="lazy"
+                          decoding="async"
                         />
+                        <div className="lp-reader-scene-label">🚀 Outer Space</div>
                       </div>
-                      <div className="book-card-title">{currentBook.title}</div>
-                      <div className="book-card-meta">
-                        <span className="book-card-tag">{currentBook.grade}</span>
-                        <span className="book-card-tag">{currentBook.genre}</span>
+                    </div>
+                    <div className="lp-reader-text-col">
+                      <div className="lp-reader-page-num">Page 1 of 5</div>
+                      <div className="lp-reader-text-lines">
+                        <div className="lp-rtl lp-rtl-highlight">Nova zoomed through the stars,</div>
+                        <div className="lp-rtl">her jetpack blazing trails of light</div>
+                        <div className="lp-rtl">across the galaxy. &quot;To the edge</div>
+                        <div className="lp-rtl">of discovery!&quot; she cried.</div>
+                        <div className="lp-rtl lp-rtl-next">Far below, a tiny planet</div>
+                        <div className="lp-rtl lp-rtl-next">glowed like a green jewel...</div>
                       </div>
-                      <div className="book-card-progress">
-                        <div className="book-card-progress-label">
-                          <span>Reading Progress</span>
-                          <span>{currentBook.progress}%</span>
-                        </div>
-                        <div className="book-card-bar">
-                          <div className="book-card-bar-fill" style={{ width: `${currentBook.progress}%` }} />
-                        </div>
-                      </div>
-                      {/* Dot indicators */}
-                      <div style={{ display: 'flex', gap: 5, justifyContent: 'center', marginTop: 4 }}>
-                        {shuffledBooks.current.map((_: BookEntry, i: number) => (
-                          <button
-                            key={i}
-                            onClick={() => { setBookVisible(false); setTimeout(() => { setBookIndex(i); setBookVisible(true) }, 200) }}
-                            style={{
-                              width: i === bookIndex ? 18 : 6,
-                              height: 6,
-                              borderRadius: 99,
-                              background: i === bookIndex ? '#c09cff' : 'rgba(192,156,255,0.25)',
-                              border: 'none', cursor: 'pointer',
-                              padding: 0, transition: 'all 0.3s ease',
-                            }}
-                          />
+                      <div className="lp-reader-words">
+                        {['Nova', 'zoomed', 'through', 'the', 'stars'].map((w, wi) => (
+                          <span key={w} className={`lp-word${wi === 1 ? ' lp-word-active' : wi < 1 ? ' lp-word-done' : ''}`}>{w}</span>
                         ))}
                       </div>
                     </div>
                   </div>
+                  <div className="lp-reader-mic-bar">
+                    <div className="lp-mic-icon">🎤</div>
+                    <div className="lp-mic-waves">
+                      {[1,2,3,4,5,6,7].map(b => (
+                        <motion.div key={b} className="lp-mic-wave"
+                          animate={{ scaleY: [0.3, 1, 0.5, 0.8, 0.3] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: b * 0.12, ease: 'easeInOut' }}
+                        />
+                      ))}
+                    </div>
+                    <span className="lp-mic-label">Listening...</span>
+                    <div className="lp-stardust-bar lp-mic-progress">
+                      <motion.div className="lp-stardust-fill"
+                        animate={{ width: ['0%', '70%'] }}
+                        transition={{ duration: 4, repeat: Infinity, ease: 'linear' }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ════════════════ MOVIE STUDIO SPOTLIGHT ════════════════ */}
+      <section className="lp-section lp-studio-section">
+        <div className="lp-studio-inner">
+
+          {/* Left: copy */}
+          <motion.div
+            className="lp-studio-copy"
+            initial={{ opacity: 0, x: -40 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.7 }}
+          >
+            <div className="lp-section-badge">🎬 Movie Studio</div>
+            <h2 className="lp-studio-title">
+              Unleash Your Child's<br />
+              <span className="lp-gradient-text">Inner Director</span>
+            </h2>
+            <p className="lp-studio-desc">
+              Movie Studio turns imagination into animated films. Kids write scene descriptions,
+              AI generates the artwork, and with one tap their story becomes a real movie they
+              can share with family and friends.
+            </p>
+
+            <div className="lp-studio-pillars">
+              {[
+                { icon: '✍️', title: 'Write Scenes', desc: 'Describe 5 story moments in their own words' },
+                { icon: '🎨', title: 'AI Generates Art', desc: 'Each scene becomes a stunning illustration' },
+                { icon: '🎞️', title: 'Auto-Animated', desc: 'Frames are stitched into a real MP4 movie' },
+                { icon: '🚀', title: 'Share & Keep', desc: 'Download or share their masterpiece instantly' },
+              ].map((p, i) => (
+                <motion.div
+                  key={p.title}
+                  className="lp-studio-pillar"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: i * 0.1 }}
+                >
+                  <div className="lp-studio-pillar-icon">{p.icon}</div>
+                  <div>
+                    <div className="lp-studio-pillar-title">{p.title}</div>
+                    <div className="lp-studio-pillar-desc">{p.desc}</div>
+                  </div>
                 </motion.div>
+              ))}
+            </div>
+
+            <motion.button
+              className="lp-btn-gold lp-studio-cta"
+              onClick={() => navigate('/signup')}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              🎬 Try Movie Studio Free →
+            </motion.button>
+          </motion.div>
+
+          {/* Right: Mini Movie Studio mockup */}
+          <motion.div
+            className="lp-studio-preview"
+            initial={{ opacity: 0, x: 40 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.7, delay: 0.1 }}
+          >
+            {/* Glow behind window */}
+            <div className="lp-studio-glow" />
+
+            <div className="lp-studio-window">
+              {/* macOS titlebar */}
+              <div className="lp-studio-titlebar">
+                <div className="lp-tb-dots"><span/><span/><span/></div>
+                <div className="lp-tb-label">🎬 Movie Studio · Your Storyboard</div>
+                <div className="lp-studio-token-badge">🎟️ 8/10 movies left</div>
               </div>
 
-              {/* ── Features Grid ── */}
-              <div className="features-section">
-                <motion.div className="features-eyebrow"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
-                  <span>⭐</span> Everything your child needs to love reading
-                </motion.div>
-                <motion.h2 className="features-title"
-                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}>
-                  Learning that feels like play
-                </motion.h2>
-                <p className="features-sub">Designed by educators for kids ages 5–14.</p>
+              {/* Sidebar + main */}
+              <div className="lp-studio-layout">
 
-                <div className="modern-grid">
-                  {FEATURES.map((f, i) => (
-                    <motion.div key={f.title} className="modern-card"
-                      style={{ '--card-glow': f.glow, '--card-shadow': f.shadow } as React.CSSProperties}
-                      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.15 + i * 0.1, duration: 0.45 }}>
-                      <div className="card-icon" style={{ background: f.bg, color: f.color }}>
-                        {f.emoji}
+                {/* Mini sidebar */}
+                <div className="lp-studio-sidebar">
+                  <div className="lp-studio-logo-mini">
+                    <span className="lp-logo-icon" style={{ fontSize: '0.9rem' }}>✨</span>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fff' }}>ReadQuest</span>
+                  </div>
+                  {[
+                    { icon: '🏠', label: 'Home' },
+                    { icon: '📚', label: 'Library' },
+                    { icon: '⭐', label: 'Rewards' },
+                    { icon: '🎮', label: 'Games' },
+                    { icon: '🎬', label: 'Studio', active: true },
+                    { icon: '✨', label: 'Create' },
+                  ].map(n => (
+                    <div key={n.label} className={`lp-studio-nav-item${n.active ? ' active' : ''}`}>
+                      <span>{n.icon}</span>
+                      <span>{n.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Main content */}
+                <div className="lp-studio-main">
+                  <div className="lp-studio-section-title">🎞️ Your Storyboard — 5 Frames</div>
+
+                  {/* 5 frame cards */}
+                  <div className="lp-studio-frames">
+                    {[
+                      'A brave hero discovers a glowing map…',
+                      'Fireflies lead across a sparkling bridge…',
+                      'A friendly dragon offers to help…',
+                      'Hidden treasure under a rainbow waterfall…',
+                      'Stars fill the sky as everyone celebrates…',
+                    ].map((placeholder, fi) => (
+                      <div key={fi} className="lp-studio-frame">
+                        <div className="lp-studio-frame-card">
+                          {/* Card number */}
+                          <div className="lp-studio-frame-num">{fi + 1}</div>
+                          {/* Film strip holes top */}
+                          <div className="lp-studio-filmstrip">
+                            {[0,1,2,3].map(h => <div key={h} className="lp-studio-hole" />)}
+                          </div>
+                          {/* Animated reel icon + spotlight */}
+                          <motion.div
+                            className="lp-studio-frame-reel"
+                            animate={{ rotate: [0, 360] }}
+                            transition={{ duration: 6 + fi, repeat: Infinity, ease: 'linear' }}
+                          >🎬</motion.div>
+                          {/* Bottom stripe */}
+                          <div className="lp-studio-filmstrip lp-studio-filmstrip-bottom">
+                            {[0,1,2,3].map(h => <div key={h} className="lp-studio-hole" />)}
+                          </div>
+                          {/* Animated scanning line */}
+                          <motion.div
+                            className="lp-studio-scan-line"
+                            animate={{ top: ['10%', '90%', '10%'] }}
+                            transition={{ duration: 2.5 + fi * 0.3, repeat: Infinity, ease: 'easeInOut' }}
+                          />
+                        </div>
+                        <div className="lp-studio-frame-prompt-mini">
+                          <span>{placeholder}</span>
+                          <div className="lp-studio-gen-chip">✨ AI Gen Soon</div>
+                        </div>
                       </div>
-                      <h3>{f.title}</h3>
-                      <p>{f.desc}</p>
+                    ))}
+                  </div>
+
+                  {/* Action bar */}
+                  <div className="lp-studio-action-bar">
+                    <motion.div
+                      className="lp-studio-create-btn"
+                      animate={{
+                        boxShadow: ['0 0 12px rgba(234,179,8,0.2)', '0 0 28px rgba(234,179,8,0.5)', '0 0 12px rgba(234,179,8,0.2)'],
+                      }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    >
+                      🎬 Create Movie
                     </motion.div>
-                  ))}
+                    <div className="lp-studio-mini-btn">⬇️ Download</div>
+                    <div className="lp-studio-mini-btn">🔗 Share</div>
+                  </div>
                 </div>
               </div>
+            </div>
+          </motion.div>
 
-              {/* ── How it works ── */}
-              <div className="how-section">
-                <div className="features-eyebrow"><span>🗺️</span> Simple Setup, Instant Magic ✨</div>
-                <h2 className="features-title">How the Magic Happens</h2>
-                <p className="features-sub">Get your child reading in under 2 minutes.</p>
-                <div className="how-steps">
-                  {HOW_STEPS.map((s, i) => (
-                    <motion.div key={s.label} className="how-step"
-                      initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 + i * 0.12 }}>
-                      <div className="how-step-circle">{s.emoji}</div>
-                      <div className="how-step-label">{s.label}</div>
+        </div>
+      </section>
 
-                      <div className="how-step-desc">{s.desc}</div>
-                    </motion.div>
-                  ))}
+      {/* ════════════════ STATS BAND ════════════════ */}
+
+      <section className="lp-stats-band">
+        <div className="lp-stats-inner">
+          {STATS.map((s, i) => (
+            <AnimatedStat key={s.label} {...s} delay={i * 0.1} />
+          ))}
+        </div>
+      </section>
+
+      {/* ════════════════ FEATURES ════════════════ */}
+      <section id="features" className="lp-section lp-features-section" ref={featuresRef}>
+        <div className="lp-section-inner">
+          <motion.div
+            className="lp-section-header"
+            initial={{ opacity: 0, y: 20 }}
+            animate={featuresInView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="lp-section-badge">✨ Full Platform</div>
+            <h2 className="lp-section-title">Everything Your Child<br /><span className="lp-gradient-text">Needs to Excel</span></h2>
+            <p className="lp-section-sub">Immersive features designed to turn reading from a chore into a daily adventure.</p>
+          </motion.div>
+
+          <div className="lp-features-grid">
+            {FEATURES.map((f, i) => (
+              <motion.div
+                key={f.title}
+                className="lp-feature-card"
+                style={{ '--card-glow': f.glow, '--card-color': f.color } as React.CSSProperties}
+                initial={{ opacity: 0, y: 40 }}
+                animate={featuresInView ? { opacity: 1, y: 0 } : {}}
+                transition={{ duration: 0.5, delay: i * 0.08 }}
+                whileHover={{ y: -6, transition: { duration: 0.2 } }}
+              >
+                {/* Mini preview window */}
+                <div className="lp-feature-preview-wrap">
+                  <div className="lp-feature-preview-bar">
+                    <div className="lp-tb-dots"><span/><span/><span/></div>
+                    <div className="lp-tb-label" style={{ fontSize: '0.6rem' }}>{f.icon} {f.title}</div>
+                  </div>
+                  <div className="lp-feature-preview-body">
+                    {f.preview()}
+                  </div>
                 </div>
-              </div>
 
-              {/* ── CTA Banner ── */}
-              <motion.div className="cta-banner"
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-                <div className="features-eyebrow"><span>🎉</span> No credit card required</div>
-                <h2 className="cta-title">Start your child's reading journey today</h2>
-                <p className="cta-sub">Join thousands of families using ReadQuest to build confident, lifelong readers.</p>
-                <div className="cta-actions">
-                  {session ? (
-                    <button className="btn-solid btn-large" onClick={() => navigate('/dashboard')}>
-                      Open Dashboard →
-                    </button>
-                  ) : (
-                    <>
-                      <button className="btn-solid btn-large" onClick={() => navigate('/signup')}>
-                        Create Free Account ✨
-                      </button>
-                      <button className="btn-outline btn-large" onClick={() => navigate('/login')}>
-                        View Sample Stories 📚
-                      </button>
-                    </>
-                  )}
+                {/* Card footer */}
+                <div className="lp-feature-footer">
+                  <div className="lp-feature-footer-top">
+                    <div className="lp-feature-title-row">
+                      <span className="lp-feature-icon">{f.icon}</span>
+                      <h3 className="lp-feature-title">{f.title}</h3>
+                    </div>
+                    <div className="lp-feature-tag" style={{ '--tag-color': f.tagColor } as React.CSSProperties}>
+                      {f.tag}
+                    </div>
+                  </div>
+                  <p className="lp-feature-desc">{f.desc}</p>
+                  <div className="lp-feature-arrow">Explore →</div>
                 </div>
               </motion.div>
-
-            </motion.div>
-          )}
-
-          {/* ── NAME STEP ── */}
-          {step === 'name' && (
-            <motion.div key="name" className="view-wizard"
-              initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.03 }} transition={{ duration: 0.3 }}>
-              <div className="wizard-box">
-                <div className="wizard-header">
-                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>👋</div>
-                  <h2>Create Profile</h2>
-                  <p>Let's personalize your child's experience.</p>
-                </div>
-                <div className="wizard-body">
-                  <label className="form-label">Child's Name</label>
-                  <input className={`form-input ${nameError ? 'input-error' : ''}`}
-                    type="text" placeholder="e.g. Emma Doe"
-                    value={name} onChange={e => setName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleNameNext()} autoFocus />
-                  {nameError && <div className="error-message">{nameError}</div>}
-                </div>
-                <div className="wizard-footer">
-                  <button className="btn-ghost" onClick={() => setStep('hero')}>← Back</button>
-                  <button className="btn-solid" onClick={handleNameNext}>Continue →</button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── GRADE STEP ── */}
-          {step === 'grade' && (
-            <motion.div key="grade" className="view-wizard"
-              initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.03 }} transition={{ duration: 0.3 }}>
-              <div className="wizard-box wizard-large">
-                <div className="wizard-header">
-                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎓</div>
-                  <h2>Welcome, {name}!</h2>
-                  <p>Select {name}'s grade so we can calibrate the reading level.</p>
-                </div>
-                <div className="grade-grid">
-                  {GRADE_DATA.map((g, i) => (
-                    <motion.button key={i}
-                      className={`grade-tile ${selectedGrade === i ? 'selected' : ''}`}
-                      whileHover={{ y: -3 }} whileTap={{ scale: 0.96 }}
-                      onClick={() => handleGradeSelect(i)}
-                      disabled={loading}
-                      style={{ '--g-color': g.color } as React.CSSProperties}>
-                      <span className="grade-icon">{g.emoji}</span>
-                      <span className="grade-abbr">{g.label}</span>
-                      <span className="grade-fulltxt">{g.full}</span>
-                    </motion.button>
-                  ))}
-                </div>
-                {loading && (
-                  <div className="loading-state">
-                    <span className="loader-ring" /> Setting up {name}'s reading world...
-                  </div>
-                )}
-                <div className="wizard-footer" style={{ marginTop: 32 }}>
-                  <button className="btn-ghost" onClick={() => setStep('name')}>← Back</button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-        </AnimatePresence>
-      </main>
-
-      {/* ══ FOOTER ══ */}
-      <footer className="landing-footer">
-        <div className="footer-inner">
-          <div className="footer-brand">✨ ReadQuest Junior</div>
-          <div className="footer-links">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Contact</a>
+            ))}
           </div>
-          <div className="footer-copy">© 2026 ReadQuest Inc. All rights reserved.</div>
+
+        </div>
+      </section>
+
+      {/* ════════════════ TRUST BAND ════════════════ */}
+      <section className="lp-trust-band">
+        <div className="lp-trust-inner">
+          <div className="lp-trust-copy">
+            <h2 className="lp-trust-title">Trusted by <span className="lp-gradient-text">10,000+ Families</span></h2>
+            <p className="lp-trust-sub">ReadQuest has helped children across the world discover a love for reading through magical, personalized stories.</p>
+          </div>
+          <div className="lp-trust-logos">
+            {['📚', '🎓', '🏫', '👨‍👩‍👧‍👦', '🌟'].map((e, i) => (
+              <div key={i} className="lp-trust-logo">{e}</div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ════════════════ CTA BANNER ════════════════ */}
+      <section id="cta" className="lp-cta-section">
+        <div className="lp-cta-inner">
+          <div className="lp-cta-glow" />
+          <motion.div
+            className="lp-cta-content"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.7 }}
+          >
+            <div className="lp-cta-emoji">🚀</div>
+            <h2 className="lp-cta-title">Ready to Start Your<br /><span className="lp-gradient-text">Reading Adventure?</span></h2>
+            <p className="lp-cta-sub">Join 10,000+ families sparking their child's imagination today.<br />No credit card required • 7-day free premium trial</p>
+            <div className="lp-cta-form">
+              <input
+                type="email"
+                className="lp-cta-input"
+                placeholder="Enter your email address"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+              <button className="lp-btn-gold" onClick={() => navigate('/signup')}>
+                Get Started Free →
+              </button>
+            </div>
+            <p className="lp-cta-fine">No spam, ever. Cancel anytime.</p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ════════════════ FOOTER ════════════════ */}
+      <footer className="lp-footer">
+        {/* Top glow divider */}
+        <div className="lp-footer-glow-bar" />
+
+        <div className="lp-footer-inner">
+          {/* Brand column */}
+          <div className="lp-footer-brand">
+            <div className="lp-nav-logo" style={{ marginBottom: '12px' }}>
+              <span className="lp-logo-icon">✨</span>
+              <span className="lp-logo-text">ReadQuest</span>
+            </div>
+            <p className="lp-footer-tagline">
+              Making reading magical, one story at a time. Helping kids discover the joy of books through personalized AI adventures.
+            </p>
+
+            {/* Newsletter */}
+            <div className="lp-footer-newsletter">
+              <div className="lp-footer-nl-label">📬 Get reading tips &amp; updates</div>
+              <div className="lp-footer-nl-row">
+                <input className="lp-footer-nl-input" type="email" placeholder="you@email.com" />
+                <button className="lp-footer-nl-btn">Subscribe</button>
+              </div>
+            </div>
+
+            {/* Social icons */}
+            <div className="lp-footer-socials">
+              {[
+                { icon: '𝕏', label: 'Twitter' },
+                { icon: '📸', label: 'Instagram' },
+                { icon: '▶️', label: 'YouTube' },
+                { icon: '🎵', label: 'TikTok' },
+              ].map(s => (
+                <div key={s.label} className="lp-footer-social" title={s.label}>{s.icon}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Product links */}
+          <div className="lp-footer-col">
+            <div className="lp-footer-col-title">Platform</div>
+            {[
+              { label: '🎬 Movie Studio', href: '#' },
+              { label: '📖 Story Creator', href: '#' },
+              { label: '🔤 Spelling Arena', href: '#' },
+              { label: '🧠 Adaptive Exams', href: '#' },
+              { label: '🎮 Educational Games', href: '#' },
+              { label: '🏆 Leaderboard', href: '#' },
+            ].map(l => <a key={l.label} href={l.href}>{l.label}</a>)}
+          </div>
+
+          {/* Company links */}
+          <div className="lp-footer-col">
+            <div className="lp-footer-col-title">Company</div>
+            {[
+              { label: 'About Us', href: '#' },
+              { label: 'Blog', href: '#' },
+              { label: 'Careers', href: '#' },
+              { label: 'Press Kit', href: '#' },
+              { label: 'Contact', href: '#' },
+            ].map(l => <a key={l.label} href={l.href}>{l.label}</a>)}
+          </div>
+
+          {/* Legal links */}
+          <div className="lp-footer-col">
+            <div className="lp-footer-col-title">Support</div>
+            {[
+              { label: 'Help Center', href: '#' },
+              { label: 'Privacy Policy', href: '#' },
+              { label: 'Terms of Service', href: '#' },
+              { label: 'Cookie Policy', href: '#' },
+              { label: 'Accessibility', href: '#' },
+            ].map(l => <a key={l.label} href={l.href}>{l.label}</a>)}
+          </div>
+        </div>
+
+        {/* Feature tags strip */}
+        <div className="lp-footer-tags-strip">
+          {['🔒 COPPA Compliant', '👨‍👩‍👧 Family Safe', '🎓 Educator Approved', '🌍 10 Languages', '📱 iOS & Android Coming Soon', '⭐ 4.9 / 5 Rating'].map(t => (
+            <div key={t} className="lp-footer-tag">{t}</div>
+          ))}
+        </div>
+
+        {/* Bottom bar */}
+        <div className="lp-footer-bottom">
+          <span>© 2025 ReadQuest, Inc. All rights reserved.</span>
+          <div className="lp-footer-bottom-badges">
+            <div className="lp-footer-badge">🔒 SSL Secured</div>
+            <div className="lp-footer-badge">🍪 Cookie-Free Analytics</div>
+          </div>
+          <span>Made with ✨ for young readers everywhere</span>
         </div>
       </footer>
+
     </div>
   )
 }

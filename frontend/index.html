@@ -6,9 +6,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="ReadQuest — The magical reading adventure for kids K-8. Personalized AI-powered storybooks, fun quizzes, and awesome rewards!" />
     <title>ReadQuest 📚 — Your Reading Adventure Awaits!</title>
+
+    <!-- Preconnect to Google Fonts origins -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!--
+      Non-blocking font load pattern:
+      1. Load as print so it never blocks rendering
+      2. Switch to "all" once loaded (fires immediately from cache on repeat visits)
+      Only Fredoka 600 + Nunito 700 are preloaded (the two weights used in above-fold headings).
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <!-- Fallback for no-JS: renders with system fonts then swaps to Fredoka/Nunito -->
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

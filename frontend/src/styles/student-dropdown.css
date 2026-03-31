@@ -1,0 +1,177 @@
+/* ══════════════════════════════════════════════════════════
+   StudentDropdown — shared pill-trigger + flyout
+   Used on: Dashboard, ReadingExams, StoryGenerator,
+            SpellingScores (and any future pages)
+   ══════════════════════════════════════════════════════════ */
+
+/* Root wrapper — position: relative so menu can float below */
+.sd-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Optional prefix label e.g. "Story is for:" */
+.sd-prefix-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(178, 140, 255, 0.65);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Trigger pill ── */
+.sd-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 8px;
+  background: rgba(178, 140, 255, 0.08);
+  border: 1px solid rgba(178, 140, 255, 0.22);
+  border-radius: 999px;
+  color: #edd3ff;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+.sd-trigger:hover {
+  background: rgba(178, 140, 255, 0.16);
+  border-color: rgba(178, 140, 255, 0.4);
+  box-shadow: 0 0 14px rgba(112, 42, 225, 0.2);
+}
+
+/* Name & grade in trigger */
+.sd-trigger-name {
+  font-weight: 700;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sd-trigger-grade {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(178, 140, 255, 0.7);
+  background: rgba(178, 140, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Caret arrow */
+.sd-caret {
+  transition: transform 0.2s;
+  color: rgba(178, 140, 255, 0.55);
+  flex-shrink: 0;
+}
+.sd-caret.open {
+  transform: rotate(180deg);
+}
+
+/* ── Floating menu ── */
+.sd-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: #1a0d38;
+  border: 1px solid rgba(178, 140, 255, 0.25);
+  border-radius: 18px;
+  padding: 6px;
+  list-style: none;
+  margin: 0;
+  z-index: 300;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55),
+              0 0 0 1px rgba(178, 140, 255, 0.08);
+  backdrop-filter: blur(20px);
+  transform-origin: top right;
+}
+
+/* ── Menu items ── */
+.sd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.14s;
+  color: rgba(237, 211, 255, 0.75);
+  font-size: 0.88rem;
+  font-weight: 600;
+  user-select: none;
+}
+.sd-item:hover  { background: rgba(178, 140, 255, 0.1); color: #edd3ff; }
+.sd-item.active { background: rgba(112, 42, 225, 0.25); color: #fff; }
+
+.sd-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sd-item-grade {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(178, 140, 255, 0.6);
+  background: rgba(178, 140, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sd-check {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #702ae1;
+  flex-shrink: 0;
+}
+
+/* Divider */
+.sd-divider {
+  height: 1px;
+  background: rgba(178, 140, 255, 0.15);
+  margin: 4px 8px;
+}
+
+/* ── Shared avatar styles ── */
+.sd-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.sd-all-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(178, 140, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+/* ── Responsive: left-align on narrow containers ── */
+@media (max-width: 480px) {
+  .sd-menu {
+    right: auto;
+    left: 0;
+    transform-origin: top left;
+  }
+  .sd-trigger-grade { display: none; }
+}

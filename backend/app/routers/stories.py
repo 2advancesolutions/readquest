@@ -13,6 +13,96 @@ from app.services.gamification_service import award_xp
 router = APIRouter()
 
 
+class RemoveBackgroundRequest(BaseModel):
+    image_url: str   # local path like /char_icons/xyz.png OR remote https:// URL
+
+
+@router.post("/remove-background")
+async def remove_background_endpoint(req: RemoveBackgroundRequest):
+    """
+    Download an image by URL (local or remote), strip its background server-side
+    using rembg (AI-based segmentation) for complex colored backgrounds,
+    upload the transparent PNG to Supabase, and return the public URL.
+    Returns { transparent_url: str }
+    """
+    import httpx as _httpx
+    from pathlib import Path as _Path
+    from app.agents.content_agent import _upload_to_supabase
+    import uuid as _uuid
+    import asyncio as _asyncio
+
+    url = req.image_url.strip()
+    if not url:
+        raise HTTPException(400, "image_url is required")
+
+    try:
+        # ── Fetch image bytes ─────────────────────────────────────────────────
+        if url.startswith("http://") or url.startswith("https://"):
+            async with _httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    raise HTTPException(502, f"Could not fetch image: HTTP {resp.status_code}")
+                img_bytes = resp.content
+        else:
+            # Local path like /char_icons/coral_diver.png
+            # Strip leading slash and resolve relative to backend working dir
+            local_path = _Path(url.lstrip("/"))
+            # Also try relative to the frontend public folder
+            if not local_path.exists():
+                # Try common locations for Vite public assets served at root
+                candidates = [
+                    _Path("../frontend/public") / url.lstrip("/"),
+                    _Path("../readquest/frontend/public") / url.lstrip("/"),
+                    _Path("frontend/public") / url.lstrip("/"),
+                ]
+                for candidate in candidates:
+                    if candidate.exists():
+                        local_path = candidate
+                        break
+            if not local_path.exists():
+                raise HTTPException(404, f"Local image not found: {url}")
+            img_bytes = local_path.read_bytes()
+
+        # ── Remove background using rembg (AI segmentation) ──────────────────
+        # rembg handles complex colored/scene backgrounds — unlike the flood-fill
+        # which only works for near-white backgrounds.
+        def _run_rembg(data: bytes) -> bytes:
+            from rembg import remove as rembg_remove
+            import io
+            result = rembg_remove(data)
+            # rembg returns bytes directly as PNG with alpha channel
+            return result
+
+        try:
+            print(f"[remove-background] Running rembg AI segmentation on {len(img_bytes)} byte image...")
+            transparent_bytes = await _asyncio.to_thread(_run_rembg, img_bytes)
+            print(f"[remove-background] rembg done — {len(transparent_bytes)} bytes")
+        except Exception as rembg_err:
+            print(f"[remove-background] rembg failed ({rembg_err}), falling back to flood-fill...")
+            from app.agents.content_agent import remove_background_from_bytes
+            transparent_bytes = await remove_background_from_bytes(img_bytes)
+
+        # ── Upload to Supabase ────────────────────────────────────────────────
+        filename = f"transparent_{_uuid.uuid4().hex}.png"
+        public_url = await _upload_to_supabase(transparent_bytes, filename)
+
+        if not public_url:
+            # Fallback: serve locally
+            from app.agents.content_agent import STATIC_DIR
+            STATIC_DIR.mkdir(parents=True, exist_ok=True)
+            (STATIC_DIR / filename).write_bytes(transparent_bytes)
+            public_url = f"/static/images/{filename}"
+
+        print(f"[remove-background] transparent image ready: {public_url}")
+        return {"transparent_url": public_url}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[remove-background] failed: {e}")
+        raise HTTPException(500, f"Background removal failed: {str(e)}")
+
+
 class GenerateRequest(BaseModel):
     grade: int
     theme: str
@@ -21,6 +111,7 @@ class GenerateRequest(BaseModel):
     art_style: str = "cartoon"
     character_description: Optional[str] = None   # e.g. "blonde braided hair, ice-blue dress"
     character_universe: Optional[str] = None       # e.g. "Frozen (Disney)"
+    character_image_url: Optional[str] = None      # gallery portrait URL — use as cover directly
     # Phase 1 AI Tutor additions
     sel_theme: Optional[str] = None       # e.g. 'bullying', 'empathy', 'kindness'
     story_mode: str = "free_play"         # 'free_play' | 'quest'
@@ -117,13 +208,14 @@ Reply with only valid JSON."""
 
     # ── Step 2: Build a high-quality portrait prompt using the real visual description ──
     image_prompt = (
-        f"A high-quality children's book illustration of {canonical}. "
+        f"MASTERPIECE, 8K, high-quality professional children's book illustration of ONE character: {canonical}. "
         f"Visual description: {visual}. "
-        f"Full body pose, arms slightly at sides, confident heroic stance, character ISOLATED and CENTERED. "
-        f"PURE WHITE background with NO scenery, NO other characters, NO shadows behind the character. "
-        f"Clean bold cartoon line art, bright vivid colors, HARD black outlines, flat cel-shaded style, "
-        f"highly detailed costume and face matching the character's iconic look, "
-        f"kid-friendly, sticker-style illustration, high resolution, no text, no logos, no watermarks."
+        f"Single character portrait, HEROIC POSE, clear expressive face, sharp focus, "
+        f"CENTERED, full body visible, character ISOLATED. "
+        f"PURE SOLID WHITE background ONLY. No scenery, no ground, no sky, NO OTHER CHARACTERS, no pets, no shadows. "
+        f"Clean bold line art, bright vivid Disney coloring, HARD black outlines, cel-shaded style, "
+        f"unmistakable iconic likeness, highly detailed costume, "
+        f"kid-friendly sticker art, extremely sharp, high-res PNG, no text, no logos, no grain."
     )
 
     # ── Step 3: Generate portrait with FLUX Dev ──
@@ -234,6 +326,7 @@ async def generate_story(
             art_style=req.art_style or "cartoon",
             character_description=req.character_description or None,
             character_universe=req.character_universe or None,
+            character_image_url=req.character_image_url or None,
         )
     except Exception as e:
         raise HTTPException(500, detail=f"Story generation failed: {str(e)}")
@@ -623,6 +716,7 @@ class GenerateBackgroundRequest(BaseModel):
     theme: str
     character_name: Optional[str] = None      # when set, portrait is also generated
     scene_description: Optional[str] = None   # user-typed scene detail, woven into portrait
+    character_description: Optional[str] = None  # precise visual description from gallery visualDesc
 
 
 @router.post("/generate-background")
@@ -646,10 +740,16 @@ async def generate_theme_background(req: GenerateBackgroundRequest):
 
     portrait_prompt: Optional[str] = None
     if req.character_name:
-        # Combine all three inputs into one rich prompt
+        # Build the character visual string — use precise description if provided
+        if req.character_description:
+            char_visual = f"{req.character_name} — {req.character_description}"
+        else:
+            char_visual = req.character_name
+
+        # Combine all inputs into one rich prompt
         scene_detail = f" The scene: {req.scene_description.strip()}." if req.scene_description else ""
         portrait_prompt = (
-            f"Full-body children's book illustration of {req.character_name} "
+            f"Full-body children's book illustration of {char_visual} "
             f"fully immersed inside a {req.theme} world.{scene_detail} "
             f"{req.character_name} interacts with the environment — surrounded by "
             f"{req.theme} elements, creatures, and details. "

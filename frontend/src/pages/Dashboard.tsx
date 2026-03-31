@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { storiesApi, rewardsApi } from '../services/api'
@@ -7,6 +7,7 @@ import { preloadWelcomeVoice } from '../components/WelcomeVoice'
 import { preloadSpellingWelcome } from '../lib/spellingWelcome'
 import { preloadExamTutorial } from '../lib/examTutorial'
 import { emitXpUpdate } from '../components/XpBadge'
+import StudentDropdown from '../components/StudentDropdown'
 import type { Story, StudentRewards } from '../types'
 import '../styles/dashboard.css'
 
@@ -284,6 +285,10 @@ export default function Dashboard() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
             <span>Spelling</span>
           </button>
+          <button className="dash-nav-link" onClick={() => navigate('/spelling-scores')} id="nav-spell-scores">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+            <span>Spell Scores</span>
+          </button>
           <button className="dash-nav-link" onClick={() => navigate('/games')} id="nav-games">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
             <span>Games</span>
@@ -309,16 +314,36 @@ export default function Dashboard() {
             <span>Profile</span>
           </button>
 
-          <div className="dash-nav-section-label">Create</div>
-          <button className="dash-nav-link" onClick={() => { navigate('/movie-studio') }} id="nav-movie-studio">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /></svg>
-            <span>Movie Studio</span>
-          </button>
-          <div className="dash-nav-section-label">Manage</div>
-          <button className="dash-nav-link" onClick={() => { preloadWelcomeVoice(); navigate('/generate') }} id="nav-generate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            <span>Generate Story</span>
-          </button>
+          {/* ── Featured CTAs ── */}
+          <div className="dash-nav-featured-group">
+            <motion.button
+              className="dash-nav-featured dash-nav-featured-story"
+              onClick={() => { preloadWelcomeVoice(); navigate('/generate') }}
+              id="nav-generate"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <span className="dash-nav-featured-icon">✨</span>
+              <span className="dash-nav-featured-text">
+                <span className="dash-nav-featured-label">Generate Story</span>
+                <span className="dash-nav-featured-sub">AI-powered tales</span>
+              </span>
+            </motion.button>
+            <motion.button
+              className="dash-nav-featured dash-nav-featured-studio"
+              onClick={() => navigate('/movie-studio')}
+              id="nav-movie-studio"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <span className="dash-nav-featured-icon">🎬</span>
+              <span className="dash-nav-featured-text">
+                <span className="dash-nav-featured-label">Movie Studio</span>
+                <span className="dash-nav-featured-sub">Create your film</span>
+              </span>
+            </motion.button>
+          </div>
+          <div className="dash-nav-divider" />
         </nav>
 
         <div className="dash-sidebar-bottom">
@@ -374,6 +399,10 @@ export default function Dashboard() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
                   <span>Spelling</span>
                 </button>
+                <button className="dash-nav-link" onClick={() => navAndClose('/spelling-scores')} id="drawer-spell-scores">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                  <span>Spell Scores</span>
+                </button>
                 <button className="dash-nav-link" onClick={() => navAndClose('/games')} id="drawer-games">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
                   <span>Games</span>
@@ -398,16 +427,33 @@ export default function Dashboard() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   <span>Profile</span>
                 </button>
-                <div className="dash-nav-section-label">Create</div>
-                <button className="dash-nav-link" onClick={() => navAndClose('/movie-studio')} id="drawer-movie-studio">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /></svg>
-                  <span>Movie Studio</span>
-                </button>
-                <div className="dash-nav-section-label">Manage</div>
-                <button className="dash-nav-link" onClick={() => { preloadWelcomeVoice(); navAndClose('/generate') }} id="drawer-generate">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  <span>Create Story</span>
-                </button>
+                <div className="dash-nav-featured-group">
+                  <motion.button
+                    className="dash-nav-featured dash-nav-featured-story"
+                    onClick={() => { preloadWelcomeVoice(); navAndClose('/generate') }}
+                    id="drawer-generate"
+                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  >
+                    <span className="dash-nav-featured-icon">✨</span>
+                    <span className="dash-nav-featured-text">
+                      <span className="dash-nav-featured-label">Generate Story</span>
+                      <span className="dash-nav-featured-sub">AI-powered tales</span>
+                    </span>
+                  </motion.button>
+                  <motion.button
+                    className="dash-nav-featured dash-nav-featured-studio"
+                    onClick={() => navAndClose('/movie-studio')}
+                    id="drawer-movie-studio"
+                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  >
+                    <span className="dash-nav-featured-icon">🎬</span>
+                    <span className="dash-nav-featured-text">
+                      <span className="dash-nav-featured-label">Movie Studio</span>
+                      <span className="dash-nav-featured-sub">Create your film</span>
+                    </span>
+                  </motion.button>
+                </div>
+                <div className="dash-nav-divider" />
               </nav>
               <div className="dash-sidebar-bottom">
                 <button className="dash-logout-btn" onClick={() => { handleLogout(); closeMenu() }}>
@@ -433,30 +479,28 @@ export default function Dashboard() {
             <p className="dash-date">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
           </div>
 
-          {/* Child selector chips */}
+          {/* Student selector dropdown */}
           {!childrenLoading && children.length > 0 && (
-            <div className="dash-child-pills">
-              {children.map((child, i) => (
-                <motion.button
-                  key={child.id}
-                  className={`dash-child-chip ${selectedChild?.id === child.id ? 'active' : ''}`}
-                  onClick={() => selectChild(selectedChild?.id === child.id ? null : child)}
-                  whileTap={{ scale: 0.95 }}
-                  id={`child-chip-${child.id}`}
-                >
-                  <div className="dash-child-chip-avatar" style={{ background: CHILD_COLORS[i % CHILD_COLORS.length] }}>
-                    {child.name.charAt(0)}
-                  </div>
-                  {child.name} · {GRADE_LABELS[child.grade_level] ?? `G${child.grade_level}`}
-                </motion.button>
-              ))}
-            </div>
+            <StudentDropdown
+              children={children}
+              selected={selectedChild}
+              onChange={selectChild}
+              allowAll={children.length > 1}
+            />
           )}
 
           <div className="dash-header-actions">
             <motion.button
+              className="dash-header-studio-btn"
+              whileHover={{ scale: 1.04, y: -1 }} whileTap={{ scale: 0.97 }}
+              onClick={() => navigate('/movie-studio')}
+              id="btn-movie-studio"
+            >
+              🎬 Movie Studio
+            </motion.button>
+            <motion.button
               className="dash-create-btn"
-              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              whileHover={{ scale: 1.04, y: -1 }} whileTap={{ scale: 0.97 }}
               onClick={() => { preloadWelcomeVoice(); navigate('/generate') }}
               id="btn-generate"
             >
