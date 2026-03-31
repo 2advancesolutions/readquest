@@ -9,149 +9,74 @@ interface CharEntry {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  COMPLETE CHARACTER ROSTER — ordered K → 8th grade
-//  ◉ K–2  : cute, whimsical, Pixar-style originals
-//  ◉ 3–5  : adventure & classic archetypes
-//  ◉ 6–8  : comic-book & cinematic teen heroes (unique new artworks)
-//  Zero copyrighted IP. Zero duplicate image paths.
+//  CHARACTER ROSTER — Disney-inspired Adventurers first, then Superheroes
+//  All characters use transparent PNG assets.
 //  Every character has a `visualDesc` that locks in their exact appearance
 //  so the AI image generator renders the SAME character across all story pages.
 // ─────────────────────────────────────────────────────────────────────────────
 export const ALL_CHARACTERS: CharEntry[] = [
 
-  // ── Kindergarten ─────────────────────────────────────────────────────────
-  { name: 'Sparkle',         emoji: '🦄', img: '/char_icons/unicorn.webp',
-    visualDesc: 'Sparkle the unicorn — cute cartoon white unicorn with a rainbow mane in pink, purple, blue and yellow, a golden spiraling horn, big sparkling purple eyes, rosy cheeks, and a fluffy pastel tail' },
-  { name: 'Bindi Bunny',     emoji: '🐰', img: '/char_icons/bunny.webp',
-    visualDesc: 'Bindi Bunny — adorable cartoon white bunny with long floppy ears tipped in soft pink, big round blue eyes, a small pink nose, wearing a tiny yellow flower crown' },
-  { name: 'Pip the Penguin', emoji: '🐧', img: '/char_icons/penguin.webp',
-    visualDesc: 'Pip the Penguin — cute cartoon baby penguin with black-and-white body, round orange beak, big shiny dark eyes, small flappy wings, wearing a tiny red scarf' },
+  // ── Disney-inspired Adventurers ──────────────────────────────────────────
+  { name: 'Sea Prince',      emoji: '🌊', img: '/char_icons/disney_seaprince.png',
+    visualDesc: 'Sea Prince — charming young ocean prince with wavy aquamarine hair, bright sea-blue eyes, wearing a shimmering teal-and-gold ocean-themed tunic with coral accents, a triton symbol, relaxed confident smile' },
+  { name: 'Snow Queen',      emoji: '❄️', img: '/char_icons/disney_snowqueen.png',
+    visualDesc: 'Snow Queen — elegant young queen with flowing platinum blonde hair adorned with ice crystal crown, pale blue eyes, wearing a translucent ice-blue gown with snowflake patterns and sparkling frost cape' },
+  { name: 'Sun Prince',      emoji: '☀️', img: '/char_icons/disney_sunprince.png',
+    visualDesc: 'Sun Prince — dashing young prince with golden-brown sun-kissed hair, warm amber eyes, wearing a vibrant golden-yellow royal tunic with sun motifs and flowing orange cape, bright charismatic smile' },
+  { name: 'Adventure Girl',  emoji: '🏔️', img: '/char_icons/disney_adventuregirl.png',
+    visualDesc: 'Adventure Girl — spirited young explorer girl with curly auburn hair in pigtails, bright hazel eyes, wearing a teal explorer vest over white shirt, rugged brown boots, carrying a map and compass' },
+  { name: 'Forest Girl',     emoji: '🌲', img: '/char_icons/disney_forestgirl.png',
+    visualDesc: 'Forest Girl — nature-loving girl with long straight dark hair adorned with twigs and flowers, warm brown eyes, wearing a green-and-brown woodland tunic with leaf patterns, barefoot with deer companion' },
+  { name: 'Marine Boy',      emoji: '🐬', img: '/char_icons/disney_marineboy.png',
+    visualDesc: 'Marine Boy — cheerful ocean-loving boy with short spiky saltwater-bleached hair, sea-green eyes, wearing a blue-and-white sailor-style outfit with ocean wave patterns, holding a friendly dolphin' },
+  { name: 'Star Gazer',      emoji: '⭐', img: '/char_icons/disney_stargazer.png',
+    visualDesc: 'Star Gazer — dreamy young astronomer girl with dark curly hair dotted with star clips, wide curious dark eyes, wearing a deep purple dress with constellation patterns, holding a golden telescope' },
+  { name: 'Dragon Rider',    emoji: '🐲', img: '/char_icons/disney_dragonrider.png',
+    visualDesc: 'Dragon Rider — brave teen boy with windswept dark blond hair, determined blue eyes, wearing a Viking-inspired leather armor with dragon-scale patterns, riding atop a small friendly baby dragon companion' },
+  { name: 'Music Girl',      emoji: '🎵', img: '/char_icons/disney_musicgirl.png',
+    visualDesc: 'Music Girl — talented young musician girl with long wavy chestnut hair with floral clips, bright expressive brown eyes, wearing a colorful flowy dress with musical note patterns, playing a glowing guitar' },
+  { name: 'Tinker Boy',      emoji: '🔧', img: '/char_icons/disney_tinkerboy.png',
+    visualDesc: 'Tinker Boy — inventive young mechanic boy with short messy blond hair, curious green eyes and freckles, wearing brass-goggled leather cap, a tool-belt overalls, holding a glowing gadget he built himself' },
+  { name: 'Witch Girl',      emoji: '🧹', img: '/char_icons/disney_witchgirl.png',
+    visualDesc: 'Witch Girl — young friendly witch apprentice with short black hair and a cropped sparkle hat, curious purple eyes, wearing a starry purple-black cloak, riding a broom with a glowing rune tip, cute black cat on shoulder' },
+  { name: 'Farm Boy',        emoji: '🌾', img: '/char_icons/disney_farmboy.png',
+    visualDesc: 'Farm Boy — wholesome young hero with clean-cut sandy brown hair, honest blue eyes, wearing simple farm clothes with a plaid shirt and dungarees, holding a glowing magical sword he discovered in a field' },
+  { name: 'Ice Girl',        emoji: '🧊', img: '/char_icons/disney_icegirl.png',
+    visualDesc: 'Ice Girl — cool and playful girl with braided platinum hair and icy blue streaks, bright sky-blue eyes, wearing a sparkling frost-blue tunic with snowflake embroidery, skating on self-created ice path' },
 
-  // ── Grade 1 ──────────────────────────────────────────────────────────────
-  { name: 'Dino Rex',        emoji: '🦕', img: '/char_icons/dinosaur.webp',
-    visualDesc: 'Dino Rex — friendly cartoon green T-Rex dinosaur with big amber eyes, tiny arms, a wide toothy grin, orange belly, and small spikes along the back, playful and cute' },
-  { name: 'Leo the Lion',    emoji: '🦁', img: '/char_icons/lion.webp',
-    visualDesc: 'Leo the Lion — brave cartoon lion cub with a golden-orange fluffy mane, warm brown eyes, a pink nose, tawny fur, and a tufted tail tip' },
-  { name: 'Sage the Owl',    emoji: '🦉', img: '/char_icons/owl.webp',
-    visualDesc: 'Sage the Owl — wise cartoon owl with brown-and-cream feathers, large round golden eyes with spectacle-like markings, a small orange beak, and tufted ear feathers' },
-
-  // ── Grade 2 ──────────────────────────────────────────────────────────────
-  { name: 'Lily the Fairy',  emoji: '🧚', img: '/char_icons/fairy.webp',
-    visualDesc: 'Lily the Fairy — cute young fairy girl with long flowing blonde hair, sparkling blue eyes, translucent iridescent butterfly wings, wearing a pink-and-purple petal dress, holding a glowing magic wand with a star tip' },
-  { name: 'Marina',          emoji: '🧜', img: '/char_icons/mermaid.webp',
-    visualDesc: 'Marina the Mermaid — young cartoon mermaid girl with flowing turquoise-blue hair decorated with seashells, green eyes, wearing a purple seashell top, a shimmering teal-and-green fish tail, pearl necklace' },
-  { name: 'Zap the Robot',   emoji: '🤖', img: '/char_icons/robot.webp',
-    visualDesc: 'Zap the Robot — friendly cartoon robot with a boxy silver-blue metal body, a rounded head with two large glowing green circular eyes, antenna on top, articulated arms with claw hands, and a small LED panel chest' },
-
-  // ── Grade 3 ──────────────────────────────────────────────────────────────
-  { name: 'Wizard Kid',      emoji: '🧙', img: '/char_icons/young_wizard.webp',
-    visualDesc: 'Wizard Kid — young boy wizard with messy brown hair, bright green eyes, wearing a purple pointed wizard hat with gold stars, a long blue-purple robe with gold trim, holding a wooden magic staff with a glowing crystal' },
-  { name: 'Zoom',            emoji: '⚡', img: '/char_icons/kid_hero.webp',
-    visualDesc: 'Zoom the Kid Hero — energetic young boy with spiky blonde hair, bright blue eyes, wearing a red-and-yellow superhero suit with a lightning bolt emblem on the chest, a small red cape, and blue boots' },
-  { name: 'Captain Mia',     emoji: '🏴‍☠️', img: '/char_icons/pirate.webp',
-    visualDesc: 'Captain Mia — adventurous young girl pirate with wavy red hair in a ponytail, freckles, green eyes, wearing a brown leather tricorn pirate hat, a white ruffled shirt, brown vest, and a toy cutlass at her belt' },
-
-  // ── Grade 4 ──────────────────────────────────────────────────────────────
-  { name: 'Crystal Mage',    emoji: '🔮', img: '/char_icons/mage.webp',
-    visualDesc: 'Crystal Mage — young sorceress with long silver-white hair, glowing violet eyes, wearing a deep purple hooded cloak with crystal embroidery, holding a floating purple crystal orb, magical energy swirling around her hands' },
-  { name: 'Princess Kira',   emoji: '⚔️', img: '/char_icons/knight_girl.webp',
-    visualDesc: 'Princess Kira — brave young warrior princess with long dark brown braided hair, brown eyes, wearing silver knight armor with gold accents, a red royal cape, and carrying a silver sword and shield with a lion crest' },
-  { name: 'Shadow Fox',      emoji: '🦊', img: '/char_icons/fox.webp',
-    visualDesc: 'Shadow Fox — sleek anthropomorphic fox with dark reddish-brown fur, piercing amber-gold eyes, a bushy tail with a white tip, wearing a dark hooded cloak, stealthy and mysterious, ninja-like' },
-
-  // ── Grade 5 ──────────────────────────────────────────────────────────────
-  { name: 'Robin Hood',      emoji: '🏹', img: '/char_icons/explorer.webp',
-    visualDesc: 'Robin Hood — young adventurer with tousled brown hair, hazel eyes, wearing a green tunic and brown leather vest, a green feathered cap, brown boots, carrying a wooden bow and a quiver of arrows on the back' },
-  { name: 'Jade Dragon',     emoji: '🐉', img: '/char_icons/dragon.webp',
-    visualDesc: 'Jade Dragon — majestic emerald-green dragon with jade-colored scales, golden eyes with slit pupils, two curved ivory horns, large green wings with golden membrane, a long serpentine tail, breathing jade-green fire' },
-  { name: 'Coral Diver',     emoji: '🌊', img: '/char_icons/coral_diver.webp',
-    visualDesc: 'Coral Diver — young deep-sea diver kid with short dark hair, brown eyes, wearing a teal-blue diving suit with orange accents, a clear dome diving helmet, flippers, carrying an underwater flashlight, surrounded by coral' },
-
-  // ── Grade 6 — Comic-book style ───────────────────────────────────────────
-  { name: 'Merlin',          emoji: '✨', img: '/char_icons/merlin.webp',
-    visualDesc: 'Merlin — elderly wise wizard with a long flowing white beard, deep blue eyes under bushy eyebrows, wearing a tall pointed midnight-blue hat adorned with silver stars and moons, long blue robes, holding a gnarled wooden staff' },
-  { name: 'Nova Pulse',      emoji: '💜', img: '/char_icons/nova_pulse.webp',
-    visualDesc: 'Nova Pulse — Black teenage girl superhero with dark curly natural afro hair, amber-golden eyes, freckles on her cheeks, wearing a sleek purple high-tech armored bodysuit with glowing blue neon circuit lines and a stylized R emblem on the chest, comic-book art style' },
-  { name: 'Athena',          emoji: '🦉', img: '/char_icons/goddess.webp',
-    visualDesc: 'Athena — regal young goddess with long flowing dark hair adorned with a golden laurel wreath crown, wise grey eyes, wearing white-and-gold Greek armor with a golden breastplate, holding a golden spear and a round shield with an owl emblem' },
-
-  // ── Grade 7 — Cinematic realistic ────────────────────────────────────────
-  { name: 'Sky Knight',      emoji: '🛡️', img: '/char_icons/warrior.webp',
-    visualDesc: 'Sky Knight — young male warrior with short dark hair, determined brown eyes, wearing gleaming silver plate armor with blue cape and gold shoulder pauldrons, holding a longsword and a kite shield with a wing crest, heroic stance' },
-  { name: 'Cipher',          emoji: '🔵', img: '/char_icons/cipher.webp',
-    visualDesc: 'Cipher — mysterious teen hacker with short styled dark hair with a blue streak, wearing a dark hoodie and a glowing blue holographic visor over the eyes, digital code particles floating around, cyberpunk aesthetic' },
-  { name: 'Alice',           emoji: '🐇', img: '/char_icons/alice.webp',
-    visualDesc: 'Alice — curious young girl with long blonde hair held back by a blue headband, big blue eyes, wearing a classic blue-and-white pinafore dress with a white apron, black shoes, holding a small pocket watch, wonderland fantasy style' },
-
-  // ── Grade 8 — Epic cinematic ─────────────────────────────────────────────
-  { name: 'Sherlock',        emoji: '🔍', img: '/char_icons/sherlock.webp',
-    visualDesc: 'Sherlock — young teen detective with wavy dark brown hair, sharp intelligent grey-green eyes, wearing a long brown tweed overcoat, a dark scarf, holding a magnifying glass, deerstalker cap, Victorian-era inspired outfit' },
-  { name: 'Nova Scout',      emoji: '🚀', img: '/char_icons/nova.webp',
-    visualDesc: 'Nova Scout — young cartoon kid astronaut with messy blue-and-orange tipped hair sticking out of a clear space helmet, big bright blue eyes, freckles, wearing a white-and-orange space suit with a SCOUT name badge, blue gloves, jetpack on back, floating in a colorful galaxy' },
-  { name: 'Sovereign',       emoji: '👑', img: '/char_icons/sovereign.webp',
-    visualDesc: 'Sovereign — regal young ruler with flowing golden hair, piercing blue eyes, wearing an ornate gold-and-crimson royal suit of armor with a fur-trimmed cape, a jeweled golden crown, holding a scepter with a glowing gem' },
+  // ── Superheroes ──────────────────────────────────────────────────────────
+  { name: 'Blaze',           emoji: '🔥', img: '/char_icons/hero_blaze.png',
+    visualDesc: 'Blaze — teen superhero with spiked fiery orange-red hair, intense amber eyes, wearing a sleek crimson bodysuit with flame patterns and glowing orange chest emblem, fire energy radiating from fists, dynamic heroic pose' },
+  { name: 'Storm Wing',      emoji: '🌩️', img: '/char_icons/hero_stormwing.png',
+    visualDesc: 'Storm Wing — young superhero with silver-white hair, electric blue eyes, wearing a dark blue aerodynamic suit with lightning bolt accents and silver wing-shaped pauldrons, crackling electricity around hands' },
+  { name: 'Titan Fist',      emoji: '💪', img: '/char_icons/hero_titanfist.png',
+    visualDesc: 'Titan Fist — powerful young male hero with broad shoulders, dark short hair, determined brown eyes, wearing a heavy titanium-grey armored suit with glowing orange power-core gauntlets and red chest emblem' },
+  { name: 'Shadow Claw',     emoji: '🐾', img: '/char_icons/hero_shadowclaw.png',
+    visualDesc: 'Shadow Claw — agile young hero with dark purple-black hair, silver-grey eyes, wearing a sleek obsidian bodysuit with claw-tipped gloves, shadow energy trails behind movements, stealthy predator aesthetic' },
+  { name: 'Aqua Rush',       emoji: '💧', img: '/char_icons/hero_aquarush.png',
+    visualDesc: 'Aqua Rush — teen water hero with sea-blue hair and turquoise streaks, teal eyes, wearing a flowing blue-white suit with water wave patterns, water swirling around arms and feet in dynamic pose' },
+  { name: 'Gear Bolt',       emoji: '⚙️', img: '/char_icons/hero_gearbolt.png',
+    visualDesc: 'Gear Bolt — tech-genius young hero with goggles pushed up on short brown hair, sharp hazel eyes, wearing a yellow-and-brown mechanical suit with visible gears, utility belt with gadgets, wrench in hand' },
+  { name: 'Terra Vine',      emoji: '🌿', img: '/char_icons/hero_terravine.png',
+    visualDesc: 'Terra Vine — nature hero teen girl with flowing green-streaked dark hair woven with leaves, forest-green eyes, wearing an earthy green bodysuit with vine patterns, glowing plant tendrils extending from hands' },
+  { name: 'Frost Nova',      emoji: '❄️', img: '/char_icons/hero_frostnova.png',
+    visualDesc: 'Frost Nova — ice hero with stark white hair with blue tips, icy pale blue eyes, wearing a crystalline blue-white bodysuit with snowflake patterns, ice crystals forming around outstretched hands' },
+  { name: 'Moon Shield',     emoji: '🌙', img: '/char_icons/hero_moonshield.png',
+    visualDesc: 'Moon Shield — graceful teen girl hero with silvery-white hair, luminous silver eyes, wearing a midnight-blue armor with crescent moon motifs and a glowing silver shield, moonlight aura surrounding her' },
+  { name: 'Thunder Strike',  emoji: '⚡', img: '/char_icons/hero_thunderstrike.png',
+    visualDesc: 'Thunder Strike — bold young male hero with gold-tipped dark hair, golden eyes, wearing a yellow-and-black armored suit with thunderbolt chest emblem, electric sparks crackling around the body' },
+  { name: 'Iron Veil',       emoji: '🛡️', img: '/char_icons/hero_ironveil.png',
+    visualDesc: 'Iron Veil — mysterious female hero with dark crimson hair pulled back, violet eyes, wearing a sleek dark red armored suit with interlocking iron plates and a translucent energy veil shield' },
+  { name: 'Galaxy Brave',    emoji: '🌌', img: '/char_icons/hero_galaxybrave.png',
+    visualDesc: 'Galaxy Brave — cosmic hero boy with galaxy-pattern dark hair showing stars, deep purple eyes with starlight flecks, wearing a deep space black suit with nebula-colored energy trails and a glowing star emblem' },
+  { name: 'Wind Runner',     emoji: '💨', img: '/char_icons/hero_windrunner.png',
+    visualDesc: 'Wind Runner — swift teen girl hero with windswept teal hair always in motion, bright green eyes, wearing a light grey aerodynamic suit with wind-slash patterns and speed trails behind, always in running pose' },
+  { name: 'Prism Queen',     emoji: '🌈', img: '/char_icons/hero_prismqueen.png',
+    visualDesc: 'Prism Queen — radiant hero girl with prismatic hair shifting through rainbow colors, sparkling multicolored eyes, wearing a white crystalline bodysuit that refracts light into rainbow shards, light beams emanating from hands' },
+  { name: 'Stone Guard',     emoji: '🪨', img: '/char_icons/hero_stoneguard.png',
+    visualDesc: 'Stone Guard — sturdy male hero with short sandy hair, warm brown eyes, wearing a rocky stone-textured brown-grey armor with ancient rune markings and massive stone gauntlets, earth energy rumbling around him' },
 ]
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  COPYRIGHT KEYWORD BLOCKLIST
-// ─────────────────────────────────────────────────────────────────────────────
-export const BLOCKED_IP_TERMS: string[] = [
-  // Disney classic
-  'mickey mouse','minnie mouse','donald duck','goofy','pluto','dumbo','bambi',
-  'cinderella','sleeping beauty','snow white','ariel','belle','beast','aladdin',
-  'jasmine','simba','mufasa','nala','pocahontas','mulan','lilo','stitch','moana',
-  'encanto','mirabel','raya','elsa','anna','olaf','rapunzel','flynn rider',
-  'tinker bell','peter pan','wendy','pinocchio','jiminy cricket',
-  'winnie the pooh','tigger','piglet','buzz lightyear',
-  'woody','jessie','sully','mike wazowski','nemo','dory','remy','wall-e',
-  'mcqueen','mater','baymax','hiro hamada','joy','sadness','tiana',
-  'merida','hades','tarzan','zootopia','judy hopps',
-  'nick wilde','wreck it ralph','vanellope',
-  // Marvel
-  'spider-man','spiderman','peter parker','iron man','tony stark',
-  'captain america','steve rogers','thor','hulk','bruce banner','black widow',
-  'natasha romanoff','hawkeye','clint barton','black panther','tchalla',
-  'doctor strange','ant-man','scarlet witch','wanda maximoff','vision',
-  'wolverine','deadpool','wade wilson','x-men','cyclops','jean grey',
-  'magneto','professor x','fantastic four','avengers','thanos','loki',
-  'nick fury','captain marvel','carol danvers','guardians of the galaxy',
-  'star-lord','groot','rocket raccoon','gamora','drax','nebula','shazam',
-  // Star Wars
-  'luke skywalker','darth vader','princess leia','han solo','yoda',
-  'obi-wan','obi wan','r2-d2','r2d2','c-3po','c3po','chewbacca','boba fett',
-  'mandalorian','grogu','baby yoda','rey','kylo ren','palpatine',
-  // Nintendo
-  'mario','luigi','princess peach','bowser','yoshi','toad','donkey kong',
-  'link','zelda','ganondorf','samus','kirby','pikachu','mewtwo','charizard',
-  'pokemon','eevee','bulbasaur','squirtle','charmander',
-  'fox mccloud','inkling','animal crossing','isabelle','tom nook',
-  // DC
-  'superman','batman','wonder woman','the flash','aquaman','green lantern',
-  'joker','lex luthor','harley quinn','catwoman','robin','nightwing',
-  'cyborg','green arrow','teen titans',
-  // DreamWorks / Universal
-  'shrek','fiona','puss in boots','kung fu panda','po','hiccup',
-  'toothless','minion','gru','madagascar','trolls','boss baby',
-  // Sony / Gaming
-  'kratos','nathan drake','joel','ellie','aloy','ratchet','clank',
-  'crash bandicoot','spyro','master chief','marcus fenix','banjo kazooie',
-  'sonic','tails','knuckles','amy rose','shadow the hedgehog','dr eggman',
-  'mega man','ryu','chun-li','ken masters','lara croft','cloud strife',
-  'tifa lockhart','aerith','sephiroth','kingdom hearts',
-  // Anime
-  'goku','vegeta','naruto','sasuke','luffy','zoro','sailor moon','bleach',
-  'eren','mikasa','tanjiro','deku','izuku midoriya','edward elric','light yagami',
-  'itadori','sword art online','genos','saitama','evangelion','rei','asuka',
-  // TV
-  'bart simpson','homer simpson','stewie griffin','rick sanchez','morty',
-  'aang','korra','spongebob','peppa pig','paw patrol','bluey','bingo',
-  'stranger things','eleven','game of thrones','jon snow','daenerys',
-  // Movies / Other
-  'harry potter','hermione','ron weasley','dumbledore','voldemort',
-  'frodo','gandalf','aragorn','legolas','gimli','transformers','optimus prime',
-  'ghostbusters','tmnt','teenage mutant ninja turtles','power rangers',
-  'terminator','ronald mcdonald',
-]
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Component

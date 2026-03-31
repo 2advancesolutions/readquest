@@ -30,6 +30,7 @@ const GamesArcade        = lazy(() => import('./pages/GamesArcade'))
 const GamePlay           = lazy(() => import('./pages/GamePlay'))
 const Leaderboard        = lazy(() => import('./pages/Leaderboard'))
 const MovieStudio        = lazy(() => import('./pages/MovieStudio'))
+const AdminDashboard     = lazy(() => import('./pages/AdminDashboard'))
 
 // ── Minimal loading fallback — no layout shift, no spinner flicker ────────
 function PageLoader() {
@@ -107,6 +108,7 @@ function App() {
           <Route path="/games/:gameId" element={session ? <GamePlay /> : <Navigate to="/login" replace />} />
           <Route path="/leaderboard" element={session ? <Leaderboard /> : <Navigate to="/login" replace />} />
           <Route path="/movie-studio" element={session ? <MovieStudio /> : <Navigate to="/login" replace />} />
+          <Route path="/admin" element={session ? <AdminDashboard /> : <Navigate to="/login" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

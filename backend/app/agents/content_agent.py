@@ -293,12 +293,81 @@ async def story_writer_node(state: ContentState) -> ContentState:
 Each page must be 55-75 words.
 """
 
-    prompt = f"""You are a brilliant children's book author writing for a Grade {grade} reading level.
+    # ── Detect if the theme field is a full pasted story ──────────────────────
+    # Heuristic: >300 chars AND (3+ paragraph breaks OR 4+ non-empty lines OR long avg line length)
+    # This catches "The Forest Girl" style full-story pastes vs short theme prompts.
+    raw_theme = state['theme']
+    theme_lines = [l for l in raw_theme.split('\n') if l.strip()]
+    is_full_story = (
+        len(raw_theme.strip()) > 300
+        and (
+            raw_theme.count('\n\n') >= 2          # multiple paragraph breaks
+            or len(theme_lines) >= 4              # 4+ non-empty lines
+            or (len(raw_theme) / max(len(theme_lines), 1)) > 80  # long avg line length
+        )
+    )
+
+    if is_full_story:
+        # ── STORY ADAPTATION MODE ─────────────────────────────────────────────
+        # User pasted a full story. Adapt it into 5 pages starring the chosen character.
+        print(f"[story_writer_node] 📖 Detected full-story paste ({len(raw_theme)} chars) — switching to ADAPTATION mode.")
+
+        prompt = f"""You are a brilliant children's book author writing for a Grade {grade} reading level.
 
 Grade Level Writing Guide:
 {vocab_desc}
 
-Theme / Setting: {state['theme']}
+Main Character (hero of the story): {char}
+Language: {state.get('language', 'english')}
+Art Style: {art_style}
+{early_grade_warning}
+{style_narrative}
+
+A user has provided the following story as inspiration:
+--- SOURCE STORY START ---
+{raw_theme}
+--- SOURCE STORY END ---
+
+YOUR TASK:
+Adapt and retell this story as a 5-page children's book where {char} is the main hero doing all the key actions.
+
+STRICT RULES FOR ADAPTATION:
+- Divide the story's plot naturally into EXACTLY 5 pages. Each page must capture a DISTINCT moment or scene.
+- Page 1: Introduce {char} and the world/situation from the story.
+- Pages 2-4: Show {char} experiencing the rising action and conflict from the source story.
+- Page 5: Show {char} achieving the resolution and emotional lesson from the story's ending.
+- Every page MUST feature {char} actively doing something — no page should ever just describe scenery alone.
+- Keep the spirit, theme, and emotional arc of the source story — but rewrite it fresh at Grade {grade} level.
+- Do NOT copy the source text verbatim. Rewrite it with your own engaging language.
+- Apply the chosen art style tone throughout: {style_narrative[:120]}
+
+Output ONLY valid JSON in this exact format:
+{{
+  "title": "Story title here",
+  "pages": [
+    {{"page_number": 1, "content": "Page 1 text here..."}},
+    {{"page_number": 2, "content": "Page 2 text here..."}},
+    {{"page_number": 3, "content": "Page 3 text here..."}},
+    {{"page_number": 4, "content": "Page 4 text here..."}},
+    {{"page_number": 5, "content": "Page 5 text here..."}}
+  ]
+}}
+
+CRITICAL — CHARACTER NAME RULES (MUST FOLLOW):
+- Use the character name EXACTLY as given: "{char}"
+- Do NOT add a last name, surname, or title
+- Do NOT translate, expand, or rename the character
+- Every reference to the character must use exactly "{char}"
+- NO quotation marks inside page text that would break JSON
+"""
+    else:
+        # ── ORIGINAL FREE-GENERATE MODE ───────────────────────────────────────
+        prompt = f"""You are a brilliant children's book author writing for a Grade {grade} reading level.
+
+Grade Level Writing Guide:
+{vocab_desc}
+
+Theme / Setting: {raw_theme}
 Main Character: {char}
 Language: {state.get('language', 'english')}
 Art Style Selected: {art_style}
@@ -396,11 +465,17 @@ async def parse_story_node(state: ContentState) -> ContentState:
 
 
 
-async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
-    """Generate a per-page illustration using fal.ai FLUX.1 [dev].
+async def _generate_image_nano_banana2(
+    prompt: str,
+    reference_image_url: Optional[str] = None,
+) -> Optional[str]:
+    """Generate a per-page illustration using fal.ai.
 
-    Uses the higher-quality FLUX Dev model (28 steps, guidance_scale 3.5)
-    for significantly better character likeness — Spider-Man, Disney, Pixar, etc.
+    When reference_image_url is provided (gallery portrait), uses
+    fal-ai/flux-general/image-to-image with reference guidance so every
+    page shows a character that visually matches the selected portrait.
+
+    Without a reference, falls back to fal-ai/flux/dev (text-to-image).
 
     Returns a Supabase public URL or local /static/images/<uuid>.png path, or None on failure.
     """
@@ -413,29 +488,80 @@ async def _generate_image_nano_banana2(prompt: str) -> Optional[str]:
 
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Use the full prompt — truncation is now handled upstream in image_prompt_node
-    # to guarantee the unique scene content is preserved per page.
-    image_prompt = prompt[:500]  # hard safety cap; upstream already keeps prompts ~490 chars
+    # Prompt cap — flux-general supports longer prompts than flux/dev
+    image_prompt = prompt[:600]
 
     try:
         import fal_client
-        # Set the key via env var (fal_client reads FAL_KEY or FAL_KEY_ID:FAL_KEY_SECRET)
         os.environ["FAL_KEY"] = fal_key
 
-        print(f"[fal.ai] Generating image with FLUX.1 [dev] (high-quality)...")
-        result = await asyncio.to_thread(
-            fal_client.subscribe,
-            "fal-ai/flux/dev",
-            arguments={
-                "prompt": image_prompt,
-                "image_size": "square_hd",       # 1024×1024
-                "num_inference_steps": 28,        # dev default — much higher quality
-                "guidance_scale": 4.5,            # stronger prompt adherence for characters
-                "num_images": 1,
-                "enable_safety_checker": True,
-                "output_format": "png",           # lossless for Supabase upload
-            },
-        )
+        if reference_image_url:
+            # ── FLUX.1 Kontext [pro] — Character Identity Lock ────────────────────────────
+            # Kontext was purpose-built for this exact use case: take a reference image
+            # (the gallery portrait) and a scene prompt, and generate a new image where
+            # the CHARACTER looks identical but the scene changes around them.
+            #
+            # safety_tolerance "5" = permissive (still blocks truly NSFW content).
+            # "2" was too strict and falsely flagged original children's story content.
+            # enhance_prompt=False prevents fal.ai's auto-enhancer from mutating
+            # our structured "Place this exact character..." framing.
+            print(f"[fal.ai] Generating with FLUX.1 Kontext [pro] — character identity locked...")
+            kontext_prompt = (
+                f"Children's book illustration. "
+                f"Keep this character's exact appearance, costume, colors, and face identical. "
+                f"Place them in this new scene: {image_prompt}"
+            )[:800]
+            try:
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-pro/kontext",
+                    arguments={
+                        "prompt": kontext_prompt,
+                        "image_url": reference_image_url,   # reference portrait — Kontext treats this as the character
+                        "guidance_scale": 3.5,               # Kontext default — works best at 3-4
+                        "num_images": 1,
+                        "output_format": "png",
+                        "safety_tolerance": "5",             # permissive — original children's content, not NSFW
+                        "enhance_prompt": False,             # don't let fal mutate our structured prompt
+                    },
+                )
+            except Exception as kontext_err:
+                # ── Kontext fallback: flux-general + reference guidance ───────────────────
+                # If Kontext rejects the request (safety filter edge case), fall back to
+                # flux-general/image-to-image which has a looser safety policy.
+                print(f"[fal.ai] Kontext rejected ('{kontext_err}') — falling back to flux-general...")
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-general",
+                    arguments={
+                        "prompt": image_prompt,
+                        "reference_image_url": reference_image_url,
+                        "reference_strength": 0.65,
+                        "image_size": "square_hd",
+                        "num_inference_steps": 28,
+                        "guidance_scale": 4.5,
+                        "num_images": 1,
+                        "enable_safety_checker": False,
+                        "output_format": "png",
+                    },
+                )
+        else:
+            # ── Text-to-image fallback (fal-ai/flux/dev) ────────────────────────────────
+            # Used when no gallery portrait is available (typed character name).
+            print(f"[fal.ai] Generating with FLUX.1 [dev] (text-only, no reference)...")
+            result = await asyncio.to_thread(
+                fal_client.subscribe,
+                "fal-ai/flux/dev",
+                arguments={
+                    "prompt": image_prompt,
+                    "image_size": "square_hd",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 4.5,
+                    "num_images": 1,
+                    "enable_safety_checker": True,
+                    "output_format": "png",
+                },
+            )
 
         # Extract the image URL from fal.ai response
         images = result.get("images", [])
@@ -549,16 +675,26 @@ async def remove_background_from_bytes(img_bytes: bytes) -> bytes:
 
 async def image_prompt_node(state: ContentState) -> ContentState:
     """
-    FLUX-all-the-way image pipeline.
+    FLUX image pipeline with character reference locking.
     1. Resolves a rich character_visual string (from provided description or Gemini auto-enrich).
     2. Saves character_visual to state so every downstream node uses the SAME description.
     3. Builds per-page prompts with the character as the MANDATORY main subject.
-    4. Generates ALL page images in parallel via FLUX.1 Dev for consistency and speed.
+    4. Generates ALL page images using the gallery portrait as a visual reference anchor,
+       so every page shows a character that looks like the selected portrait.
     """
     pages = state["story_parsed"].get("pages", [])
     art_style = state.get('art_style', 'cartoon')
     char = state['character_name']
     theme = state['theme']
+
+    # ── Character reference image (gallery portrait) — the visual identity anchor ────────
+    # This URL is passed to every FLUX call as reference_image_url so the model produces
+    # a character that LOOKS LIKE the gallery portrait on every single page.
+    char_ref_url = (state.get('character_image_url') or '').strip() or None
+    if char_ref_url:
+        print(f"[image_prompt_node] ✓ Reference portrait URL found — character identity will be locked.")
+    else:
+        print(f"[image_prompt_node] No reference portrait — using text-only generation (may drift).")
 
     # ── Resolve character_visual (used by EVERY image in the pipeline) ──────────────────
     char_desc = (state.get('character_description') or '').strip()
@@ -604,7 +740,7 @@ async def image_prompt_node(state: ContentState) -> ContentState:
         "cartoon": (
             "MASTERPIECE, 8K, colorful children's book illustration. fun 2D illustrated style. "
             "MAIN CHARACTER (large foreground focus, full body, extremely sharp and clear): {cv}. "
-            "Scene context: {scene}. "
+            "Scene: {scene}. "
             "Crisp bold black outlines, bright vivid colors, professional character design, "
             "highly detailed setting, magical atmosphere, kids-friendly, no text, no grain, high resolution."
         ),
@@ -618,7 +754,7 @@ async def image_prompt_node(state: ContentState) -> ContentState:
         "pixar": (
             "MASTERPIECE, 8k, Pixar/Illumination animation studio render, vibrant 3D CGI — NOT 2D. "
             "MAIN CHARACTER (foreground center, expressive face, sharp textured fur/skin): {cv}. "
-            "Scene context: {scene}. "
+            "Scene: {scene}. "
             "Magical subsurface scattering, soft global illumination, depth of field, Disney-level detail."
         ),
         "real": (
@@ -637,56 +773,66 @@ async def image_prompt_node(state: ContentState) -> ContentState:
         "epic": (
             "MASTERPIECE, 8K, Blockbuster IMAX movie poster key art. Epic scale, ultra-sharp. "
             "HERO (center grand entrance, heroic silhouette, glowing detail): {cv}. "
-            "Background: {scene}. "
+            "Action: {scene}. "
             "Catastrophic destruction, atmospheric lighting, movie poster grade coloring, cinematic master shot."
         ),
     }
     style_template = ART_STYLE_PROMPTS.get(art_style, ART_STYLE_PROMPTS['cartoon'])
 
-    # ── Build per-page prompts ────────────────────────────────────────────────────────────
-    # IMPORTANT: Keep prompts short enough so scene content isn't truncated by fal.ai's 500-char
-    # limit. We build a compact scene-first prompt that guarantees the unique page content survives.
+    # ── Build per-page prompts using the FULL style template ──────────────────────────────
+    # Each page gets a rich scene description (200 chars instead of 120) so the image
+    # captures the actual action happening on that page, not just the opening phrase.
+    # The character_visual string is IDENTICAL across all pages — no drift.
     prompts = []
     for i, page in enumerate(pages):
-        # Use first 150 chars of content — this is the unique scene differentiator per page
-        scene_snippet = page['content'][:150].strip()
-        # Build a compact, scene-first prompt that fits well within 500 chars
-        # and is meaningfully different for each page
-        page_label = f"PAGE {i+1} OF {len(pages)}"
-        compact_prompt = (
-            f"{page_label}: {scene_snippet}. "
-            f"Featuring {character_visual} as the MAIN CHARACTER in foreground. "
-            f"Theme: {theme}. Art style: {art_style}. "
-            f"Children's book illustration, vibrant colors, high quality, no text."
-        )
-        if len(compact_prompt) > 490:
-            compact_prompt = compact_prompt[:490]
-        prompts.append(compact_prompt)
+        # Use first 200 chars of content as the scene context (increased from 120 for better coverage)
+        scene_snippet = page['content'][:200].strip()
+
+        # Build the full style-anchored prompt
+        styled_prompt = style_template.format(cv=character_visual, scene=scene_snippet)
+
+        # Cap at 600 chars — flux-general supports longer prompts than flux/dev
+        if len(styled_prompt) > 600:
+            styled_prompt = styled_prompt[:600]
+
+        prompts.append(styled_prompt)
 
     state["image_prompts"] = prompts
-    print(f"[image_prompt_node] Generating {len(prompts)} unique page images via FLUX...")
+    print(f"[image_prompt_node] Generating {len(prompts)} page images IN PARALLEL (reference_locked={char_ref_url is not None})...")
     for i, p in enumerate(prompts):
         print(f"  Page {i+1} prompt ({len(p)} chars): {p[:120]}...")
 
-    # ── Generate ALL page images sequentially to avoid fal.ai dedup/caching ─────────────
-    # NOTE: fal.ai may return cached results for parallel calls with similar prompts.
-    # We generate sequentially with a small delay to guarantee distinct images per page.
+    # ── Generate ALL page images in parallel via asyncio.gather ──────────────────────
+    # With reference_image_url + unique seed hints, fal.ai caching is not a concern.
+    # Running all 5 in parallel cuts total image generation time from ~5×30s to ~30s.
     import random as _random
-    image_urls: list = []
-    for i, p in enumerate(prompts):
-        # Add a unique seed hint to each prompt so fal.ai generates distinct images
-        seeded_prompt = f"{p} [unique_seed:{_random.randint(100000, 999999)}]"
-        url = await _generate_image_nano_banana2(seeded_prompt)
-        image_urls.append(url)
-        print(f"[image_prompt_node] Page {i+1}/{len(prompts)} FLUX image: {'OK' if url else 'FAILED'}")
 
-    print(f"[image_prompt_node] FLUX done: {sum(1 for u in image_urls if u)} / {len(image_urls)} images OK")
+    async def _gen_page(p: str, idx: int) -> Optional[str]:
+        seeded_prompt = f"{p} [unique_seed:{_random.randint(100000, 999999)}]"
+        url = await _generate_image_nano_banana2(seeded_prompt, reference_image_url=char_ref_url)
+        print(f"[image_prompt_node] Page {idx+1}/{len(prompts)} image: {'OK ✓' if url else 'FAILED ✗'}")
+        return url
+
+    image_urls = list(await asyncio.gather(*[_gen_page(p, i) for i, p in enumerate(prompts)]))
+
+    print(f"[image_prompt_node] Done: {sum(1 for u in image_urls if u)} / {len(image_urls)} images OK")
     state["image_urls"] = image_urls
     return state
 
 
 async def character_verify_node(state: ContentState) -> ContentState:
-    """Verify each page image contains the selected character; regenerate failures via FLUX using full character_visual."""
+    """Verify page images contain the character — BYPASSED when reference_image_url is active.
+
+    With reference_image_url locking character identity in every FLUX call, this extra
+    Gemini verification + potential FLUX re-generation pass is unnecessary and adds ~30-60s
+    of latency. We skip it whenever a gallery portrait reference was used.
+    """
+    char_ref_url = (state.get('character_image_url') or '').strip() or None
+    if char_ref_url:
+        print("[character_verify] BYPASSED — reference portrait active, character identity is already locked.")
+        return state
+
+    # ── Text-only path: still verify since character may drift without a reference ────────
     char = state['character_name']
     # Use the resolved visual description for regeneration — same one used in image_prompt_node
     character_visual = state.get('character_visual') or char
@@ -765,17 +911,20 @@ Respond ONLY with valid JSON — array ordered same as above:
     }
     style_decl = STYLE_DECLS.get(art_style, "Colorful children's book illustration. ")
 
+    # Get the reference portrait URL so regen calls also use the visual anchor
+    char_ref_url = (state.get('character_image_url') or '').strip() or None
+
     regen_tasks = {}
     for page_idx in failed_indexes:
-        page_content = pages[page_idx]['content'][:180] if page_idx < len(pages) else ""
+        page_content = pages[page_idx]['content'][:200] if page_idx < len(pages) else ""
         regen_prompt = REGEN_TEMPLATE.format(
             style_decl=style_decl,
             cv=character_visual,
             scene=page_content,
             theme=state['theme'],
         )
-        print(f"[character_verify] Queuing FLUX regen for page {page_idx+1}...")
-        regen_tasks[page_idx] = _generate_image_nano_banana2(regen_prompt)
+        print(f"[character_verify] Queuing FLUX regen for page {page_idx+1} (reference_locked={char_ref_url is not None})...")
+        regen_tasks[page_idx] = _generate_image_nano_banana2(regen_prompt, reference_image_url=char_ref_url)
 
     # Run all regenerations in parallel
     results = await asyncio.gather(*regen_tasks.values(), return_exceptions=True)

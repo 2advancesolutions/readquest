@@ -112,12 +112,12 @@ export default function Leaderboard() {
       {/* Animated background */}
       <div className="lb-bg-orb lb-bg-orb-1" />
       <div className="lb-bg-orb lb-bg-orb-2" />
-      {Array.from({ length: 20 }).map((_, i) => (
+      {Array.from({ length: 35 }).map((_, i) => (
         <div key={i} className="ga-star" style={{
-          left: `${(i * 19 + 7) % 97}%`,
-          top: `${(i * 31 + 5) % 93}%`,
+          left: `${(i * 17 + 7) % 97}%`,
+          top: `${(i * 29 + 5) % 93}%`,
           width: `${(i % 3) + 1}px`, height: `${(i % 3) + 1}px`,
-          animationDelay: `${(i * 0.37) % 3}s`,
+          animationDelay: `${(i * 0.29) % 4.5}s`,
           position: 'fixed',
         }} />
       ))}
@@ -215,6 +215,15 @@ export default function Leaderboard() {
               <div className="lb-podium-block lb-podium-block-3">3</div>
             </motion.div>
           )}
+        </div>
+      )}
+
+      {/* Section divider */}
+      {!loading && !error && entries.length > 0 && (
+        <div className="lb-section-divider">
+          <div className="lb-section-divider-line" />
+          <span className="lb-section-divider-text">All Rankings</span>
+          <div className="lb-section-divider-line" />
         </div>
       )}
 

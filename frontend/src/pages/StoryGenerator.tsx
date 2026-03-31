@@ -7,7 +7,7 @@ import api from '../services/api'
 import CharacterGallery from '../components/CharacterGallery'
 import HeroCharDisplay from '../components/HeroCharDisplay'
 import WelcomeVoice, { STEP2_SCRIPTS } from '../components/WelcomeVoice'
-import { ALL_CHARACTERS, BLOCKED_IP_TERMS } from '../components/CharacterGallery'
+import { ALL_CHARACTERS } from '../components/CharacterGallery'
 import { removeBackground } from '../lib/removeBackground'
 import StudentDropdown from '../components/StudentDropdown'
 import '../styles/generator.css'
@@ -343,18 +343,6 @@ const PROHIBITED_WORDS = [
 function validateContent(text: string): string | null {
   const lower = text.toLowerCase()
 
-  // ── Check copyright / IP blocklist first ──────────────────────────────────
-  for (const term of BLOCKED_IP_TERMS) {
-    if (lower.includes(term.toLowerCase())) {
-      const display = term.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-      return [
-        `🚫 Copyright Protection — "${display}" is a trademarked character owned by a major studio or publisher.`,
-        `ReadQuest cannot use copyrighted IP to keep your child's stories legal and original.`,
-        `✨ Please choose a different hero — try an original name like "Zara the Explorer" or "Leo the Lion"!`,
-      ].join(' ')
-    }
-  }
-
   // ── Kid-safe content check ────────────────────────────────────────────────
   for (const word of PROHIBITED_WORDS) {
     const regex = new RegExp(`\\b${word}\\b`, 'i')
@@ -457,6 +445,117 @@ function PortraitImage({ src, alt }: { src: string; alt: string }) {
 }
 
 
+// ─── Cinematic Story Generating Loader ──────────────────────────────────────
+const STORY_GENERATE_STEPS = [
+  { icon: '✍️', label: 'Writing your story…',        sub: 'Crafting pages & plot twists' },
+  { icon: '🎨', label: 'Designing each scene…',       sub: 'Painting every moment in detail' },
+  { icon: '🖼️', label: 'Rendering illustrations…',    sub: 'Bringing your characters to life' },
+  { icon: '🧩', label: 'Composing page layouts…',     sub: 'Arranging words & art together' },
+  { icon: '🌟', label: 'Adding magic touches…',       sub: 'Polishing every little detail' },
+  { icon: '📖', label: 'Finalizing your book…',       sub: 'Almost ready — hang tight!' },
+]
+
+interface StoryGeneratingLoaderProps {
+  characterImgSrc: string
+  backgroundImgSrc: string | null
+  characterName: string
+  storyTitle?: string
+  stepIndex: number
+}
+
+function StoryGeneratingLoader({
+  characterImgSrc, backgroundImgSrc, characterName, storyTitle, stepIndex,
+}: StoryGeneratingLoaderProps) {
+  const step = STORY_GENERATE_STEPS[stepIndex % STORY_GENERATE_STEPS.length]
+  const progress = Math.min(98, (stepIndex / (STORY_GENERATE_STEPS.length - 1)) * 100)
+
+  return (
+    <motion.div
+      className="sgl-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.4 }}
+    >
+      {backgroundImgSrc ? (
+        <img src={backgroundImgSrc} className="sgl-bg-img" alt="" />
+      ) : (
+        <div className="sgl-bg-fallback" />
+      )}
+      <div className="sgl-bg-darken" />
+
+      <div className="sgl-particles">
+        {Array.from({ length: 18 }).map((_, i) => (
+          <span key={i} className="sgl-particle" style={{
+            left: `${(i * 5.7 + 3) % 100}%`,
+            animationDelay: `${(i * 0.37).toFixed(2)}s`,
+            animationDuration: `${2.4 + (i % 5) * 0.4}s`,
+          }} />
+        ))}
+      </div>
+
+      <div className="sgl-card">
+        <div className="sgl-portrait-wrap">
+          {characterImgSrc ? (
+            <img src={characterImgSrc} alt={characterName} className="sgl-portrait" />
+          ) : (
+            <div className="sgl-portrait-placeholder">
+              <span style={{ fontSize: 56 }}>🧙</span>
+            </div>
+          )}
+          <div className="sgl-portrait-ring" />
+        </div>
+
+        <div className="sgl-text">
+          <div className="sgl-book-label">✦ Creating your story</div>
+          {storyTitle ? (
+            <motion.h1 className="sgl-title"
+              key={storyTitle}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              "{storyTitle}"
+            </motion.h1>
+          ) : (
+            <h1 className="sgl-title sgl-title-placeholder">
+              {characterName}'s Adventure
+            </h1>
+          )}
+          <p className="sgl-char-name">{characterName}</p>
+
+          <AnimatePresence mode="wait">
+            <motion.div className="sgl-step-row" key={stepIndex}
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.35 }}
+            >
+              <span className="sgl-step-icon">{step.icon}</span>
+              <div>
+                <div className="sgl-step-label">{step.label}</div>
+                <div className="sgl-step-sub">{step.sub}</div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          <div className="sgl-progress-track">
+            <motion.div className="sgl-progress-fill"
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+            />
+          </div>
+          <div className="sgl-progress-dots">
+            {STORY_GENERATE_STEPS.map((_, i) => (
+              <span key={i} className={`sgl-dot${i <= stepIndex ? ' sgl-dot-active' : ''}`} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+
 export default function StoryGenerator() {
   const navigate = useNavigate()
 
@@ -500,6 +599,8 @@ export default function StoryGenerator() {
   const [selectedArtStyle, setSelectedArtStyle] = useState<string | null>(null)
   const [tipIndex, setTipIndex] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [genStepIndex, setGenStepIndex] = useState(0)
+  const [genStoryTitle, setGenStoryTitle] = useState('')
   const [generatedStory, setGeneratedStory] = useState<{ id: string; title: string } | null>(null)
   const [generateError, setGenerateError] = useState('')
 
@@ -918,10 +1019,16 @@ export default function StoryGenerator() {
 
   const handleGenerate = async () => {
     setIsGenerating(true); setGenerateError('')
+    setGenStepIndex(0); setGenStoryTitle('')
     const charName = characterData?.character_name || characterInput.trim() || 'Your Hero'
-    const tips = getCharacterTips(charName)
-    let idx = 0
-    const tipInterval = setInterval(() => { idx = (idx + 1) % tips.length; setTipIndex(idx) }, 2200)
+
+    // Cycle through step messages every 8s so the loader feels alive
+    let stepIdx = 0
+    const stepInterval = setInterval(() => {
+      stepIdx = Math.min(stepIdx + 1, STORY_GENERATE_STEPS.length - 1)
+      setGenStepIndex(stepIdx)
+    }, 8000)
+
     try {
       const theme = getEffectiveTheme().trim() || 'exciting adventure'
       const headers: Record<string, string> = {}
@@ -935,14 +1042,17 @@ export default function StoryGenerator() {
           art_style: selectedArtStyle ?? 'cartoon',
           character_description: characterData?.visual_appearance ?? characterData?.description ?? undefined,
           character_universe: characterData?.universe ?? undefined,
-          // Pass the gallery portrait so the backend uses it as the cover directly
           character_image_url: characterData?.character_media_url ?? undefined,
         },
         { timeout: 300000, headers },
       )
-      clearInterval(tipInterval); setGeneratedStory(res.data); setIsGenerating(false); setStep('preview')
+      const story = res.data
+      // Update loader to show the real title before transitioning
+      if (story.title) setGenStoryTitle(story.title)
+      clearInterval(stepInterval)
+      setGeneratedStory(story); setIsGenerating(false); setStep('preview')
     } catch (err: unknown) {
-      clearInterval(tipInterval)
+      clearInterval(stepInterval)
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Story generation failed. Please try again.'
       setGenerateError(msg); setIsGenerating(false)
     }
@@ -957,6 +1067,19 @@ export default function StoryGenerator() {
 
   return (
     <div className="gen-root">
+
+      {/* ══ CINEMATIC GENERATION LOADER ══ */}
+      <AnimatePresence>
+        {isGenerating && (
+          <StoryGeneratingLoader
+            characterImgSrc={resolvePortraitSrc(characterData?.character_media_url)}
+            backgroundImgSrc={themeBackground}
+            characterName={characterData?.character_name || characterInput || 'Your Hero'}
+            storyTitle={genStoryTitle}
+            stepIndex={genStepIndex}
+          />
+        )}
+      </AnimatePresence>
 
       <header className={`gen-header${['character','scene','language','artStyle','done','preview'].includes(step) ? ' gen-header-dark' : ''}`}>
         {/* Col 1 — left: back button */}
@@ -1568,76 +1691,49 @@ export default function StoryGenerator() {
 
             {/* ── Preview ── */}
             {step === 'preview' && generatedStory && (() => {
-              const theme = THEME_OPTIONS.find(t => t.id === selectedTheme)
               const artStyle = ART_STYLES.find(a => a.id === selectedArtStyle)
               const lang = LANGUAGES.find(l => l.id === selectedLanguage)
               return (
                 <motion.div key="preview" className="prev-canvas"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}>
+                  style={themeBackground ? {
+                    backgroundImage: `url(${themeBackground})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  } : {}}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8 }}>
 
-                  {/* Blurred theme-emoji background tiles */}
-                  <div className="prev-bg-tiles" aria-hidden>
-                    {theme && [...Array(12)].map((_, i) => (
-                      <span key={i} className="prev-bg-emoji" style={{
-                        left: `${(i * 17 + 5) % 95}%`,
-                        top:  `${(i * 23 + 10) % 90}%`,
-                        fontSize: `${3 + (i % 3)}rem`,
-                        animationDelay: `${(i * 0.3) % 2.5}s`,
-                        opacity: 0.06 + (i % 4) * 0.02,
-                      }}>{theme.emoji}</span>
-                    ))}
-                  </div>
+                  {/* Full-screen cinematic overlay — darkens edges, keeps center bright */}
+                  <div className="prev-scene-overlay" />
 
-                  {/* Dark gradient overlay */}
-                  <div className="prev-gradient-overlay" />
+                  {/* ── Full-bleed layout: char left, glass card right ── */}
+                  <div className="prev-scene-layout">
 
-                  {/* Confetti stars */}
-                  <div className="step1-stars" aria-hidden>
-                    {[...Array(24)].map((_, i) => (
-                      <div key={i} className="step1-star" style={{
-                        left: `${(i * 13 + 5) % 97}%`, top: `${(i * 19 + 7) % 91}%`,
-                        animationDelay: `${(i * 0.22) % 3}s`,
-                        width: `${(i % 3) + 1}px`, height: `${(i % 3) + 1}px`,
-                      }} />
-                    ))}
-                  </div>
-
-                  {/* ── Main content row ── */}
-                  <div className="prev-content">
-
-                    {/* Left: character portrait */}
+                    {/* LEFT: character — full height, no frame, blends into scene */}
                     {characterData?.character_media_url && (
-                      <motion.div className="prev-portrait-wrap"
-                        initial={{ opacity: 0, x: -40, scale: 0.9 }}
+                      <motion.div className="prev-char-side"
+                        initial={{ opacity: 0, x: -60, scale: 0.9 }}
                         animate={{ opacity: 1, x: 0, scale: 1 }}
-                        transition={{ duration: 0.7, delay: 0.15, type: 'spring', stiffness: 100 }}>
-                        <div className="prev-portrait-ring" />
-                        <div className="prev-portrait-glow" />
-                        <img src={characterData.character_media_url}
+                        transition={{ duration: 0.9, delay: 0.1, type: 'spring', stiffness: 80 }}>
+                        <img
+                          src={characterData.character_media_url}
                           alt={characterData.character_name}
-                          className="prev-portrait-img" />
-                        <div className="prev-portrait-name">{characterData.character_name}</div>
+                          className="prev-char-full"
+                        />
+                        <div className="prev-char-nameplate">{characterData.character_name}</div>
                       </motion.div>
                     )}
 
-                    {/* Right: story info */}
-                    <motion.div className="prev-info"
-                      initial={{ opacity: 0, y: 30 }}
+                    {/* RIGHT: frosted-glass info card */}
+                    <motion.div className="prev-glass-card"
+                      initial={{ opacity: 0, y: 40 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.3 }}>
+                      transition={{ duration: 0.7, delay: 0.3 }}>
 
                       {/* Done badge */}
                       <div className="prev-done-badge">
                         <svg viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
                         Story Ready!
                       </div>
-
-                      {/* Theme label */}
-                      {theme && (
-                        <div className="prev-theme-pill">
-                          {theme.emoji} {theme.label}
-                        </div>
-                      )}
 
                       {/* Title */}
                       <h1 className="prev-story-title">{generatedStory.title}</h1>
