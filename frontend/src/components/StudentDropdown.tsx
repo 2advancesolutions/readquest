@@ -1,14 +1,6 @@
 /**
  * StudentDropdown — shared pill-trigger + animated flyout used on every page
  * that needs parent→child student selection.
- *
- * Props:
- *   children      – array of Child objects
- *   selected      – currently selected child (null = All Students)
- *   onChange      – called with Child | null when selection changes
- *   allowAll      – if true (default) shows an "All Students" option at top
- *   label         – optional override for the "Story is for:" prefix label
- *   className     – extra class on the root wrapper
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -20,6 +12,7 @@ export type Child = {
   name: string
   grade_level: number
   school?: string
+  avatar_url?: string
 }
 
 export const CHILD_COLORS = [
@@ -79,9 +72,14 @@ export default function StudentDropdown({
           <>
             <span
               className="sd-avatar"
-              style={{ background: CHILD_COLORS[activeIdx % CHILD_COLORS.length] }}
+              style={selected.avatar_url
+                ? { background: 'transparent', padding: 0, overflow: 'hidden' }
+                : { background: CHILD_COLORS[activeIdx % CHILD_COLORS.length] }}
             >
-              {selected.name.charAt(0)}
+              {selected.avatar_url
+                ? <img src={selected.avatar_url} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+                : selected.name.charAt(0)
+              }
             </span>
             <span className="sd-trigger-name">{selected.name}</span>
             <span className="sd-trigger-grade">Grade {selected.grade_level}</span>
@@ -137,9 +135,14 @@ export default function StudentDropdown({
               >
                 <span
                   className="sd-avatar"
-                  style={{ background: CHILD_COLORS[i % CHILD_COLORS.length] }}
+                  style={child.avatar_url
+                    ? { background: 'transparent', padding: 0, overflow: 'hidden' }
+                    : { background: CHILD_COLORS[i % CHILD_COLORS.length] }}
                 >
-                  {child.name.charAt(0)}
+                  {child.avatar_url
+                    ? <img src={child.avatar_url} alt={child.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+                    : child.name.charAt(0)
+                  }
                 </span>
                 <span className="sd-item-name">{child.name}</span>
                 <span className="sd-item-grade">Grade {child.grade_level}</span>

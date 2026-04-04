@@ -290,15 +290,15 @@ html { scroll-behavior: smooth; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 120px max(24px, calc((100vw - 1200px) / 2)) 80px;
+  padding: 120px max(24px, calc((100vw - 1440px) / 2)) 80px;
 }
 .lp-hero-inner {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 80px;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 56px;
   align-items: center;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1440px;
 }
 .lp-hero-copy {
   display: flex;
@@ -363,6 +363,297 @@ html { scroll-behavior: smooth; }
   justify-content: center;
   align-items: center;
 }
+
+/* ══════════════ LIVE BOOK SHOWCASE ═══════════════════════════════════════ */
+.lp-showcase-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  max-width: 520px;
+}
+
+/* Small book grid — top-left, 2×3 */
+.lp-showcase-grid {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  align-self: start;
+}
+.lp-showcase-card {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.lp-showcase-card-inner {
+  position: relative;
+  aspect-ratio: 1/1;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 4px 4px 14px rgba(0,0,0,0.55), -2px 0 6px rgba(0,0,0,0.3);
+  transition: box-shadow 0.3s;
+}
+.lp-showcase-card.active .lp-showcase-card-inner {
+  box-shadow: 0 0 0 2px #7c3aed, 4px 4px 16px rgba(124,58,237,0.4);
+}
+.lp-showcase-spine {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 7px;
+  background: linear-gradient(90deg, #1a0848, #2d1468 70%, #4a1a96);
+  z-index: 1;
+}
+.lp-showcase-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2px 5px 5px 2px;
+}
+.lp-showcase-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #231a3c, #392f52);
+  font-size: 1.4rem;
+}
+.lp-showcase-pages {
+  position: absolute;
+  right: -4px; top: 3px; bottom: 3px;
+  width: 5px;
+  background: linear-gradient(90deg, #c8b8f0, #e9ddff);
+  border-radius: 0 2px 2px 0;
+  box-shadow: 1px 0 3px rgba(0,0,0,0.25);
+}
+.lp-showcase-active-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 2px rgba(124,58,237,0.7);
+  pointer-events: none;
+}
+.lp-showcase-card-name {
+  font-size: 0.67rem;
+  font-weight: 800;
+  color: #e9ddff;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lp-showcase-card-by {
+  font-size: 0.6rem;
+  color: rgba(204,195,216,0.5);
+}
+
+/* Large detail panel — full width, centered */
+.lp-showcase-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+}
+.lp-showcase-detail-full {
+  width: 100%;
+  align-items: center;
+}
+.lp-showcase-big-book {
+  position: relative;
+  width: 260px;
+  aspect-ratio: 3/4;
+  transition: transform 0.4s;
+  filter: drop-shadow(0 20px 40px rgba(0,0,0,0.75)) drop-shadow(0 0 50px rgba(124,58,237,0.5));
+}
+/* XL variant — fills the hero right column */
+.lp-showcase-big-book-xl {
+  width: min(340px, 60%);
+}
+.lp-showcase-big-book:hover {
+  transform: perspective(900px) rotateY(-8deg) rotateX(2deg) scale(1.06);
+}
+.lp-showcase-big-glow {
+  position: absolute;
+  inset: -40px;
+  background: radial-gradient(circle, rgba(124,58,237,0.38), transparent 65%);
+  filter: blur(22px);
+  pointer-events: none;
+}
+.lp-showcase-big-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.lp-showcase-big-spine {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 14px;
+  background: linear-gradient(90deg, #1a0848, #2d1468 60%, #4a1a96);
+  border-radius: 4px 0 0 4px;
+  box-shadow: inset -4px 0 8px rgba(0,0,0,0.5);
+  z-index: 1;
+}
+.lp-showcase-big-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 4px 10px 10px 4px;
+  display: block;
+}
+.lp-showcase-big-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #231a3c, #392f52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.4rem;
+  border-radius: 4px 10px 10px 4px;
+}
+.lp-showcase-big-pages {
+  position: absolute;
+  right: -7px; top: 5px; bottom: 5px;
+  width: 9px;
+  background: linear-gradient(90deg, #c8b8f0, #e9ddff 60%, #f5f0ff);
+  border-radius: 0 4px 4px 0;
+  box-shadow: 2px 0 6px rgba(0,0,0,0.3);
+}
+.lp-showcase-info {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lp-showcase-info-expanded {
+  align-items: center;
+  gap: 8px;
+}
+.lp-showcase-info-title {
+  font-size: 0.88rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.lp-showcase-info-title-lg {
+  font-size: 1.15rem;
+  max-width: 340px;
+}
+.lp-showcase-info-sub {
+  font-size: 0.78rem;
+  color: rgba(204,195,216,0.6);
+  font-weight: 500;
+}
+.lp-showcase-info-badge {
+  display: inline-flex;
+  align-self: center;
+  background: rgba(35,26,60,0.8);
+  border: 1px solid rgba(74,68,85,0.4);
+  color: #d2bbff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 9999px;
+}
+
+/* Vote badge on grid cards */
+/* Views badge on showcase cards — gold sparkle pill */
+.lp-view-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  background: linear-gradient(135deg, rgba(255,219,60,0.18), rgba(255,219,60,0.08));
+  border: 1px solid rgba(255,219,60,0.3);
+  border-radius: 9999px;
+  padding: 2px 8px 2px 6px;
+}
+.lp-view-star { font-size: 0.65rem; }
+.lp-view-count {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: rgba(255,219,60,0.85);
+  letter-spacing: 0.02em;
+}
+
+/* Views inline in detail panel */
+.lp-detail-views-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, rgba(255,219,60,0.12), rgba(255,219,60,0.05));
+  border: 1px solid rgba(255,219,60,0.25);
+  border-radius: 9999px;
+  margin-top: 4px;
+}
+.lp-detail-views-star { font-size: 0.78rem; }
+.lp-view-count {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: rgba(255,219,60,0.85);
+}
+
+/* Follow row in detail panel */
+.lp-follow-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.lp-follow-btn {
+  background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(124,58,237,0.1));
+  border: 1.5px solid rgba(124,58,237,0.45);
+  color: #c4b5fd;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 5px 13px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s;
+}
+.lp-follow-btn.following {
+  background: rgba(16,185,129,0.15);
+  border-color: rgba(16,185,129,0.5);
+  color: #34d399;
+}
+.lp-follow-btn:hover:not(:disabled) { transform: scale(1.04); }
+.lp-follow-btn:disabled { opacity: 0.6; cursor: default; }
+.lp-follower-count {
+  font-size: 0.65rem;
+  color: rgba(204,195,216,0.4);
+  font-weight: 600;
+}
+
+/* Browse all books button */
+.lp-showcase-more-btn {
+  width: 100%;
+  background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(147,51,234,0.15));
+  border: 1.5px solid rgba(124,58,237,0.4);
+  color: #d2bbff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 9px 20px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  letter-spacing: 0.01em;
+}
+.lp-showcase-more-btn:hover {
+  border-color: rgba(124,58,237,0.75);
+  background: rgba(124,58,237,0.25);
+}
+
 .lp-book-card {
   position: relative;
   width: 440px;
@@ -1608,6 +1899,14 @@ html { scroll-behavior: smooth; }
   border: 1px solid var(--nb-outline);
 }
 
+/* ── Pricing Section (embedded SubscriptionPlans) ── */
+.lp-pricing-section {
+  position: relative;
+  z-index: 1;
+  padding: 60px max(24px, calc((100vw - 1200px) / 2)) 80px;
+  background: linear-gradient(180deg, var(--nb-bg) 0%, var(--nb-bg-low) 50%, var(--nb-bg) 100%);
+}
+
 /* ── CTA Section ──────────────────────────────────────────────────────── */
 .lp-cta-section {
   position: relative;
@@ -1849,7 +2148,17 @@ html { scroll-behavior: smooth; }
   .lp-hero-visual { display: none; }
   .lp-features-grid { grid-template-columns: 1fr; }
   .lp-nav-links { display: none; }
+
+  /* Hide desktop action buttons but show the mobile sign-in */
   .lp-nav-actions { display: none; }
+  .lp-nav-signin-mobile {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    margin-right: 8px;
+  }
+
   .lp-hamburger { display: flex; }
   .lp-cta-content { padding: 40px 28px; }
   .lp-footer-inner { grid-template-columns: 1fr; gap: 32px; padding: 48px 24px 40px; }
@@ -1857,6 +2166,59 @@ html { scroll-behavior: smooth; }
   .lp-footer-bottom-badges { justify-content: center; }
   .lp-step-timeline { display: none; }
   .lp-prev-char-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Mobile sign-in button — hidden on desktop, shown on mobile */
+.lp-nav-signin-mobile {
+  display: none;
+}
+.lp-mobile-signin-btn {
+  background: rgba(124,58,237,0.15);
+  border: 1.5px solid rgba(124,58,237,0.5);
+  color: #d2bbff;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.lp-mobile-signin-btn:hover {
+  background: rgba(124,58,237,0.3);
+  border-color: rgba(124,58,237,0.8);
+  color: #fff;
+}
+
+/* Sign In entry inside the hamburger menu */
+.lp-mobile-menu-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(74,68,85,0.3);
+  margin-top: 4px;
+}
+.lp-mobile-menu-signin-btn {
+  background: rgba(124,58,237,0.15);
+  border: 1.5px solid rgba(124,58,237,0.5);
+  color: #d2bbff;
+  padding: 13px 20px;
+  border-radius: 9999px;
+  font-family: var(--font);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: block;
+  width: 100%;
+}
+.lp-mobile-menu-signin-btn:hover {
+  background: rgba(124,58,237,0.3);
+  color: #fff;
 }
 
 @media (max-width: 480px) {

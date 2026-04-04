@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.routers import students, stories, quizzes, rewards, tts, parents
 from app.routers import fluency, vocabulary, assignments, quest, spelling, exams
-from app.routers import movie_studio, stt, admin
+from app.routers import movie_studio, stt, admin, game_progress, roadmap
 import app.database as db
 
 app = FastAPI(
@@ -25,6 +25,9 @@ _ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:5173",
+    # Expo web dev server
+    "http://localhost:8081",
+    "http://localhost:19006",
     # S3 static website fallback
     "http://readquest-frontend-2532.s3-website-us-east-1.amazonaws.com",
 ]
@@ -34,8 +37,8 @@ if _FRONTEND_URL:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
-    # Also match any CloudFront or App Runner subdomain dynamically
-    allow_origin_regex=r"https://.*\.(cloudfront\.net|awsapprunner\.com)$",
+    # Match CloudFront/App Runner subdomains AND any local network IP (for Expo on device)
+    allow_origin_regex=r"(https://.*\.(cloudfront\.net|awsapprunner\.com)$|http://192\.168\.\d+\.\d+(:\d+)?$|http://10\.\d+\.\d+\.\d+(:\d+)?$)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,3 +84,5 @@ app.include_router(exams.router, prefix="/api/exams", tags=["exams"])
 app.include_router(movie_studio.router, prefix="/api/movie-studio", tags=["movie-studio"])
 app.include_router(stt.router, prefix="/api/stt", tags=["stt"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(game_progress.router, prefix="/api", tags=["game-progress"])
+app.include_router(roadmap.router, prefix="/api", tags=["roadmap"])

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useInView, AnimatePresence } from 'framer-motion'
 import '../styles/landing.css'
+import { useFollow } from '../hooks/useFollow'
+import SubscriptionPlans from '../components/SubscriptionPlans'
 
 // ── Floating particles — pure CSS, zero JS animation cost ─────────────────
 function Particles({ count = 8 }: { count?: number }) {
@@ -104,7 +106,7 @@ const FEATURES = [
     preview: () => (
       <div className="fp-story">
         <div className="fp-story-page">
-          <img className="fp-story-char" src="/char_icons/nova.webp" alt="Nova Scout" loading="lazy" />
+          <img className="fp-story-char" src="/char_icons/nova_pulse.png" alt="Nova Scout" loading="lazy" />
           <div className="fp-story-lines">
             {['Nova soared across', 'the midnight sky,', 'searching for home…'].map((l, i) => (
               <div key={i} className="fp-story-line fp-story-line-anim" style={{ animationDelay: `${i * 0.5}s` }}>{l}</div>
@@ -212,18 +214,18 @@ const FEATURES = [
 
 // Mini-preview character list — all original AI-generated artworks, zero copyrighted IP
 const PREVIEW_CHARS = [
-  { name: 'Sparkle',      img: '/char_icons/unicorn.webp'      },
-  { name: 'Leo the Lion', img: '/char_icons/lion.webp'         },
-  { name: 'Princess Kira',img: '/char_icons/knight_girl.webp'  },
-  { name: 'Nova Pulse',   img: '/char_icons/nova_pulse.webp'   },
-  { name: 'Marina',       img: '/char_icons/mermaid.webp'      },
-  { name: 'Jade Dragon',  img: '/char_icons/dragon.webp'       },
-  { name: 'Merlin',       img: '/char_icons/merlin.webp'       },
-  { name: 'Coral Diver',  img: '/char_icons/coral_diver.webp'  },
-  { name: 'Sovereign',    img: '/char_icons/sovereign.webp'    },
-  { name: 'Cipher',       img: '/char_icons/cipher.webp'       },
-  { name: 'Shadow Fox',   img: '/char_icons/fox.webp'          },
-  { name: 'Zap the Robot',img: '/char_icons/robot.webp'        },
+  { name: 'Sparkle',       img: '/char_icons/princess_pearl.png'  },
+  { name: 'Leo the Lion',  img: '/char_icons/lion.webp'           },
+  { name: 'Princess Kira', img: '/char_icons/knight_girl.png'     },
+  { name: 'Nova Pulse',    img: '/char_icons/nova_pulse.png'      },
+  { name: 'Marina',        img: '/char_icons/princess_coral.png'  },
+  { name: 'Jade Dragon',   img: '/char_icons/princess_jade.png'   },
+  { name: 'Merlin',        img: '/char_icons/merlin.png'          },
+  { name: 'Coral Diver',   img: '/char_icons/princess_aurora.png' },
+  { name: 'Sovereign',     img: '/char_icons/sovereign.png'       },
+  { name: 'Cipher',        img: '/char_icons/cipher.png'          },
+  { name: 'Shadow Fox',    img: '/char_icons/fox.png'             },
+  { name: 'Zap the Robot', img: '/char_icons/hero_gearbolt.png'   },
 ]
 
 const PREVIEW_THEMES = [
@@ -260,6 +262,152 @@ function AnimatedStat({ value, label, icon, delay }: { value: string; label: str
       <span className="lp-stat-icon">{icon}</span>
       <span className="lp-stat-value">{value}</span>
       <span className="lp-stat-label">{label}</span>
+    </motion.div>
+  )
+}
+
+// ── Live Book Showcase — fetches real books from /api/stories/public ──────────
+interface ShowcaseBook {
+  id: string
+  title: string
+  theme: string
+  grade_level: number
+  cover_media_url: string | null
+  art_style: string
+  created_at: string
+  creator_id: string | null
+  creator_name: string
+  view_count: number
+  like_count: number
+}
+
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
+
+
+/** Follow row for the detail sidebar */
+function FollowRow({ creatorId, creatorName }: { creatorId: string; creatorName: string }) {
+  const { following, followerCount, toggle, loading } = useFollow(creatorId)
+  return (
+    <div className="lp-follow-row">
+      <button
+        className={`lp-follow-btn${following ? ' following' : ''}`}
+        onClick={toggle}
+        disabled={loading}
+      >
+        {following ? '✓ Following' : `Follow ${creatorName}`}
+      </button>
+      <span className="lp-follower-count">{followerCount} follower{followerCount !== 1 ? 's' : ''}</span>
+    </div>
+  )
+}
+
+function LiveBookShowcase() {
+  const navigate = useNavigate()
+  const [displayBooks, setDisplayBooks] = useState<ShowcaseBook[]>([])
+  const [selected, setSelected] = useState<ShowcaseBook | null>(null)
+  const rotateTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Fetch books once
+  useEffect(() => {
+    fetch('/api/stories/showcase?limit=50')
+      .then(r => r.json())
+      .then((data: { books: ShowcaseBook[] }) => {
+        if (!data.books?.length) return
+        const shuffled = [...data.books].sort(() => Math.random() - 0.5)
+        setDisplayBooks(shuffled)
+        setSelected(shuffled[0])
+      })
+      .catch(() => {})
+  }, [])
+
+  // Auto-rotate featured book every 5 seconds
+  useEffect(() => {
+    if (displayBooks.length === 0) return
+    if (rotateTimer.current) clearInterval(rotateTimer.current)
+    rotateTimer.current = setInterval(() => {
+      setDisplayBooks(prev => {
+        const next = [...prev.slice(1), prev[0]]
+        setSelected(next[0])
+        return next
+      })
+    }, 5000)
+    return () => { if (rotateTimer.current) clearInterval(rotateTimer.current) }
+  }, [displayBooks.length])
+
+  return (
+    <motion.div
+      className="lp-showcase-wrap"
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.9, delay: 0.2 }}
+    >
+      {/* Featured book — centered, large, full width */}
+      <AnimatePresence mode="wait">
+        {selected && (
+          <motion.div
+            key={selected.id}
+            className="lp-showcase-detail lp-showcase-detail-full"
+            initial={{ opacity: 0, scale: 0.88 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92 }}
+            transition={{ duration: 0.45 }}
+          >
+            {/* Big 3D book */}
+            <div
+              className="lp-showcase-big-book lp-showcase-big-book-xl"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate(`/books?id=${selected.id}`)}
+              title="Click to read"
+            >
+              <div className="lp-showcase-big-glow" />
+              <div className="lp-showcase-big-inner">
+                <div className="lp-showcase-big-spine" />
+                {selected.cover_media_url ? (
+                  <img src={selected.cover_media_url} alt={selected.title} className="lp-showcase-big-cover" />
+                ) : (
+                  <div className="lp-showcase-big-placeholder">📖</div>
+                )}
+                <div className="lp-showcase-big-pages" />
+              </div>
+            </div>
+
+            <motion.div
+              className="lp-showcase-info lp-showcase-info-expanded"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              <div className="lp-showcase-info-title lp-showcase-info-title-lg">{selected.title}</div>
+              <div className="lp-showcase-info-sub">by {selected.creator_name} · Grade {selected.grade_level}</div>
+              <div className="lp-showcase-info-badge">🎨 {selected.art_style}</div>
+              {selected.creator_id && (
+                <FollowRow creatorId={selected.creator_id} creatorName={selected.creator_name} />
+              )}
+            </motion.div>
+
+            {['✦', '★', '✦'].map((s, i) => (
+              <motion.span
+                key={i}
+                className={`lp-sparkle lp-sp-${i + 1}`}
+                animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity, delay: i * 0.6 }}
+              >{s}</motion.span>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Browse button */}
+      <motion.button
+        className="lp-showcase-more-btn"
+        onClick={() => navigate('/books')}
+        animate={{ y: [-2, 2, -2] }}
+        transition={{ duration: 3, repeat: Infinity }}
+        whileHover={{ scale: 1.05 }}
+      >
+        📚 Browse Kids Book Creations →
+      </motion.button>
     </motion.div>
   )
 }
@@ -314,11 +462,16 @@ export default function LandingPage() {
           <div className="lp-nav-links">
             <a href="#features" className="lp-nav-link">Features</a>
             <a href="#how" className="lp-nav-link">How It Works</a>
-            <a href="#cta" className="lp-nav-link">Pricing</a>
+            <a href="#pricing" className="lp-nav-link">Pricing</a>
+            <a href="/books" className="lp-nav-link" style={{ color: '#d2bbff' }}>📚 Book Library</a>
           </div>
           <div className="lp-nav-actions">
             <button className="lp-btn-ghost" onClick={() => navigate('/login')}>Sign In</button>
             <button className="lp-btn-primary" onClick={() => navigate('/signup')}>Start Free →</button>
+          </div>
+          {/* Sign In always visible on mobile, beside hamburger */}
+          <div className="lp-nav-signin-mobile">
+            <button className="lp-mobile-signin-btn" onClick={() => navigate('/login')}>Sign In</button>
           </div>
           <button className="lp-hamburger" onClick={() => setMobileMenuOpen(o => !o)}>
             <span /><span /><span />
@@ -335,6 +488,10 @@ export default function LandingPage() {
               <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
               <a href="#how" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
               <button className="lp-btn-primary w-full" onClick={() => navigate('/signup')}>Start Free →</button>
+              {/* Sign In section in mobile menu */}
+              <div className="lp-mobile-menu-signin">
+                <button className="lp-mobile-menu-signin-btn" onClick={() => { setMobileMenuOpen(false); navigate('/login'); }}>Sign In →</button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -407,80 +564,8 @@ export default function LandingPage() {
             </motion.div>
           </div>
 
-          {/* Right visual */}
-          <motion.div
-            className="lp-hero-visual"
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.9, delay: 0.2 }}
-          >
-            <div className="lp-book-card">
-              <div className="lp-book-glow" />
-              <div className="lp-book-inner">
-                <div className="lp-book-cover">
-                  <div className="lp-book-carousel">
-                    {[
-                      { isbn: '0399226907', title: 'Very Hungry Caterpillar' },
-                      { isbn: '0064430170', title: 'Goodnight Moon' },
-                      { isbn: '0064431789', title: 'Where the Wild Things Are' },
-                      { isbn: '0395389496', title: 'The Polar Express' },
-                      { isbn: '0064400557', title: "Charlotte's Web" },
-                      { isbn: '0142410381', title: 'James and the Giant Peach' },
-                      { isbn: '0064440206', title: 'Frog and Toad' },
-                      { isbn: '0440412072', title: 'The Giver' },
-                    ].map((book, i) => (
-                      <motion.img
-                        key={book.isbn}
-                        src={`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`}
-                        alt={book.title}
-                        loading="lazy"
-                        className="lp-carousel-img"
-                        initial={{ opacity: 0 }}
-                        animate={{
-                          opacity: [0, 1, 1, 0],
-                          scale: [0.94, 1, 1, 0.97],
-                        }}
-                        transition={{
-                          duration: 3,
-                          delay: i * 2.5,
-                          repeat: Infinity,
-                          repeatDelay: (8 - 1) * 2.5 - 3,
-                          ease: 'easeInOut',
-                        }}
-                      />
-                    ))}
-                    <div className="lp-carousel-badge">
-                      <span>⭐ 4.9</span>
-                      <span className="lp-carousel-count">50K+ books</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="lp-book-spine" />
-                <div className="lp-book-pages">
-                  <div className="lp-book-page-line" />
-                  <div className="lp-book-page-line lp-line-2" />
-                  <div className="lp-book-page-line lp-line-3" />
-                </div>
-              </div>
-              {/* Floating character chips */}
-              <motion.div className="lp-float-chip lp-chip-1" animate={{ y: [-4, 4, -4] }} transition={{ duration: 2.5, repeat: Infinity }}>
-                🦁 Leo the Lion
-              </motion.div>
-              <motion.div className="lp-float-chip lp-chip-2" animate={{ y: [4, -4, 4] }} transition={{ duration: 3, repeat: Infinity }}>
-                🚀 Nova Scout
-              </motion.div>
-              <motion.div className="lp-float-chip lp-chip-3" animate={{ y: [-6, 6, -6] }} transition={{ duration: 3.5, repeat: Infinity }}>
-                🐉 Jade Dragon
-              </motion.div>
-              {/* Sparkles */}
-              {['✦', '✦', '★', '✦'].map((s, i) => (
-                <motion.span key={i} className={`lp-sparkle lp-sp-${i + 1}`}
-                  animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 }}
-                >{s}</motion.span>
-              ))}
-            </div>
-          </motion.div>
+          {/* Right visual — Live Book Showcase */}
+          <LiveBookShowcase />
         </div>
 
         {/* Scroll indicator */}
@@ -626,7 +711,7 @@ export default function LandingPage() {
                     <div className="lp-reader-img-col">
                       <div className="lp-reader-scene-img">
                         <img
-                          src="/char_icons/nova.webp"
+                          src="/char_icons/nova_pulse.png"
                           alt="Nova Scout"
                           className="lp-reader-char-img"
                           loading="lazy"
@@ -927,6 +1012,11 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ════════════════ PRICING / SUBSCRIPTIONS ════════════════ */}
+      <section id="pricing" className="lp-section lp-pricing-section">
+        <SubscriptionPlans />
+      </section>
+
       {/* ════════════════ CTA BANNER ════════════════ */}
       <section id="cta" className="lp-cta-section">
         <div className="lp-cta-inner">
@@ -1006,6 +1096,7 @@ export default function LandingPage() {
               { label: '🧠 Adaptive Exams', href: '#' },
               { label: '🎮 Educational Games', href: '#' },
               { label: '🏆 Leaderboard', href: '#' },
+              { label: '💎 Subscriptions', href: '/subscriptions' },
             ].map(l => <a key={l.label} href={l.href}>{l.label}</a>)}
           </div>
 

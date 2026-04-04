@@ -444,3 +444,95 @@
     padding-right: 16px;
   }
 }
+
+/* ── Delete Button ─────────────────────────────────────────────── */
+.adm-delete-btn {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #f87171;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  white-space: nowrap;
+}
+.adm-delete-btn:hover {
+  background: rgba(239,68,68,0.18);
+  border-color: rgba(239,68,68,0.55);
+  transform: translateY(-1px);
+}
+
+/* ── Delete Confirmation Modal ─────────────────────────────────── */
+.adm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,4,28,0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.adm-modal {
+  background: linear-gradient(145deg, #1c1035, #231845);
+  border: 1px solid rgba(124,58,237,0.35);
+  border-radius: 20px;
+  padding: 36px 32px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 40px rgba(124,58,237,0.15);
+}
+.adm-modal-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.adm-modal-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 12px;
+  letter-spacing: -0.02em;
+}
+.adm-modal-msg {
+  font-size: 0.9rem;
+  color: rgba(204,195,216,0.7);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+.adm-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.adm-modal-cancel {
+  background: rgba(35,26,60,0.8);
+  border: 1.5px solid rgba(74,68,85,0.5);
+  color: rgba(204,195,216,0.75);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 10px 24px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.adm-modal-cancel:hover { border-color: rgba(124,58,237,0.5); background: rgba(124,58,237,0.08); }
+.adm-modal-cancel:disabled { opacity: 0.5; cursor: default; }
+.adm-modal-confirm {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: none;
+  color: #fff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 800;
+  padding: 10px 24px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+.adm-modal-confirm:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(239,68,68,0.35);
+}
+.adm-modal-confirm:disabled { opacity: 0.6; cursor: default; }

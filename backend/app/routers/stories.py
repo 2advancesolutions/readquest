@@ -109,12 +109,12 @@ class GenerateRequest(BaseModel):
     character_name: str
     language: str = "english"
     art_style: str = "cartoon"
-    character_description: Optional[str] = None   # e.g. "blonde braided hair, ice-blue dress"
-    character_universe: Optional[str] = None       # e.g. "Frozen (Disney)"
-    character_image_url: Optional[str] = None      # gallery portrait URL — use as cover directly
-    # Phase 1 AI Tutor additions
-    sel_theme: Optional[str] = None       # e.g. 'bullying', 'empathy', 'kindness'
-    story_mode: str = "free_play"         # 'free_play' | 'quest'
+    character_description: Optional[str] = None
+    character_universe: Optional[str] = None
+    character_image_url: Optional[str] = None
+    sel_theme: Optional[str] = None
+    story_mode: str = "free_play"
+    is_public: bool = False   # if True, show in public book gallery
 
 
 
@@ -348,6 +348,8 @@ async def generate_story(
             cover_media_url=story_data.get("cover_image_url"),
             is_sel_story=bool(req.sel_theme),
             story_mode=req.story_mode,
+            art_style=req.art_style or "cartoon",
+            is_public=bool(req.is_public),
         )
         db.add(story)
         await db.flush()
@@ -466,6 +468,435 @@ async def generate_story(
         "quiz_questions": [{"id": q.id, "story_page_id": q.story_page_id, "question": q.question, "choices": q.choices, "correct_answer": q.correct_answer, "explanation": q.explanation} for q in db_quiz],
         "created_at": str(__import__("datetime").datetime.utcnow()),
     }
+
+
+# ── Landing Page Showcase — returns random books with covers, NO is_public filter ──
+@router.get("/showcase")
+async def showcase_books(limit: int = 50, db: AsyncSession = Depends(get_session)):
+    """Random sample of books for the landing page teaser — no auth, no is_public filter."""
+    from app.models.student import Student as StudentModel
+    from sqlalchemy import func
+    query = (
+        select(
+            Story.id, Story.title, Story.theme, Story.grade_level,
+            Story.cover_media_url, Story.art_style, Story.created_at,
+            Story.like_count, Story.view_count,
+            StudentModel.id.label("creator_id"),
+            StudentModel.name.label("creator_name"),
+        )
+        .outerjoin(StudentModel, Story.student_id == StudentModel.id)
+        .where(Story.cover_media_url.isnot(None))
+        .order_by(func.random())
+        .limit(min(limit, 100))
+    )
+    rows = (await db.execute(query)).all()
+    return {
+        "books": [
+            {
+                "id": str(r.id),
+                "title": r.title,
+                "theme": r.theme or "",
+                "grade_level": r.grade_level,
+                "cover_media_url": r.cover_media_url,
+                "art_style": r.art_style or "cartoon",
+                "created_at": str(r.created_at) if r.created_at else "",
+                "creator_id": str(r.creator_id) if r.creator_id else None,
+                "creator_name": r.creator_name or "ReadQuest Reader",
+                "like_count": r.like_count or 0,
+                "view_count": r.view_count or 0,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
+
+
+# ── Public Books Endpoint (no auth required) — placed BEFORE /{story_id} ──
+@router.get("/public")
+async def list_public_books(
+    search: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_session),
+):
+    """Return all stories publicly — no auth needed. Supports search and type filter."""
+    from app.models.student import Student as StudentModel
+    from sqlalchemy import func
+
+    # Base query: stories joined with students for creator name
+    query = (
+        select(
+            Story.id,
+            Story.title,
+            Story.theme,
+            Story.grade_level,
+            Story.cover_media_url,
+            Story.art_style,
+            Story.created_at,
+            Story.vote_count,
+            Story.view_count,
+            Story.like_count,
+            StudentModel.id.label("creator_id"),
+            StudentModel.name.label("creator_name"),
+        )
+        .outerjoin(StudentModel, Story.student_id == StudentModel.id)
+    )
+
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        query = query.where(
+            func.lower(Story.title).like(pattern)
+            | func.lower(Story.theme).like(pattern)
+        )
+
+    if type and type.strip() and type.strip().lower() != "all":
+        query = query.where(func.lower(Story.art_style) == type.strip().lower())
+
+    query = query.where(Story.cover_media_url.isnot(None))
+    query = query.where(Story.is_public == True)  # only show public books
+    query = query.order_by(Story.created_at.desc())
+    query = query.limit(min(limit, 100)).offset(offset)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    count_query = select(func.count(Story.id)).where(
+        Story.cover_media_url.isnot(None),
+        Story.is_public == True,
+    )
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        count_query = count_query.where(
+            func.lower(Story.title).like(pattern)
+            | func.lower(Story.theme).like(pattern)
+        )
+    if type and type.strip() and type.strip().lower() != "all":
+        count_query = count_query.where(func.lower(Story.art_style) == type.strip().lower())
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    return {
+        "books": [
+            {
+                "id": str(r.id),
+                "title": r.title,
+                "theme": r.theme or "",
+                "grade_level": r.grade_level,
+                "cover_media_url": r.cover_media_url,
+                "art_style": r.art_style or "cartoon",
+                "created_at": str(r.created_at) if r.created_at else "",
+                "creator_id": str(r.creator_id) if r.creator_id else None,
+                "creator_name": r.creator_name or "ReadQuest Reader",
+                "vote_count": r.vote_count or 0,
+                "view_count": r.view_count or 0,
+                "like_count": r.like_count or 0,
+            }
+            for r in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+# ── Public Like Endpoint (one-way, no unlike) ────────────────────────────────
+class LikeRequest(BaseModel):
+    session_key: str
+    story_id: str
+
+
+@router.post("/public/like")
+async def like_story(req: LikeRequest, db: AsyncSession = Depends(get_session)):
+    """Like a story once per session — idempotent, never decrements."""
+    from sqlalchemy import text
+    # Insert ignore if already liked
+    await db.execute(
+        text("INSERT INTO story_likes (session_key, story_id) VALUES (:sk, CAST(:sid AS uuid)) ON CONFLICT DO NOTHING")
+        .bindparams(sk=req.session_key, sid=req.story_id)
+    )
+    # Recalculate like_count from source of truth
+    await db.execute(
+        text("UPDATE stories SET like_count = (SELECT COUNT(*) FROM story_likes WHERE story_id = CAST(:sid AS uuid)) WHERE id = CAST(:sid AS uuid)")
+        .bindparams(sid=req.story_id)
+    )
+    await db.commit()
+
+    count_row = (await db.execute(
+        text("SELECT like_count FROM stories WHERE id = CAST(:sid AS uuid)").bindparams(sid=req.story_id)
+    )).fetchone()
+    return {"liked": True, "like_count": count_row[0] if count_row else 0}
+
+
+@router.get("/public/like/{story_id}")
+async def get_like_status(story_id: str, session_key: str = "", db: AsyncSession = Depends(get_session)):
+    """Get like count + whether this session has already liked."""
+    from sqlalchemy import text
+    count_row = (await db.execute(
+        text("SELECT like_count FROM stories WHERE id = CAST(:sid AS uuid)").bindparams(sid=story_id)
+    )).fetchone()
+    like_count = count_row[0] if count_row else 0
+
+    already_liked = False
+    if session_key:
+        row = (await db.execute(
+            text("SELECT id FROM story_likes WHERE session_key = :sk AND story_id = CAST(:sid AS uuid)")
+            .bindparams(sk=session_key, sid=story_id)
+        )).fetchone()
+        already_liked = row is not None
+
+    return {"already_liked": already_liked, "like_count": like_count}
+
+
+@router.get("/public/likes/total")
+async def get_total_likes_for_student(student_id: str, db: AsyncSession = Depends(get_session)):
+    """Total likes across all stories by a student (for library badge)."""
+    from sqlalchemy import text
+    row = (await db.execute(
+        text("SELECT COALESCE(SUM(like_count), 0) FROM stories WHERE student_id = CAST(:sid AS uuid)")
+        .bindparams(sid=student_id)
+    )).fetchone()
+    return {"total_likes": int(row[0]) if row else 0}
+
+
+# ── Public View Increment Endpoint ──────────────────────────────────────────
+@router.post("/public/view/{story_id}")
+async def increment_view(story_id: str, db: AsyncSession = Depends(get_session)):
+    """Increment view_count on a story. Fire-and-forget from the client."""
+    from sqlalchemy import text
+    await db.execute(
+        text("UPDATE stories SET view_count = view_count + 1 WHERE id = :sid")
+        .bindparams(sid=story_id)
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+# ── Save-to-Library Endpoints ────────────────────────────────────────────────
+class SaveRequest(BaseModel):
+    student_id: str
+    story_id: str
+
+
+@router.post("/public/save")
+async def save_story(req: SaveRequest, db: AsyncSession = Depends(get_session)):
+    """Add a community book to a student's library (idempotent)."""
+    from sqlalchemy import text
+    await db.execute(
+        text("INSERT INTO saved_stories (student_id, story_id) VALUES (CAST(:sid AS uuid), CAST(:stid AS uuid)) ON CONFLICT DO NOTHING")
+        .bindparams(sid=req.student_id, stid=req.story_id)
+    )
+    await db.commit()
+    return {"saved": True}
+
+
+@router.delete("/public/save")
+async def unsave_story(req: SaveRequest, db: AsyncSession = Depends(get_session)):
+    """Remove a community book from a student's library."""
+    from sqlalchemy import text
+    await db.execute(
+        text("DELETE FROM saved_stories WHERE student_id = CAST(:sid AS uuid) AND story_id = CAST(:stid AS uuid)")
+        .bindparams(sid=req.student_id, stid=req.story_id)
+    )
+    await db.commit()
+    return {"saved": False}
+
+
+@router.get("/public/save/{story_id}")
+async def get_save_status(story_id: str, student_id: str, db: AsyncSession = Depends(get_session)):
+    """Check if a specific story is saved by this student."""
+    from sqlalchemy import text
+    row = (await db.execute(
+        text("SELECT id FROM saved_stories WHERE student_id = CAST(:sid AS uuid) AND story_id = CAST(:stid AS uuid)")
+        .bindparams(sid=student_id, stid=story_id)
+    )).fetchone()
+    return {"saved": row is not None}
+
+
+@router.get("/public/saved")
+async def list_saved_stories(student_id: str, db: AsyncSession = Depends(get_session)):
+    """Return all stories saved to a student's library."""
+    from sqlalchemy import text
+    from app.models.student import Student as StudentModel
+    rows = (await db.execute(
+        text("""
+            SELECT s.id, s.title, s.grade_level, s.theme, s.cover_media_url,
+                   s.art_style, s.created_at, s.like_count,
+                   st.name as creator_name, ss.saved_at
+            FROM saved_stories ss
+            JOIN stories s ON s.id = ss.story_id
+            LEFT JOIN students st ON st.id = s.student_id
+            WHERE ss.student_id = CAST(:sid AS uuid)
+            ORDER BY ss.saved_at DESC
+        """).bindparams(sid=student_id)
+    )).all()
+    return {
+        "books": [
+            {
+                "id": str(r.id),
+                "title": r.title,
+                "grade_level": r.grade_level,
+                "theme": r.theme or "",
+                "cover_media_url": r.cover_media_url,
+                "art_style": r.art_style or "cartoon",
+                "created_at": str(r.created_at) if r.created_at else "",
+                "like_count": r.like_count or 0,
+                "creator_name": r.creator_name or "ReadQuest Reader",
+                "saved_at": str(r.saved_at),
+            }
+            for r in rows
+        ]
+    }
+
+
+
+class FollowRequest(BaseModel):
+    session_key: str
+    student_id: str
+
+
+# ── Public Follow Endpoint ──────────────────────────────────────────────────────
+@router.post("/public/follow")
+async def follow_creator(req: FollowRequest, db: AsyncSession = Depends(get_session)):
+    """Toggle follow for a creator. Returns { following: bool, follower_count: int }"""
+    from sqlalchemy import text
+    # Check if already following
+    existing = (await db.execute(
+        text("SELECT id FROM student_follows WHERE session_key = :sk AND student_id = :sid")
+        .bindparams(sk=req.session_key, sid=req.student_id)
+    )).fetchone()
+
+    if existing:
+        await db.execute(
+            text("DELETE FROM student_follows WHERE session_key = :sk AND student_id = :sid")
+            .bindparams(sk=req.session_key, sid=req.student_id)
+        )
+        following = False
+    else:
+        await db.execute(
+            text("INSERT INTO student_follows (session_key, student_id) VALUES (:sk, :sid) ON CONFLICT DO NOTHING")
+            .bindparams(sk=req.session_key, sid=req.student_id)
+        )
+        following = True
+
+    await db.commit()
+
+    count_row = (await db.execute(
+        text("SELECT COUNT(*) FROM student_follows WHERE student_id = :sid")
+        .bindparams(sid=req.student_id)
+    )).fetchone()
+    follower_count = count_row[0] if count_row else 0
+
+    return {"following": following, "follower_count": int(follower_count)}
+
+
+@router.get("/public/follow/{student_id}")
+async def get_follow_status(student_id: str, session_key: str = "", db: AsyncSession = Depends(get_session)):
+    """Get follower count + whether this session is following."""
+    from sqlalchemy import text
+    count_row = (await db.execute(
+        text("SELECT COUNT(*) FROM student_follows WHERE student_id = :sid")
+        .bindparams(sid=student_id)
+    )).fetchone()
+    follower_count = count_row[0] if count_row else 0
+
+    following = False
+    if session_key:
+        row = (await db.execute(
+            text("SELECT id FROM student_follows WHERE session_key = :sk AND student_id = :sid")
+            .bindparams(sk=session_key, sid=student_id)
+        )).fetchone()
+        following = row is not None
+
+    return {"following": following, "follower_count": int(follower_count)}
+
+
+class VoteRequest(BaseModel):
+    story_id: str
+    session_key: str  # anonymous browser fingerprint/session ID
+    direction: int    # 1 = thumbs up, -1 = thumbs down
+
+
+# ── Public Vote Endpoint (no auth required) ───────────────────────────────────
+@router.post("/public/vote")
+async def vote_on_story(
+    req: VoteRequest,
+    db: AsyncSession = Depends(get_session),
+):
+    """Let anonymous users vote thumbs up (+1) or thumbs down (-1) on a story.
+    Uses session_key to track one vote per session per story.
+    Changing direction flips the vote; voting same direction removes it.
+    """
+    from sqlalchemy import text
+    import uuid
+
+    # Validate direction
+    if req.direction not in (1, -1):
+        raise HTTPException(status_code=400, detail="direction must be 1 or -1")
+
+    try:
+        story_id = uuid.UUID(req.story_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid story_id")
+
+    # Check if story exists
+    story_result = await db.execute(select(Story).where(Story.id == story_id))
+    story = story_result.scalar_one_or_none()
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+
+    # Check existing vote for this session
+    existing_result = await db.execute(
+        text("SELECT id, direction FROM story_vote_logs WHERE story_id = :sid AND session_key = :sk")
+        .bindparams(sid=story_id, sk=req.session_key)
+    )
+    existing = existing_result.fetchone()
+
+    vote_delta = 0
+    if existing is None:
+        # New vote — insert and apply delta
+        await db.execute(
+            text("INSERT INTO story_vote_logs (story_id, session_key, direction) VALUES (:sid, :sk, :dir)")
+            .bindparams(sid=story_id, sk=req.session_key, dir=req.direction)
+        )
+        vote_delta = req.direction
+    elif existing.direction == req.direction:
+        # Same direction — remove vote (toggle off)
+        await db.execute(
+            text("DELETE FROM story_vote_logs WHERE story_id = :sid AND session_key = :sk")
+            .bindparams(sid=story_id, sk=req.session_key)
+        )
+        vote_delta = -req.direction
+    else:
+        # Changed direction — update and apply double delta
+        await db.execute(
+            text("UPDATE story_vote_logs SET direction = :dir, updated_at = NOW() WHERE story_id = :sid AND session_key = :sk")
+            .bindparams(sid=story_id, sk=req.session_key, dir=req.direction)
+        )
+        vote_delta = req.direction * 2  # flip: was -1 now +1 = +2 swing
+
+    # Update vote_count — clamp to 0 minimum
+    if vote_delta != 0:
+        await db.execute(
+            text("UPDATE stories SET vote_count = GREATEST(0, vote_count + :delta) WHERE id = :sid")
+            .bindparams(delta=vote_delta, sid=story_id)
+        )
+        await db.commit()
+
+    # Return new count and user's current vote state
+    updated_result = await db.execute(select(Story.vote_count).where(Story.id == story_id))
+    new_count = updated_result.scalar_one_or_none() or 0
+
+    # Get current vote direction for this session
+    current_vote_result = await db.execute(
+        text("SELECT direction FROM story_vote_logs WHERE story_id = :sid AND session_key = :sk")
+        .bindparams(sid=story_id, sk=req.session_key)
+    )
+    current_vote_row = current_vote_result.fetchone()
+    user_vote = current_vote_row.direction if current_vote_row else 0
+
+    return {"vote_count": new_count, "user_vote": user_vote}
 
 
 @router.get("")
@@ -712,11 +1143,131 @@ async def save_reading_progress(
     return {"ok": True}
 
 
+class EditCharacterRequest(BaseModel):
+    image_url: str                               # current portrait URL
+    prompt: str                                  # edit instruction (e.g. "change hair to curly long black hair")
+    character_description: Optional[str] = None  # full character visual description for context
+
+
+@router.post("/edit-character")
+async def edit_character_portrait(req: EditCharacterRequest):
+    """
+    Image-to-image character editing using fal-ai/flux-pro/kontext.
+    Takes existing portrait + edit prompt → returns modified portrait keeping identity.
+    """
+    import asyncio, os, uuid, httpx
+    from app.config import settings
+    from app.agents.content_agent import _upload_to_supabase, STATIC_DIR
+
+    fal_key = settings.FAL_AI or os.environ.get("FAL_AI", "")
+    if not fal_key:
+        raise HTTPException(500, "FAL_AI key not configured")
+
+    os.environ["FAL_KEY"] = fal_key
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+    edit_prompt = (
+        f"Edit this character: {req.prompt}. "
+        f"Keep the same character identity, face, and pose. "
+        f"Do NOT change the character's body or face shape. "
+        f"Only modify the requested attribute. "
+        f"Maintain the vibrant Roblox/superhero cartoon style."
+    )
+    if req.character_description:
+        edit_prompt += f" Full character context: {req.character_description[:500]}"
+
+    try:
+        import fal_client
+
+        # Attempt 1: flux-pro/kontext (image-to-image editing)
+        try:
+            result = await asyncio.to_thread(
+                fal_client.subscribe,
+                "fal-ai/flux-pro/kontext",
+                arguments={
+                    "prompt": edit_prompt[:2000],
+                    "image_url": req.image_url,
+                    "num_images": 1,
+                    "safety_tolerance": "5",
+                    "output_format": "png",
+                },
+            )
+            print("[edit-char] Generated with flux-pro/kontext ✓")
+        except Exception as kontext_err:
+            print(f"[edit-char] kontext failed ({kontext_err}). Trying kontext/max...")
+            # Attempt 2: flux-pro/kontext/max
+            try:
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-pro/kontext/max",
+                    arguments={
+                        "prompt": edit_prompt[:2000],
+                        "image_url": req.image_url,
+                        "num_images": 1,
+                        "safety_tolerance": "5",
+                        "output_format": "png",
+                    },
+                )
+                print("[edit-char] Generated with kontext/max ✓")
+            except Exception as max_err:
+                print(f"[edit-char] kontext/max failed ({max_err}). Falling back to text-to-image.")
+                # Attempt 3: Fall back to text-to-image with full description
+                fallback_prompt = (
+                    f"MASTERPIECE, 8K, vibrant colorful 2D cartoon illustration. "
+                    f"MAIN SUBJECT (full body, sharp, large, centered): {req.character_description or 'a superhero character'}. "
+                    f"EDIT: {req.prompt}. "
+                    f"Bold clean outlines, bright saturated colors, Roblox cartoon style, no text."
+                )
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-pro/v1.1-ultra",
+                    arguments={
+                        "prompt": fallback_prompt[:2000],
+                        "aspect_ratio": "1:1",
+                        "num_images": 1,
+                        "safety_tolerance": "5",
+                        "output_format": "png",
+                        "raw": False,
+                    },
+                )
+                print("[edit-char] Fell back to flux-pro/ultra text-to-image ✓")
+
+        images = result.get("images", [])
+        if not images:
+            raise HTTPException(500, "No image returned from AI model")
+
+        fal_url = images[0].get("url")
+        if not fal_url:
+            raise HTTPException(500, "No URL in AI response")
+
+        # Download and upload to Supabase
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(fal_url)
+            if resp.status_code != 200:
+                raise HTTPException(500, "Failed to download generated image")
+            img_bytes = resp.content
+
+        filename = f"{uuid.uuid4().hex}.png"
+        public_url = await _upload_to_supabase(img_bytes, filename)
+        if public_url:
+            return {"portrait_url": public_url}
+
+        (STATIC_DIR / filename).write_bytes(img_bytes)
+        return {"portrait_url": f"/static/images/{filename}"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[edit-char] Error: {e}")
+        raise HTTPException(500, f"Character edit failed: {str(e)}")
+
+
 class GenerateBackgroundRequest(BaseModel):
     theme: str
     character_name: Optional[str] = None      # when set, portrait is also generated
     scene_description: Optional[str] = None   # user-typed scene detail, woven into portrait
     character_description: Optional[str] = None  # precise visual description from gallery visualDesc
+    art_style: Optional[str] = None           # avatar art style: cartoon|comic|pixar|cinematic|real|epic
 
 
 @router.post("/generate-background")
@@ -727,6 +1278,7 @@ async def generate_theme_background(req: GenerateBackgroundRequest):
     Returns { background_url: str | None, portrait_url: str | None }
     """
     import asyncio
+    import os
     from app.agents.content_agent import _generate_image_nano_banana2
 
     bg_prompt = (
@@ -740,29 +1292,156 @@ async def generate_theme_background(req: GenerateBackgroundRequest):
 
     portrait_prompt: Optional[str] = None
     if req.character_name:
-        # Build the character visual string — use precise description if provided
-        if req.character_description:
-            char_visual = f"{req.character_name} — {req.character_description}"
-        else:
-            char_visual = req.character_name
-
-        # Combine all inputs into one rich prompt
-        scene_detail = f" The scene: {req.scene_description.strip()}." if req.scene_description else ""
-        portrait_prompt = (
-            f"Full-body children's book illustration of {char_visual} "
-            f"fully immersed inside a {req.theme} world.{scene_detail} "
-            f"{req.character_name} interacts with the environment — surrounded by "
-            f"{req.theme} elements, creatures, and details. "
-            "Vibrant Pixar/Disney art style, dynamic expressive pose, "
-            "rich background scenery matching the theme, magical cinematic lighting, "
-            "kid-friendly, safe for children, no text, no logos."
+        char_visual = (
+            f"{req.character_name} — {req.character_description}"
+            if req.character_description else req.character_name
         )
+        scene_detail = f" The scene: {req.scene_description.strip()}." if req.scene_description else ""
+        art_style = (req.art_style or "cartoon").lower().strip()
+
+        # Style-specific portrait prompt templates — each tuned for FLUX to produce
+        # the most faithful rendering of the user's description in that visual style
+        AVATAR_STYLE_PROMPTS = {
+            "cartoon": (
+                "MASTERPIECE, 8K, vibrant colorful 2D cartoon illustration, professional character design. "
+                f"MAIN SUBJECT (full body, sharp, large, centered): {char_visual}. "
+                f"Setting: {req.theme} world.{scene_detail} "
+                "Bold clean ink outlines, bright saturated colors, expressive face, "
+                "dynamic heroic pose, detailed magical background matching the theme, "
+                "children's book art quality, no text, no logos, safe for kids."
+            ),
+            "comic": (
+                "MASTERPIECE, 8K, dynamic Marvel/DC comic book splash page art, high energy. "
+                f"MAIN HERO (full body, bold ink, center foreground, action pose): {char_visual}. "
+                f"Setting: {req.theme} world.{scene_detail} "
+                "Vivid primary colors, speed lines, cross-hatching shading, "
+                "ben-day dots, professional comic inking, dramatic lighting, "
+                "iconic superhero composition, no text, no logos."
+            ),
+            "pixar": (
+                "MASTERPIECE, 8K, Pixar/Disney Animation 3D CGI render — NOT 2D cartoon. "
+                f"MAIN CHARACTER (full body foreground, expressive, highly detailed): {char_visual}. "
+                f"Setting: {req.theme} world.{scene_detail} "
+                "Subsurface scattering skin, soft global illumination, "
+                "depth of field, Disney-quality rigging detail, magical atmosphere, "
+                "Pixar studio render, kid-friendly, no text."
+            ),
+            "cinematic": (
+                "MASTERPIECE, 8K, ultra-realistic Hollywood cinematic photo — NOT cartoon. "
+                f"HERO (large foreground, dynamic 3D presence, photorealistic detail): {char_visual}. "
+                f"Setting: {req.theme} world.{scene_detail} "
+                "Dramatic volumetric lighting, IMAX quality, film grain, "
+                "sharp focus, cinematic color grade, movie poster composition, "
+                "hyperrealistic textures, no text, no logos."
+            ),
+            "real": (
+                "MASTERPIECE, 8K, gritty photorealistic documentary photography — NOT illustrated. "
+                f"SUBJECT (full body, raw intense detail, center frame): {char_visual}. "
+                f"Setting: {req.theme} world.{scene_detail} "
+                "Natural lighting, sharp detail, wet textures, "
+                "editorial photography style, high dynamic range, "
+                "real fabric and skin texture, no text."
+            ),
+            "epic": (
+                "MASTERPIECE, 8K, blockbuster IMAX movie key art, epic poster quality. "
+                f"HERO (grand heroic silhouette, center, glowing power aura): {char_visual}. "
+                f"Setting: {req.theme} world.{scene_detail} "
+                "Catastrophic dramatic sky, atmospheric dust, color-graded, "
+                "cinematic master shot, godray lighting, "
+                "poster-grade composition, no text, no logos."
+            ),
+        }
+        portrait_prompt = AVATAR_STYLE_PROMPTS.get(art_style, AVATAR_STYLE_PROMPTS["cartoon"])
+
+    async def _gen_avatar_high_quality(prompt: str) -> Optional[str]:
+        """Generate avatar using the best available model: ultra → pro → dev."""
+        from app.config import settings
+        fal_key = settings.FAL_AI or os.environ.get("FAL_AI", "")
+        if not fal_key:
+            return None
+        try:
+            import fal_client
+            os.environ["FAL_KEY"] = fal_key
+            result = None
+
+            # 1️⃣ Try flux-pro/v1.1-ultra — best quality, most faithful to prompt
+            try:
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-pro/v1.1-ultra",
+                    arguments={
+                        "prompt": prompt[:2000],
+                        "aspect_ratio": "1:1",
+                        "num_images": 1,
+                        "safety_tolerance": "5",
+                        "output_format": "png",
+                        "raw": False,
+                    },
+                )
+                print("[avatar] Generated with flux-pro/v1.1-ultra ✓")
+            except Exception as ultra_err:
+                print(f"[avatar] flux-pro/v1.1-ultra failed ({ultra_err}), trying flux-pro...")
+                # 2️⃣ Fallback: flux-pro
+                try:
+                    result = await asyncio.to_thread(
+                        fal_client.subscribe,
+                        "fal-ai/flux-pro",
+                        arguments={
+                            "prompt": prompt[:1000],
+                            "image_size": "square_hd",
+                            "num_inference_steps": 40,
+                            "guidance_scale": 3.5,
+                            "num_images": 1,
+                            "safety_tolerance": "5",
+                            "output_format": "png",
+                        },
+                    )
+                    print("[avatar] Generated with flux-pro ✓")
+                except Exception as pro_err:
+                    print(f"[avatar] flux-pro failed ({pro_err}), falling back to flux/dev")
+                    # 3️⃣ Last resort: flux/dev
+                    result = await asyncio.to_thread(
+                        fal_client.subscribe,
+                        "fal-ai/flux/dev",
+                        arguments={
+                            "prompt": prompt[:600],
+                            "image_size": "square_hd",
+                            "num_inference_steps": 28,
+                            "guidance_scale": 4.5,
+                            "num_images": 1,
+                            "enable_safety_checker": True,
+                            "output_format": "png",
+                        },
+                    )
+            images = result.get("images", [])
+            if not images:
+                return None
+            fal_url = images[0].get("url")
+            if not fal_url:
+                return None
+            import httpx, uuid
+            from app.agents.content_agent import _upload_to_supabase, STATIC_DIR
+            STATIC_DIR.mkdir(parents=True, exist_ok=True)
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(fal_url)
+                if resp.status_code != 200:
+                    return None
+                img_bytes = resp.content
+            filename = f"{uuid.uuid4().hex}.png"
+            public_url = await _upload_to_supabase(img_bytes, filename)
+            if public_url:
+                return public_url
+            (STATIC_DIR / filename).write_bytes(img_bytes)
+            return f"/static/images/{filename}"
+        except Exception as e:
+            print(f"[avatar] Generation failed: {e}")
+            return None
 
     # Fire both in parallel — portrait only when character_name given
     if portrait_prompt:
         bg_url, portrait_url = await asyncio.gather(
             _generate_image_nano_banana2(bg_prompt),
-            _generate_image_nano_banana2(portrait_prompt),
+            _gen_avatar_high_quality(portrait_prompt),
         )
     else:
         bg_url = await _generate_image_nano_banana2(bg_prompt)
@@ -783,6 +1462,7 @@ async def grade_comprehension(req: ComprehensionGradeRequest):
     import asyncio
     from google import genai as _genai
     from google.genai import types as _gtypes
+    from app.config import settings
 
     api_key = settings.GEMINI_API_KEY
     if not api_key:

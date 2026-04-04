@@ -29,6 +29,8 @@ interface AdminScore {
 
 type Tab = 'users' | 'books' | 'scores'
 
+interface DeleteTarget { id: string; title: string }
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -78,6 +80,8 @@ export default function AdminDashboard() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchAll = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -104,6 +108,21 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => { fetchAll() }, [])
+
+  const handleDeleteBook = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`${API}/api/admin/books/${deleteTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Delete failed')
+      setBooks(prev => prev.filter(b => b.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } catch {
+      alert('Failed to delete book. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   // Search-filtered lists
   const filteredUsers = useMemo(() =>
@@ -301,6 +320,7 @@ export default function AdminDashboard() {
                         <th>Pages</th>
                         <th>Student</th>
                         <th>Created</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -334,6 +354,15 @@ export default function AdminDashboard() {
                             </div>
                           </td>
                           <td style={{ color: 'rgba(204,195,216,0.4)', fontSize: '0.82rem' }}>{fmtDate(b.created_at)}</td>
+                          <td>
+                            <button
+                              className="adm-delete-btn"
+                              onClick={() => setDeleteTarget({ id: b.id, title: b.title })}
+                              title="Delete book"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </td>
                         </motion.tr>
                       ))}
                     </tbody>
@@ -419,6 +448,53 @@ export default function AdminDashboard() {
           </AnimatePresence>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteTarget && (
+          <motion.div
+            className="adm-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => !deleting && setDeleteTarget(null)}
+          >
+            <motion.div
+              className="adm-modal"
+              initial={{ opacity: 0, scale: 0.88, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="adm-modal-icon">🗑️</div>
+              <div className="adm-modal-title">Delete Book?</div>
+              <div className="adm-modal-msg">
+                Are you sure you want to permanently delete
+                <strong> "{deleteTarget.title}"</strong>?<br />
+                This will remove all pages and vote data.
+                <span style={{ color: '#f87171' }}> This cannot be undone.</span>
+              </div>
+              <div className="adm-modal-actions">
+                <button
+                  className="adm-modal-cancel"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="adm-modal-confirm"
+                  onClick={handleDeleteBook}
+                  disabled={deleting}
+                >
+                  {deleting ? '⏳ Deleting…' : '🗑️ Yes, Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -603,6 +603,7 @@ export default function StoryGenerator() {
   const [genStoryTitle, setGenStoryTitle] = useState('')
   const [generatedStory, setGeneratedStory] = useState<{ id: string; title: string } | null>(null)
   const [generateError, setGenerateError] = useState('')
+  const [isPublic, setIsPublic] = useState(false)  // whether book shows in public gallery
 
   // ── Theme Background — AI-generated live background for Step 2 ────────────
   const [themeBackground, setThemeBackground] = useState<string | null>(null)
@@ -623,6 +624,24 @@ export default function StoryGenerator() {
     return ALL_CHARACTERS.find(c => c.name === seed) ?? ALL_CHARACTERS[0]
   })
   const [hoveredHeroSrc, setHoveredHeroSrc] = useState<string | null>(null)
+
+  // ── Custom characters from Character Studio ─────────────────────────────
+  const [customChars, setCustomChars] = useState<Array<{
+    id: string; name: string; portrait_url: string | null;
+    visual_description: string | null; body_type: string;
+  }>>([])
+  const [selectedCustomCharId, setSelectedCustomCharId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const sid = localStorage.getItem('readquest_student_id')
+    if (!sid) return
+    supabase.from('custom_characters')
+      .select('id,name,portrait_url,visual_description,body_type')
+      .eq('student_id', sid)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => { if (data) setCustomChars(data) })
+  }, [])
   // Stable random Step 2 script — picked once on mount
   const [step2VoiceText] = useState<string>(
     () => STEP2_SCRIPTS[Math.floor(Math.random() * STEP2_SCRIPTS.length)]
@@ -1043,6 +1062,7 @@ export default function StoryGenerator() {
           character_description: characterData?.visual_appearance ?? characterData?.description ?? undefined,
           character_universe: characterData?.universe ?? undefined,
           character_image_url: characterData?.character_media_url ?? undefined,
+          is_public: isPublic,
         },
         { timeout: 300000, headers },
       )
@@ -1250,18 +1270,126 @@ export default function StoryGenerator() {
                         />
                       </div>
                     )}
+
+                    {/* Public toggle */}
+                    <div className="step1-public-toggle">
+                      <button
+                        id="step1-public-toggle-btn"
+                        className={`step1-public-btn${isPublic ? ' active' : ''}`}
+                        onClick={() => setIsPublic(p => !p)}
+                        type="button"
+                      >
+                        <span className="step1-public-icon">{isPublic ? '🌍' : '🔒'}</span>
+                        <span>{isPublic ? 'Public — visible to everyone' : 'Private — only you see this'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
+
+                {/* ── MY CHARACTERS — from Character Studio ── */}
+                {customChars.length > 0 && (
+                  <div style={{
+                    margin: '0 0 20px',
+                    padding: '16px 20px',
+                    background: 'rgba(112,42,225,0.08)',
+                    border: '1.5px solid rgba(192,132,252,0.2)',
+                    borderRadius: 20,
+                  }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      marginBottom: 14,
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🎨</span>
+                      <div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'rgba(233,221,255,0.9)' }}>My Characters</div>
+                        <div style={{ fontSize: '0.68rem', color: 'rgba(192,132,252,0.6)', fontWeight: 600 }}>From your Character Studio</div>
+                      </div>
+                      <a
+                        href="/character-studio"
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: '0.68rem', fontWeight: 800, color: '#c084fc',
+                          textDecoration: 'none',
+                          background: 'rgba(112,42,225,0.15)',
+                          border: '1px solid rgba(192,132,252,0.3)',
+                          padding: '4px 10px', borderRadius: 999,
+                        }}
+                      >+ New Character</a>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {customChars.map(cc => {
+                        const isSelected = selectedCustomCharId === cc.id
+                        return (
+                          <motion.button
+                            key={cc.id}
+                            onClick={() => {
+                              setSelectedCustomCharId(cc.id)
+                              // Inject this custom character into the story pipeline
+                              const visualDesc = cc.visual_description ?? `${cc.name}, a ${cc.body_type} character, cartoon style, full body`
+                              setHeroChar({
+                                name: cc.name,
+                                emoji: cc.portrait_url ?? '🧑',
+                                img: cc.portrait_url ?? undefined,
+                                visualDesc,
+                                grade: 1,
+                              } as any)
+                              setHoveredHeroSrc(cc.portrait_url ?? null)
+                            }}
+                            whileHover={{ y: -4, scale: 1.04 }}
+                            whileTap={{ scale: 0.96 }}
+                            style={{
+                              display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', gap: 6,
+                              padding: '10px 12px',
+                              borderRadius: 16,
+                              background: isSelected ? 'rgba(112,42,225,0.25)' : 'rgba(20,10,50,0.5)',
+                              border: `2px solid ${isSelected ? 'rgba(192,132,252,0.7)' : 'rgba(150,110,255,0.2)'}`,
+                              cursor: 'pointer',
+                              boxShadow: isSelected ? '0 0 16px rgba(112,42,225,0.45)' : 'none',
+                              fontFamily: 'var(--font-body)',
+                              minWidth: 80,
+                            }}
+                          >
+                            <div style={{
+                              width: 56, height: 56, borderRadius: 14,
+                              overflow: 'hidden',
+                              background: 'rgba(15,8,40,0.7)',
+                              border: `1.5px solid ${isSelected ? 'rgba(192,132,252,0.5)' : 'rgba(150,110,255,0.15)'}`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '1.8rem',
+                            }}>
+                              {cc.portrait_url
+                                ? <img src={cc.portrait_url} alt={cc.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : (cc.body_type === 'girl' ? '👧' : cc.body_type === 'boy' ? '🧑' : '🥷')
+                              }
+                            </div>
+                            <span style={{
+                              fontSize: '0.65rem', fontWeight: 800,
+                              color: isSelected ? '#c084fc' : 'rgba(204,195,216,0.8)',
+                              textAlign: 'center',
+                              maxWidth: 72, overflow: 'hidden',
+                              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{cc.name}</span>
+                            {isSelected && (
+                              <span style={{ fontSize: '0.55rem', color: '#6ee7b7', fontWeight: 800 }}>✓ Selected</span>
+                            )}
+                          </motion.button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* ── GALLERY — full width below split ── */}
                 <CharacterGallery
                   onSelect={handleGallerySelect}
                   onHoverChar={(name) => {
+                      setSelectedCustomCharId(null)
                       const ch = ALL_CHARACTERS.find(c => c.name === name)
                       setHoveredHeroSrc(ch?.img ?? ch?.emoji ?? null)
                     }}
                   onHoverLeave={() => setHoveredHeroSrc(null)}
-                  onVerified={(chars) => { if (chars[0]) setHeroChar(chars[0]) }}
+                  onVerified={(chars) => { if (chars[0]) { setSelectedCustomCharId(null); setHeroChar(chars[0]) } }}
                 />
 
                 {/* Welcome voice — plays once on load, references the hero's name */}

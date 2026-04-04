@@ -39,7 +39,7 @@ const FRAME_PLACEHOLDER_PROMPTS = [
 // ── Sidebar nav links (mirrors Dashboard) ───────────────────────────────────
 const NAV_LINKS = [
   { id: 'home',         label: 'Home',          path: '/dashboard',    icon: '🏠' },
-  { id: 'library',      label: 'Library',        path: '/shelf',        icon: '📚' },
+  { id: 'library',      label: 'Library',        path: '/library',        icon: '📚' },
   { id: 'rewards',      label: 'Rewards',        path: '/rewards',      icon: '⭐' },
   { id: 'games',        label: 'Games',          path: '/games',        icon: '🎮' },
   { id: 'movie-studio', label: 'Movie Studio',   path: '/movie-studio', icon: '🎬', active: true },

@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase'
 // ── Only LandingPage is eager — all other routes are lazy-loaded ──────────
 import LandingPage from './pages/LandingPage'
 import XpBadge from './components/XpBadge'
+import LikesBadge from './components/LikesBadge'
 import MobileNav from './components/MobileNav'
 import MuteButton from './components/MuteButton'
 
@@ -31,6 +32,9 @@ const GamePlay           = lazy(() => import('./pages/GamePlay'))
 const Leaderboard        = lazy(() => import('./pages/Leaderboard'))
 const MovieStudio        = lazy(() => import('./pages/MovieStudio'))
 const AdminDashboard     = lazy(() => import('./pages/AdminDashboard'))
+const PublicBookList     = lazy(() => import('./pages/PublicBookList'))
+const Subscriptions      = lazy(() => import('./pages/Subscriptions'))
+const CharacterStudio    = lazy(() => import('./pages/CharacterStudio'))
 
 // ── Minimal loading fallback — no layout shift, no spinner flicker ────────
 function PageLoader() {
@@ -72,6 +76,8 @@ function App() {
     <BrowserRouter>
       {/* Global XP badge — always top-right for logged-in users */}
       {session && <XpBadge />}
+      {/* Total likes badge — shows below XP badge for logged-in users */}
+      {session && <LikesBadge />}
       {/* Global mobile nav — floating FAB + drawer, visible only on ≤768px */}
       {session && <MobileNav />}
       {/* Global mute button — mutes AI voice narration on any page */}
@@ -79,6 +85,10 @@ function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          {/* Public book gallery — no login required */}
+          <Route path="/books" element={<PublicBookList />} />
+          {/* Public subscriptions/pricing page */}
+          <Route path="/subscriptions" element={<Subscriptions />} />
           {/* Signup renders regardless of session — the wizard controls its own flow */}
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={!session ? <Login /> : <Navigate to="/dashboard" replace />} />
@@ -89,7 +99,8 @@ function App() {
           <Route path="/read/:storyId" element={session ? <BookReader /> : <Navigate to="/login" replace />} />
           <Route path="/generate" element={session ? <StoryGenerator /> : <Navigate to="/login" replace />} />
           <Route path="/rewards" element={session ? <Rewards /> : <Navigate to="/login" replace />} />
-          <Route path="/shelf" element={session ? <ReadingShelf /> : <Navigate to="/login" replace />} />
+          <Route path="/library" element={session ? <ReadingShelf /> : <Navigate to="/login" replace />} />
+          <Route path="/shelf" element={<Navigate to="/library" replace />} />
           <Route path="/profile" element={session ? <Profile /> : <Navigate to="/login" replace />} />
           {/* Phase 1 — AI Tutor routes */}
           <Route path="/quest" element={session ? <QuestMode /> : <Navigate to="/login" replace />} />
@@ -101,13 +112,14 @@ function App() {
           <Route path="/recordings/:bookId" element={session ? <BookRecordings /> : <Navigate to="/login" replace />} />
           <Route path="/recordings/:bookId/:recordingId" element={session ? <RecordingPlayback /> : <Navigate to="/login" replace />} />
           <Route path="/spelling" element={session ? <SpellingArena /> : <Navigate to="/login" replace />} />
-          <Route path="/spelling-scores" element={session ? <SpellingScores /> : <Navigate to="/login" replace />} />
+          <Route path="/spelling-scores" element={<Navigate to="/scores?tab=spelling" replace />} />
           <Route path="/exams" element={session ? <ReadingExams /> : <Navigate to="/login" replace />} />
           <Route path="/scores" element={session ? <ReadingExams /> : <Navigate to="/login" replace />} />
           <Route path="/games" element={session ? <GamesArcade /> : <Navigate to="/login" replace />} />
           <Route path="/games/:gameId" element={session ? <GamePlay /> : <Navigate to="/login" replace />} />
           <Route path="/leaderboard" element={session ? <Leaderboard /> : <Navigate to="/login" replace />} />
           <Route path="/movie-studio" element={session ? <MovieStudio /> : <Navigate to="/login" replace />} />
+          <Route path="/character-studio" element={session ? <CharacterStudio /> : <Navigate to="/login" replace />} />
           <Route path="/admin" element={session ? <AdminDashboard /> : <Navigate to="/login" replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -115,46 +115,60 @@ def _strip_suffix(word: str) -> str:
 
 def _words_match(expected: str, spoken: str) -> bool:
     """
-    Fuzzy word comparison that compensates for Web Speech API quirks.
-    Returns True if the spoken word is "close enough" to the expected word.
+    Strict word comparison for reading fluency accuracy.
+    Only accepts words that are genuinely the same — compensates for minor
+    STT artifacts but is NOT a spelling checker. Similar-sounding but different
+    words (cat/bat, big/bag, form/from) will be marked as errors.
     """
     if expected == spoken:
         return True
 
-    # 1. Homophones (would/wood, their/there, etc.)
+    # Never accept very short words unless exact (too error-prone)
+    if len(expected) <= 3 or len(spoken) <= 3:
+        return expected == spoken
+
+    # 1. Homophones — words that genuinely sound identical (would/wood, their/there)
     if _are_homophones(expected, spoken):
         return True
 
-    # 2. Stem / suffix match (wished ↔ wish, hoped ↔ hope, etc.)
+    # 2. Stem / suffix match — catches "-ed", "-ing", "-s" STT artifacts
+    #    Only when both stems are identical (not just close)
     stem_e = _strip_suffix(expected)
     stem_s = _strip_suffix(spoken)
-    if stem_e == stem_s:
+    if stem_e == stem_s and len(stem_e) >= 3:
         return True
-    if expected == stem_s or spoken == stem_e:
+    # One direction: spoken stem matches expected exactly (e.g. "wish"/"wished")
+    if expected == stem_s and len(stem_s) >= 4:
+        return True
+    if spoken == stem_e and len(stem_e) >= 4:
         return True
 
-    # 3. One word is a prefix of the other (≥3 chars) — catches truncations
+    # 3. Prefix rule — only for longer words (≥5 chars), max 1-char difference
+    #    Catches genuine truncations like "walk"/"walking" → NOT "cat"/"catch"
     min_len = min(len(expected), len(spoken))
-    if min_len >= 3:
+    if min_len >= 5:
         shorter = expected if len(expected) <= len(spoken) else spoken
         longer = spoken if len(expected) <= len(spoken) else expected
-        if longer.startswith(shorter) and (len(longer) - len(shorter)) <= 3:
+        if longer.startswith(shorter) and (len(longer) - len(shorter)) <= 2:
             return True
 
-    # 4. Edit distance tolerance
-    #    Short words (≤4 chars): allow 1 edit
-    #    Longer words: allow up to 2 edits
+    # 4. Edit distance — STRICT
+    #    Words 5–7 chars: allow only 1 edit
+    #    Words 8+ chars: allow up to 2 edits
+    #    Words ≤4 chars: no fuzzy (already handled above — exact only)
     dist = _edit_distance(expected, spoken)
     max_len = max(len(expected), len(spoken))
-    if max_len <= 4 and dist <= 1:
+    if 5 <= max_len <= 7 and dist <= 1:
         return True
-    if max_len > 4 and dist <= 2:
+    if max_len >= 8 and dist <= 2:
         return True
 
-    # 5. High character-level similarity ratio (catches reordering, e.g. "form"/"from")
-    ratio = SequenceMatcher(None, expected, spoken).ratio()
-    if ratio >= 0.80 and min_len >= 4:
-        return True
+    # 5. High character similarity — only for longer words (≥6 chars), very tight threshold
+    #    0.92 means only 1 character difference allowed in practice
+    if min_len >= 6:
+        ratio = SequenceMatcher(None, expected, spoken).ratio()
+        if ratio >= 0.92:
+            return True
 
     return False
 

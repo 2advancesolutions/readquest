@@ -1,0 +1,4 @@
+/* ReadQuest Global Styles — referenced by metro.config.js for NativeWind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

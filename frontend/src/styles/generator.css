@@ -3304,3 +3304,33 @@
   .sgl-step-row { text-align: left; }
   .sgl-progress-dots { justify-content: center; }
 }
+
+/* ── Public toggle button (Step 1) ──────────────────────────────────────── */
+.step1-public-toggle {
+  margin-top: 10px;
+}
+.step1-public-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.55);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  padding: 7px 16px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+  width: 100%;
+  justify-content: center;
+}
+.step1-public-btn.active {
+  background: rgba(16,185,129,0.15);
+  border-color: rgba(16,185,129,0.45);
+  color: #6ee7b7;
+}
+.step1-public-btn:hover { border-color: rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); }
+.step1-public-btn.active:hover { border-color: rgba(16,185,129,0.6); }
+.step1-public-icon { font-size: 1rem; }

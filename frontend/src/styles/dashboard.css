@@ -930,3 +930,481 @@
     font-size: 0.72rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   LEARNING ROADMAP — Dashboard Redesign
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Continue Reading Pill ── */
+.dash-continue-pill {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: rgba(112,42,225,0.12);
+  border: 1px solid rgba(192,132,252,0.2);
+  border-radius: 16px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.dash-continue-pill:hover {
+  background: rgba(112,42,225,0.18);
+  border-color: rgba(192,132,252,0.35);
+  transform: translateY(-2px);
+}
+.dash-continue-pill-cover {
+  width: 48px; height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(30,14,70,0.8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+}
+.dash-continue-pill-cover img { width: 100%; height: 100%; object-fit: cover; }
+.dash-continue-pill-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dash-continue-pill-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.dash-continue-pill-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: rgba(233,221,255,0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-continue-pill-bar {
+  height: 5px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.dash-continue-pill-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #c084fc);
+  border-radius: 99px;
+}
+.dash-continue-pill-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: white;
+  border: none;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.22s;
+  white-space: nowrap;
+}
+.dash-continue-pill-btn:hover { transform: translateY(-1px); opacity: 0.9; }
+
+/* ── Smart Suggestion Banner ── */
+.dash-suggestion-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(245,158,11,0.08));
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 16px;
+  margin-bottom: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.dash-suggestion-banner:hover {
+  background: linear-gradient(135deg, rgba(251,191,36,0.18), rgba(245,158,11,0.12));
+  border-color: rgba(251,191,36,0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(251,191,36,0.15);
+}
+.dash-suggestion-emoji { font-size: 2rem; flex-shrink: 0; }
+.dash-suggestion-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dash-suggestion-msg {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgba(233,221,255,0.95);
+  line-height: 1.4;
+}
+.dash-suggestion-cta {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Progress Rings Grid ── */
+.dash-roadmap-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 1100px) {
+  .dash-roadmap-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+  .dash-roadmap-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+}
+@media (max-width: 480px) {
+  .dash-roadmap-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Ring Card ── */
+.dash-ring-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: rgba(20,10,50,0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(150,110,255,0.15);
+  border-radius: 18px;
+  box-shadow: 0 4px 16px rgba(10,4,28,0.35);
+  transition: all 0.22s;
+  text-align: center;
+}
+.dash-ring-emoji { font-size: 1.3rem; line-height: 1; }
+.dash-ring-svg {
+  width: 88px; height: 88px;
+  overflow: visible;
+}
+.dash-ring-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: rgba(233,221,255,0.9);
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+.dash-ring-detail {
+  font-size: 0.65rem;
+  color: rgba(204,195,216,0.5);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Loading skeleton rings */
+.dash-roadmap-loading {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-top: 4px;
+}
+.dash-ring-skeleton {
+  height: 160px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, rgba(30,14,70,0.7) 25%, rgba(60,30,120,0.45) 50%, rgba(30,14,70,0.7) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border: 1px solid rgba(150,110,255,0.1);
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Games Arcade scroll ── */
+.dash-games-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.dash-game-chip {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(20,10,50,0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(150,110,255,0.12);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.dash-game-chip:hover {
+  border-color: rgba(192,132,252,0.28);
+  background: rgba(30,14,70,0.75);
+}
+.dash-game-chip-emoji { font-size: 1.5rem; text-align: center; }
+.dash-game-chip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dash-game-chip-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: rgba(233,221,255,0.95);
+}
+.dash-game-chip-level {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(204,195,216,0.5);
+}
+.dash-game-chip-bar {
+  width: 80px;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.dash-game-chip-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #a855f7);
+  border-radius: 99px;
+  min-width: 2px;
+}
+.dash-game-chip-stars {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.dash-games-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--rq-text-muted);
+  font-size: 1.2rem;
+  text-align: center;
+}
+.dash-games-empty p { font-size: 0.88rem; margin: 0; }
+.dash-games-empty button {
+  background: none; border: none; color: var(--rq-purple);
+  font-weight: 700; cursor: pointer; text-decoration: underline;
+  font-family: inherit; font-size: inherit;
+}
+
+/* ── Mobile responsive tweaks ── */
+@media (max-width: 768px) {
+  .dash-roadmap-loading { grid-template-columns: repeat(3, 1fr); }
+  .dash-game-chip { grid-template-columns: 2rem 1fr auto; }
+  .dash-game-chip-bar { width: 60px; }
+  .dash-game-chip-stars { display: none; }
+  .dash-suggestion-banner { flex-wrap: wrap; }
+  .dash-continue-pill { flex-wrap: wrap; }
+  .dash-continue-pill-btn { width: 100%; text-align: center; }
+}
+
+/* ══ QUICK LAUNCH CARDS ════════════════════════════════════════ */
+.dash-quick-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.dash-quick-card {
+  position: relative;
+  border-radius: 20px;
+  padding: 24px 20px 20px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid transparent;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  min-height: 160px;
+}
+
+/* Layered animated gradient background */
+.dash-quick-card-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-size: 200% 200%;
+  animation: quickCardShift 6s ease infinite alternate;
+  z-index: 0;
+}
+@keyframes quickCardShift {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* Radial glow blob */
+.dash-quick-card-glow {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  filter: blur(50px);
+  opacity: 0.55;
+  top: -60px;
+  right: -40px;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.3s;
+}
+.dash-quick-card:hover .dash-quick-card-glow { opacity: 0.85; }
+
+.dash-quick-card-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.dash-quick-card-emoji {
+  font-size: 2.2rem;
+  line-height: 1;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+}
+
+.dash-quick-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dash-quick-card-title {
+  font-size: 1rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.dash-quick-card-desc {
+  font-size: 0.77rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.65);
+  line-height: 1.45;
+}
+
+.dash-quick-card-chip {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  letter-spacing: 0.01em;
+  transition: background 0.2s, transform 0.2s;
+}
+.dash-quick-card:hover .dash-quick-card-chip {
+  background: rgba(255,255,255,0.25);
+  transform: translateX(3px);
+}
+
+/* ── Generate Story — Pixar magic book ── */
+.dash-quick-story {
+  border-color: rgba(167,139,250,0.3);
+  box-shadow: 0 8px 30px rgba(112,42,225,0.35);
+}
+.dash-quick-story .dash-quick-card-bg {
+  background: url('/quick_card_story.png') center/cover no-repeat;
+}
+.dash-quick-story .dash-quick-card-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(15,5,45,0.72) 0%, rgba(60,20,120,0.55) 100%);
+  border-radius: inherit;
+}
+.dash-quick-story .dash-quick-card-glow {
+  background: radial-gradient(circle, rgba(167,139,250,0.9), transparent 65%);
+}
+.dash-quick-story:hover {
+  border-color: rgba(167,139,250,0.6);
+  box-shadow: 0 16px 48px rgba(112,42,225,0.55);
+}
+
+/* ── Character Studio — cartoon art studio ── */
+.dash-quick-character {
+  border-color: rgba(52,211,153,0.3);
+  box-shadow: 0 8px 30px rgba(16,185,129,0.3);
+}
+.dash-quick-character .dash-quick-card-bg {
+  background: url('/quick_card_character.png') center/cover no-repeat;
+}
+.dash-quick-character .dash-quick-card-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(4,30,20,0.72) 0%, rgba(10,80,50,0.55) 100%);
+  border-radius: inherit;
+}
+.dash-quick-character .dash-quick-card-glow {
+  background: radial-gradient(circle, rgba(52,211,153,0.9), transparent 65%);
+}
+.dash-quick-character:hover {
+  border-color: rgba(52,211,153,0.55);
+  box-shadow: 0 16px 48px rgba(16,185,129,0.45);
+}
+
+/* ── Movie Studio — superhero comic ── */
+.dash-quick-movie {
+  border-color: rgba(251,191,36,0.3);
+  box-shadow: 0 8px 30px rgba(234,179,8,0.28);
+}
+.dash-quick-movie .dash-quick-card-bg {
+  background: url('/quick_card_movie.png') center/cover no-repeat;
+}
+.dash-quick-movie .dash-quick-card-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(30,10,5,0.72) 0%, rgba(90,40,5,0.52) 100%);
+  border-radius: inherit;
+}
+.dash-quick-movie .dash-quick-card-glow {
+  background: radial-gradient(circle, rgba(251,191,36,0.9), transparent 65%);
+}
+.dash-quick-movie:hover {
+  border-color: rgba(251,191,36,0.55);
+  box-shadow: 0 16px 48px rgba(234,179,8,0.5);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .dash-quick-cards {
+    grid-template-columns: 1fr;
+  }
+  .dash-quick-card {
+    min-height: 120px;
+    flex-direction: row;
+    align-items: center;
+    padding: 18px 20px;
+    gap: 14px;
+  }
+  .dash-quick-card-body {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+  }
+  .dash-quick-card-emoji { font-size: 1.8rem; }
+  .dash-quick-card-chip { display: none; }
+}
+

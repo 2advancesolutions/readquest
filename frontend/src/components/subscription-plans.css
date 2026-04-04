@@ -1,0 +1,425 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SubscriptionPlans — Glassmorphic Dark-Mode Pricing Cards
+   Night-Bloom aesthetic matching ReadQuest design system
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Root ── */
+.sp-root {
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+.sp-full-page {
+  min-height: 100vh;
+  background: #0d0d1a;
+  padding: 2rem 1.5rem 4rem;
+  overflow-x: hidden;
+}
+.sp-inline {
+  padding: 4rem 1.5rem;
+}
+
+/* ── Background Effects ── */
+.sp-bg-effects {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.sp-bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.35;
+}
+.sp-orb-1 {
+  width: 600px; height: 600px;
+  top: -200px; left: -200px;
+  background: radial-gradient(circle, #7C3AED 0%, transparent 70%);
+}
+.sp-orb-2 {
+  width: 500px; height: 500px;
+  bottom: -100px; right: -150px;
+  background: radial-gradient(circle, #EC4899 0%, transparent 70%);
+}
+.sp-orb-3 {
+  width: 400px; height: 400px;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, #FFD700 0%, transparent 70%);
+  opacity: 0.15;
+}
+
+/* ── Header ── */
+.sp-header {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 3rem;
+  position: relative;
+  z-index: 1;
+}
+.sp-back-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #d2bbff;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sp-back-btn:hover {
+  background: rgba(124,58,237,0.15);
+  border-color: rgba(124,58,237,0.3);
+}
+.sp-header-badge {
+  display: inline-block;
+  padding: 0.4rem 1.2rem;
+  border-radius: 999px;
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.25);
+  color: #d2bbff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+.sp-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.6rem;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1.15;
+  margin: 0 0 0.75rem;
+}
+.sp-gradient-text {
+  background: linear-gradient(135deg, #d2bbff 0%, #FFD700 50%, #EC4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.sp-subtitle {
+  font-size: 1.05rem;
+  color: rgba(255,255,255,0.55);
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+}
+
+/* ── Billing Toggle ── */
+.sp-toggle-wrap {
+  display: inline-flex;
+  gap: 0;
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.sp-toggle-btn {
+  padding: 0.55rem 1.5rem;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.sp-toggle-btn.active {
+  background: linear-gradient(135deg, #7C3AED, #6411d5);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.3);
+}
+.sp-save-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255,215,0,0.15);
+  color: #FFD700;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+/* ── Plans Grid ── */
+.sp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Plan Card ── */
+.sp-card {
+  position: relative;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 1.25rem;
+  padding: 1.75rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: all 0.3s ease;
+}
+.sp-card:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(124,58,237,0.2);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 40px rgba(124,58,237,0.08);
+}
+
+/* Recommended card — elevated + highlighted */
+.sp-card-recommended {
+  background: rgba(124,58,237,0.08);
+  border-color: rgba(124,58,237,0.35);
+  box-shadow: 0 16px 48px rgba(124,58,237,0.15), 0 0 80px rgba(124,58,237,0.05);
+  transform: scale(1.02);
+}
+.sp-card-recommended:hover {
+  border-color: rgba(124,58,237,0.5);
+  box-shadow: 0 24px 64px rgba(124,58,237,0.2), 0 0 100px rgba(124,58,237,0.08);
+}
+
+/* Badge */
+.sp-card-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* Card top — icon + name */
+.sp-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.sp-card-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.sp-card-name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+}
+
+/* Price */
+.sp-card-price {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin-bottom: 0.25rem;
+}
+.sp-card-currency {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  align-self: flex-start;
+  margin-top: 0.3rem;
+}
+.sp-card-amount {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 3rem;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.sp-card-period {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.4);
+  font-weight: 500;
+}
+.sp-card-annual-note {
+  font-size: 0.75rem;
+  color: #FFD700;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+/* Divider */
+.sp-card-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  margin: 1rem 0;
+}
+
+/* Features */
+.sp-card-features {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 1.25rem;
+}
+.sp-feature {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.7);
+}
+.sp-feature-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(16,185,129,0.15);
+  color: #10B981;
+  font-size: 0.6rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.sp-feature-disabled {
+  opacity: 0.35;
+}
+.sp-feature-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.3);
+  font-size: 0.6rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+/* CTA Button */
+.sp-card-cta {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #7C3AED, #6411d5);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s;
+  box-shadow: 0 4px 20px rgba(124,58,237,0.25);
+}
+.sp-card-cta:hover {
+  box-shadow: 0 8px 32px rgba(124,58,237,0.4);
+}
+.sp-cta-gold {
+  background: linear-gradient(135deg, #FFD700, #F59E0B);
+  color: #1a0a00;
+  box-shadow: 0 4px 20px rgba(255,215,0,0.25);
+}
+.sp-cta-gold:hover {
+  box-shadow: 0 8px 32px rgba(255,215,0,0.4);
+}
+
+/* ── Trial Banner ── */
+.sp-trial-banner {
+  max-width: 600px;
+  margin: 2.5rem auto 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-radius: 1rem;
+  background: rgba(255,215,0,0.06);
+  border: 1px solid rgba(255,215,0,0.15);
+  position: relative;
+  z-index: 1;
+}
+.sp-trial-icon {
+  font-size: 1.5rem;
+}
+.sp-trial-text {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.7);
+}
+.sp-trial-text strong {
+  color: #FFD700;
+}
+
+/* ── FAQ Strip ── */
+.sp-faq-strip {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 1.5rem auto 0;
+  max-width: 700px;
+  position: relative;
+  z-index: 1;
+}
+.sp-faq-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.4);
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1100px) {
+  .sp-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sp-card-recommended {
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 700px) {
+  .sp-grid {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+  }
+  .sp-title {
+    font-size: 1.8rem;
+  }
+  .sp-full-page {
+    padding: 1.5rem 1rem 3rem;
+  }
+  .sp-card {
+    padding: 1.5rem 1.25rem;
+  }
+  .sp-card-amount {
+    font-size: 2.4rem;
+  }
+  .sp-toggle-btn {
+    padding: 0.45rem 1rem;
+    font-size: 0.82rem;
+  }
+  .sp-save-badge {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.4rem;
+  }
+  .sp-faq-strip {
+    gap: 1rem;
+  }
+}

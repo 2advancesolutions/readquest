@@ -137,6 +137,8 @@ export default function BookReader() {
   const location = useLocation()
   // Double-points mode — activated when student retries after scoring < 77%
   const doublePoints = !!(location.state as any)?.doublePoints
+  // Community book — came from /books gallery; exit returns there
+  const fromBooks = !!(location.state as any)?.fromBooks
 
   const [story, setStory] = useState<Story | null>(null)
   const [storyLoading, setStoryLoading] = useState(true)
@@ -1010,8 +1012,8 @@ export default function BookReader() {
     <div className="reader-loading">
       <div style={{ fontSize: '3rem' }}>😔</div>
       <p style={{ color: '#EF4444', fontWeight: 700, marginBottom: 8 }}>{storyError || 'Story not found.'}</p>
-      <button className="ghost-btn" onClick={() => navigate('/generate')}
-        style={{ marginTop: 8 }}>← Create a New Story</button>
+      <button className="ghost-btn" onClick={() => navigate(fromBooks ? '/books' : '/generate')}
+        style={{ marginTop: 8 }}>{fromBooks ? '← Back to Books' : '← Create a New Story'}</button>
     </div>
   )
 
@@ -1220,22 +1222,30 @@ export default function BookReader() {
                       <motion.button
                         className="hero-btn double-points-btn"
                         whileHover={{scale:1.05}} whileTap={{scale:0.97}}
-                        onClick={() => navigate(`/read/${storyId}`, { state: { doublePoints: true } })}>
+                        onClick={() => navigate(`/read/${storyId}`, { state: { doublePoints: true, fromBooks } })}>
                         🔥 Read Again for Double Points!
                       </motion.button>
                       <motion.button className="ghost-btn" whileHover={{scale:1.03}}
-                        onClick={() => navigate('/dashboard')}>
-                        🏠 Back to Dashboard
+                        onClick={() => navigate(fromBooks ? '/books' : '/dashboard')}>
+                        {fromBooks ? '📚 Back to Community Books' : '🏠 Back to Dashboard'}
                       </motion.button>
                     </>
                   ) : (
                     <>
-                      <motion.button className="hero-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/generate')}>✨ Read Another Story</motion.button>
+                      {fromBooks ? (
+                        <motion.button className="hero-btn" whileHover={{scale:1.05}} onClick={() => navigate('/books')}>
+                          📚 Explore More Books
+                        </motion.button>
+                      ) : (
+                        <motion.button className="hero-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/generate')}>✨ Read Another Story</motion.button>
+                      )}
                       <motion.button className="ghost-btn shelf-cta-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/shelf')}
                         style={{background:'#EDE9FE',color:'#6D28D9',border:'2px solid #C4B5FD',fontWeight:800}}>
                         📚 View My Reading Shelf
                       </motion.button>
-                      <motion.button className="ghost-btn" whileHover={{scale:1.05}} onClick={()=>navigate('/dashboard')}>🏠 Dashboard</motion.button>
+                      <motion.button className="ghost-btn" whileHover={{scale:1.05}} onClick={()=>navigate(fromBooks ? '/books' : '/dashboard')}>
+                        {fromBooks ? '🌍 Community Books' : '🏠 Dashboard'}
+                      </motion.button>
                     </>
                   )}
                 </div>
@@ -1268,9 +1278,9 @@ export default function BookReader() {
 
       {/* Top bar */}
       <div className="reader-topbar">
-        <button className="reader-back-btn" onClick={()=>{tts.stop();mic.stopListening();navigate('/dashboard')}}>
+        <button className="reader-back-btn" onClick={()=>{tts.stop();mic.stopListening();navigate(fromBooks ? '/books' : '/dashboard')}}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-          Exit
+          {fromBooks ? 'Back to Books' : 'Exit'}
         </button>
         <h1 className="reader-title">{story.title}</h1>
         <div className="reader-topbar-right">

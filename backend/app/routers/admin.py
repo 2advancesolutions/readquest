@@ -165,3 +165,22 @@ async def get_admin_stats(db: AsyncSession = Depends(get_session)):
         "total_exams": int(total_exams),
         "total_xp": int(total_xp),
     }
+
+
+@router.delete("/books/{book_id}")
+async def delete_book(book_id: str, db: AsyncSession = Depends(get_session)):
+    """Admin: permanently delete a book and all its pages/vote logs."""
+    from fastapi import HTTPException
+    from app.models.story import StoryPage
+    from sqlalchemy import text
+
+    story = (await db.execute(select(Story).where(Story.id == book_id))).scalar_one_or_none()
+    if not story:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    # Delete pages and vote logs first (FK cascade handles it but be explicit)
+    await db.execute(text("DELETE FROM story_vote_logs WHERE story_id = :sid").bindparams(sid=book_id))
+    await db.execute(text("DELETE FROM story_pages WHERE story_id = :sid").bindparams(sid=book_id))
+    await db.delete(story)
+    await db.commit()
+    return {"deleted": book_id}

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { storiesApi, rewardsApi } from '../services/api'
+import { storiesApi, rewardsApi, roadmapApi } from '../services/api'
+import type { RoadmapOut } from '../services/api'
 import { supabase } from '../lib/supabase'
 import { preloadWelcomeVoice } from '../components/WelcomeVoice'
 import { preloadSpellingWelcome } from '../lib/spellingWelcome'
@@ -31,7 +32,7 @@ const THEME_EMOJIS: Record<string, string> = {
   animals:'🦁', space:'🚀', adventure:'🗺️', fantasy:'🧙', sports:'⚽', science:'🔬', ocean:'🐠', dinosaurs:'🦕'
 }
 
-type Child = { id: string; name: string; grade_level: number; school?: string }
+type Child = { id: string; name: string; grade_level: number; school?: string; avatar_url?: string }
 
 async function fetchRewardsForStudent(studentId: string): Promise<StudentRewards> {
   const res = await fetch(`${import.meta.env.VITE_API_URL}/api/rewards/xp`, {
@@ -111,6 +112,41 @@ export default function Dashboard() {
   const [childrenLoading, setChildrenLoading] = useState(true)
   const [selectedChild, setSelectedChild] = useState<Child | null>(null)
   const [contentLoading, setContentLoading] = useState(false)
+  const [roadmap, setRoadmap] = useState<RoadmapOut | null>(null)
+  const [roadmapLoading, setRoadmapLoading] = useState(false)
+
+  // ── Animated ring helper ──────────────────────────────────────────────────
+  const RingCard = ({ pct, label, emoji, color, detail, onClick }: {
+    pct: number; label: string; emoji: string; color: string; detail?: string; onClick?: () => void
+  }) => {
+    const r = 36; const circ = 2 * Math.PI * r
+    const offset = circ * (1 - Math.min(pct, 100) / 100)
+    const scoreColor = pct >= 80 ? '#22c55e' : pct >= 60 ? '#f59e0b' : pct > 0 ? '#ef4444' : '#4a4a6a'
+    return (
+      <motion.div className="dash-ring-card" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}
+        whileHover={onClick ? { y: -4, boxShadow: `0 16px 40px ${color}30` } : {}}
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="dash-ring-emoji">{emoji}</div>
+        <svg className="dash-ring-svg" viewBox="0 0 88 88">
+          <circle cx="44" cy="44" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
+          <motion.circle cx="44" cy="44" r={r} fill="none" stroke={scoreColor} strokeWidth="7"
+            strokeLinecap="round" strokeDasharray={circ}
+            initial={{ strokeDashoffset: circ }}
+            animate={{ strokeDashoffset: offset }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
+            style={{ transform: 'rotate(-90deg)', transformOrigin: '44px 44px' }}
+          />
+          <text x="44" y="44" textAnchor="middle" dominantBaseline="central"
+            fill={scoreColor} fontSize="13" fontWeight="800">
+            {pct > 0 ? `${pct}%` : '—'}
+          </text>
+        </svg>
+        <div className="dash-ring-label">{label}</div>
+        {detail && <div className="dash-ring-detail">{detail}</div>}
+      </motion.div>
+    )
+  }
 
   useEffect(() => {
     const h = new Date().getHours()
@@ -155,6 +191,9 @@ export default function Dashboard() {
                 emitXpUpdate(r.total_xp ?? 0)
               }
               setStories(enrichWithLocalProgress(s as any[], match.id))
+              // Fetch roadmap
+              setRoadmapLoading(true)
+              roadmapApi.get(match.id).then(res => setRoadmap(res.data)).catch(() => {}).finally(() => setRoadmapLoading(false))
             } catch { /* non-fatal */ } finally {
               setContentLoading(false)
             }
@@ -193,6 +232,9 @@ export default function Dashboard() {
         setRewards(prev => ({ ...prev, ...r }))
         emitXpUpdate(r.total_xp ?? 0)
         setStories(enrichWithLocalProgress(s, parentId ?? ''))
+        // Fetch roadmap for new child
+        setRoadmapLoading(true)
+        roadmapApi.get(child.id).then(res => setRoadmap(res.data)).catch(() => setRoadmap(null)).finally(() => setRoadmapLoading(false))
       } else {
         const [rr, sr] = await Promise.all([
           rewardsApi.getXP().catch(() => null),
@@ -273,7 +315,11 @@ export default function Dashboard() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span>Home</span>
           </button>
-          <button className="dash-nav-link" onClick={() => navigate('/shelf')} id="nav-library">
+          <button className="dash-nav-link" onClick={() => navigate('/books')} id="nav-community">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+            <span>Community</span>
+          </button>
+          <button className="dash-nav-link" onClick={() => navigate('/library')} id="nav-library">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
             <span>Library</span>
           </button>
@@ -285,10 +331,7 @@ export default function Dashboard() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
             <span>Spelling</span>
           </button>
-          <button className="dash-nav-link" onClick={() => navigate('/spelling-scores')} id="nav-spell-scores">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-            <span>Spell Scores</span>
-          </button>
+
           <button className="dash-nav-link" onClick={() => navigate('/games')} id="nav-games">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
             <span>Games</span>
@@ -312,6 +355,10 @@ export default function Dashboard() {
           <button className="dash-nav-link" onClick={() => navigate('/add-kid')} id="nav-profile">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
             <span>Profile</span>
+          </button>
+          <button className="dash-nav-link" onClick={() => navigate('/subscriptions')} id="nav-subscriptions">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+            <span>Subscriptions</span>
           </button>
           <button className="dash-nav-link" onClick={() => navigate('/admin')} id="nav-admin" style={{ background: 'rgba(139,92,246,0.12)', borderLeft: '2px solid rgba(139,92,246,0.5)' }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -391,7 +438,11 @@ export default function Dashboard() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                   <span>Home</span>
                 </button>
-                <button className="dash-nav-link" onClick={() => navAndClose('/shelf')} id="drawer-library">
+                <button className="dash-nav-link" onClick={() => navAndClose('/books')} id="drawer-community">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  <span>Community</span>
+                </button>
+                <button className="dash-nav-link" onClick={() => navAndClose('/library')} id="drawer-library">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                   <span>Library</span>
                 </button>
@@ -403,10 +454,7 @@ export default function Dashboard() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
                   <span>Spelling</span>
                 </button>
-                <button className="dash-nav-link" onClick={() => navAndClose('/spelling-scores')} id="drawer-spell-scores">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                  <span>Spell Scores</span>
-                </button>
+
                 <button className="dash-nav-link" onClick={() => navAndClose('/games')} id="drawer-games">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
                   <span>Games</span>
@@ -430,6 +478,10 @@ export default function Dashboard() {
                 <button className="dash-nav-link" onClick={() => navAndClose('/add-kid')} id="drawer-profile">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   <span>Profile</span>
+                </button>
+                <button className="dash-nav-link" onClick={() => navAndClose('/subscriptions')} id="drawer-subscriptions">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                  <span>Subscriptions</span>
                 </button>
                 <button className="dash-nav-link" onClick={() => navAndClose('/admin')} id="drawer-admin" style={{ background: 'rgba(139,92,246,0.12)', borderLeft: '2px solid rgba(139,92,246,0.5)' }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -524,140 +576,237 @@ export default function Dashboard() {
         {/* ════ FEED ROW ════ */}
         <div className="dash-feed">
 
-          {/* ── CENTER CONTENT ── */}
+          {/* ── LEARNING ROADMAP CENTER ── */}
           <div className="dash-center">
 
-            {/* Continue Reading Hero */}
+
+            {/* ── Section: Quick Launch Cards ── */}
+            <div className="dash-section">
+              <div className="dash-section-header">
+                <div>
+                  <div className="dash-section-title">✨ Create Something</div>
+                  <div className="dash-section-sub">Jump right into your favorite creative tools</div>
+                </div>
+              </div>
+              <div className="dash-quick-cards">
+
+                {/* Generate Story */}
+                <motion.div
+                  className="dash-quick-card dash-quick-story"
+                  whileHover={{ y: -6, scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                  onClick={() => { preloadWelcomeVoice(); navigate('/generate') }}
+                >
+                  <div className="dash-quick-card-bg" />
+                  <div className="dash-quick-card-glow" />
+                  <div className="dash-quick-card-body">
+                    <div className="dash-quick-card-emoji">✨</div>
+                    <div className="dash-quick-card-text">
+                      <div className="dash-quick-card-title">Generate Story</div>
+                      <div className="dash-quick-card-desc">Pick a character &amp; theme — AI writes a personalized adventure in seconds</div>
+                    </div>
+                  </div>
+                  <div className="dash-quick-card-chip">Create →</div>
+                </motion.div>
+
+                {/* Character Studio */}
+                <motion.div
+                  className="dash-quick-card dash-quick-character"
+                  whileHover={{ y: -6, scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                  onClick={() => navigate('/character-studio')}
+                >
+                  <div className="dash-quick-card-bg" />
+                  <div className="dash-quick-card-glow" />
+                  <div className="dash-quick-card-body">
+                    <div className="dash-quick-card-emoji">🎨</div>
+                    <div className="dash-quick-card-text">
+                      <div className="dash-quick-card-title">Character Studio</div>
+                      <div className="dash-quick-card-desc">Design a unique AI-generated avatar for your hero with custom looks &amp; style</div>
+                    </div>
+                  </div>
+                  <div className="dash-quick-card-chip">Design →</div>
+                </motion.div>
+
+                {/* Movie Studio */}
+                <motion.div
+                  className="dash-quick-card dash-quick-movie"
+                  whileHover={{ y: -6, scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                  onClick={() => navigate('/movie-studio')}
+                >
+                  <div className="dash-quick-card-bg" />
+                  <div className="dash-quick-card-glow" />
+                  <div className="dash-quick-card-body">
+                    <div className="dash-quick-card-emoji">🎬</div>
+                    <div className="dash-quick-card-text">
+                      <div className="dash-quick-card-title">Movie Studio</div>
+                      <div className="dash-quick-card-desc">Turn your stories into animated films with AI art &amp; voiceovers you can share</div>
+                    </div>
+                  </div>
+                  <div className="dash-quick-card-chip">Direct →</div>
+                </motion.div>
+
+              </div>
+            </div>
+
+            {/* Compact Continue Reading pill */}
             {inProgressStory && (
               <AnimatePresence mode="wait">
                 <motion.div
                   key={inProgressStory.id}
-                  className="dash-continue-card"
-                  initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35 }}
+                  className="dash-continue-pill"
+                  initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
                 >
-                  <div className="dash-continue-cover">
-                    {resolveCoverUrl(inProgressStory.cover_media_url as string | undefined) ? (
-                      <img src={resolveCoverUrl(inProgressStory.cover_media_url as string | undefined)!} alt={inProgressStory.title} />
-                    ) : (
-                      <div className="dash-continue-cover-placeholder">
-                        {THEME_EMOJIS[inProgressStory.theme || 'adventure'] || '📖'}
-                      </div>
-                    )}
+                  <div className="dash-continue-pill-cover">
+                    {resolveCoverUrl(inProgressStory.cover_media_url as string | undefined)
+                      ? <img src={resolveCoverUrl(inProgressStory.cover_media_url as string | undefined)!} alt={inProgressStory.title} />
+                      : <span>{THEME_EMOJIS[inProgressStory.theme || 'adventure'] || '📖'}</span>
+                    }
                   </div>
-                  <div className="dash-continue-info">
-                    <div className="dash-continue-badge">Continue Reading</div>
-                    <div className="dash-continue-title">{inProgressStory.title}</div>
-                    <div className="dash-continue-meta">
-                      Grade {inProgressStory.grade_level} · {inProgressStory.theme ? inProgressStory.theme.charAt(0).toUpperCase() + inProgressStory.theme.slice(1) : 'Story'}
-                    </div>
-                    <div className="dash-continue-progress-label">
-                      <span>Progress</span>
-                      <span>{inProgressStory.progress_pct ?? 0}% Complete</span>
-                    </div>
-                    <div className="dash-continue-progress-track">
-                      <motion.div
-                        className="dash-continue-progress-fill"
+                  <div className="dash-continue-pill-info">
+                    <span className="dash-continue-pill-badge">📖 Continue Reading</span>
+                    <span className="dash-continue-pill-title">{inProgressStory.title}</span>
+                    <div className="dash-continue-pill-bar">
+                      <motion.div className="dash-continue-pill-fill"
                         initial={{ width: 0 }}
                         animate={{ width: `${inProgressStory.progress_pct ?? 0}%` }}
-                        transition={{ duration: 0.8, ease: 'easeOut' }}
+                        transition={{ duration: 0.7 }}
                       />
                     </div>
-                    <button
-                      className="dash-keep-reading-btn"
-                      onClick={() => navigate(`/read/${inProgressStory.id}`)}
-                      id="btn-keep-reading"
-                    >
-                      Keep Reading 📖
-                    </button>
                   </div>
+                  <button className="dash-continue-pill-btn"
+                    onClick={() => navigate(`/read/${inProgressStory.id}`)}
+                  >Keep Reading →</button>
                 </motion.div>
               </AnimatePresence>
             )}
 
-            {/* Available Stories */}
+            {/* ── Section: Progress Rings ── */}
+
             <div className="dash-section">
               <div className="dash-section-header">
                 <div>
-                  <div className="dash-section-title">Available Stories</div>
+                  <div className="dash-section-title">🗺️ Learning Roadmap</div>
                   <div className="dash-section-sub">
-                    {selectedChild
-                      ? `Handpicked for ${selectedChild.name}'s level`
-                      : 'Your reading content'}
+                    {selectedChild ? `${selectedChild.name}'s progress across all activities` : 'Your learning progress'}
                   </div>
                 </div>
-                <button className="dash-view-all-btn" onClick={() => navigate('/shelf')} id="btn-view-library">
+                <button className="dash-view-all-btn" onClick={() => navigate('/library')} id="btn-view-library">
                   View Library →
                 </button>
               </div>
 
-              <AnimatePresence mode="wait">
-                {contentLoading ? (
-                  <motion.div key="loading" style={{ color: 'var(--rq-text-muted)', fontSize: '0.9rem', padding: '20px 0', display: 'flex', alignItems: 'center', gap: 10 }}
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <span style={{ display: 'inline-block', width: 18, height: 18, border: '2px solid var(--rq-purple-light)', borderTopColor: 'var(--rq-purple)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                    Loading stories…
-                  </motion.div>
-                ) : stories.length === 0 ? (
-                  <motion.div key="empty" className="dash-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <div className="dash-empty-icon">📖</div>
-                    <p>{selectedChild ? `No stories for ${selectedChild.name} yet.` : 'No stories yet — generate the first one!'}</p>
-                    <button className="dash-empty-btn" onClick={() => { preloadWelcomeVoice(); navigate('/generate') }}>Generate a Story ✨</button>
-                  </motion.div>
-                ) : (
-                  <motion.div key="stories" className="story-grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    {stories.map((s, i) => {
-                      const coverUrl = resolveCoverUrl(s.cover_media_url as string | undefined)
-                      const pct: number = s.progress_pct ?? 0
-                      const isComplete = !!s.completed_at
-                      const resumePage: number = s.last_page ?? 0
-                      return (
-                        <motion.div
-                          key={s.id}
-                          className={`story-card ${isComplete ? 'story-card-complete' : ''}`}
-                          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.28, delay: 0.05 * i }}
-                          onClick={() => navigate(`/read/${s.id}`)}
-                          id={`story-card-${s.id}`}
-                        >
-                          <button className="story-delete-btn" title="Delete" onClick={(e) => handleDelete(e, s.id!)}>✕</button>
-                          {isComplete && <div className="story-complete-badge">⭐</div>}
-
-                          <div className="story-cover">
-                            {coverUrl ? (
-                              <img src={coverUrl} alt={s.title} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                            ) : (
-                              <div className="story-cover-placeholder">
-                                <span>{THEME_EMOJIS[s.theme || 'animals'] || '📖'}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="story-info">
-                            <div className="story-grade-chip">Grade {s.grade_level}</div>
-                            <p className="story-title">{s.title}</p>
-                            <p className="story-meta">
-                              <span className="story-meta-dot">●</span>
-                              {pct > 0 ? `${pct}% read` : '8 min read'}
-                            </p>
-                            {pct > 0 && (
-                              <div className="story-progress-wrap">
-                                <div className="story-progress-bar">
-                                  <div className="story-progress-fill" style={{ width: `${Math.min(pct, 100)}%`, background: isComplete ? '#F59E0B' : undefined }} />
-                                </div>
-                                <span className="story-progress-label">
-                                  {isComplete ? `✅ Completed` : `Resume p.${resumePage + 1}`}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )
-                    })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {roadmapLoading ? (
+                <div className="dash-roadmap-loading">
+                  <div className="dash-ring-skeleton" />
+                  <div className="dash-ring-skeleton" />
+                  <div className="dash-ring-skeleton" />
+                  <div className="dash-ring-skeleton" />
+                  <div className="dash-ring-skeleton" />
+                </div>
+              ) : (
+                <div className="dash-roadmap-grid">
+                  <RingCard
+                    pct={roadmap?.reading.pct ?? 0}
+                    label="Reading" emoji="📖" color="#38bdf8"
+                    detail={roadmap?.reading.detail}
+                    onClick={() => navigate('/library')}
+                  />
+                  <RingCard
+                    pct={roadmap?.quizzes.pct ?? 0}
+                    label="Quizzes" emoji="📝" color="#a78bfa"
+                    detail={roadmap?.quizzes.detail}
+                    onClick={() => navigate('/library')}
+                  />
+                  <RingCard
+                    pct={roadmap?.comprehension.pct ?? 0}
+                    label="Comprehension" emoji="🧠" color="#f472b6"
+                    detail={roadmap?.comprehension.detail}
+                    onClick={() => navigate('/library')}
+                  />
+                  <RingCard
+                    pct={roadmap?.spelling.pct ?? 0}
+                    label="Spelling" emoji="✏️" color="#34d399"
+                    detail={roadmap?.spelling.detail}
+                    onClick={() => navigate('/spelling')}
+                  />
+                  <RingCard
+                    pct={roadmap?.exams.pct ?? 0}
+                    label="Exams" emoji="🎓" color="#fbbf24"
+                    detail={roadmap?.exams.detail}
+                    onClick={() => navigate('/exams')}
+                  />
+                </div>
+              )}
             </div>
+
+            {/* Smart Suggestion Banner */}
+            {roadmap?.smart_suggestion && (
+              <motion.div
+                className="dash-suggestion-banner"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                onClick={() => navigate(roadmap.smart_suggestion.action_url)}
+              >
+                <span className="dash-suggestion-emoji">{roadmap.smart_suggestion.emoji}</span>
+                <div className="dash-suggestion-text">
+                  <span className="dash-suggestion-msg">{roadmap.smart_suggestion.message}</span>
+                  <span className="dash-suggestion-cta">Practice now →</span>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── Section: Games Arcade ── */}
+            <div className="dash-section">
+              <div className="dash-section-header">
+                <div>
+                  <div className="dash-section-title">🎮 Games Arcade</div>
+                  <div className="dash-section-sub">Progress across all mini-games</div>
+                </div>
+                <button className="dash-view-all-btn" onClick={() => navigate('/games')} id="btn-view-games">
+                  Play Games →
+                </button>
+              </div>
+              <div className="dash-games-scroll">
+                {(roadmap?.games.breakdown ?? []).map((game, i) => (
+                  <motion.div
+                    key={game.id}
+                    className="dash-game-chip"
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    whileHover={{ y: -4 }}
+                    onClick={() => navigate(`/games/${game.id}`)}
+                  >
+                    <span className="dash-game-chip-emoji">{game.emoji}</span>
+                    <div className="dash-game-chip-info">
+                      <span className="dash-game-chip-title">{game.title}</span>
+                      <span className="dash-game-chip-level">Lvl {game.level}/100</span>
+                    </div>
+                    <div className="dash-game-chip-bar">
+                      <motion.div className="dash-game-chip-fill"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${game.pct}%` }}
+                        transition={{ duration: 0.8, delay: i * 0.06 }}
+                      />
+                    </div>
+                    {game.stars > 0 && (
+                      <span className="dash-game-chip-stars">{'⭐'.repeat(Math.min(game.stars, 3))}</span>
+                    )}
+                  </motion.div>
+                ))}
+                {(!roadmap || roadmap.games.breakdown.length === 0) && (
+                  <div className="dash-games-empty">
+                    <span>🎮</span>
+                    <p>No game progress yet — <button onClick={() => navigate('/games')}>play now!</button></p>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* ════ RIGHT PANEL ════ */}
