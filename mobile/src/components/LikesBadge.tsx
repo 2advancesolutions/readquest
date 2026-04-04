@@ -1,52 +1,47 @@
 /**
- * LikesBadge — total ♥ likes overlay (React Native conversion).
+ * LikesBadge — total ♥ likes display.
  *
- * Sits below XpBadge in the top-right corner.
- * Polls every 60 seconds and listens to module-level events for instant updates.
- * Uses SafeAreaInsets for proper positioning.
+ * TWO modes:
+ * 1. <LikesBadge />       — legacy floating absolute overlay
+ * 2. <LikesChip />        — inline chip for embedding in headers / rows
  */
 import { useState, useEffect, useRef } from 'react'
-import { View, Text, Animated } from 'react-native'
+import { View, Text, Animated, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import Constants from 'expo-constants'
 import { useSegments } from 'expo-router'
 import { useDeviceLayout } from '../hooks/useDeviceLayout'
 
 const POLL_INTERVAL = 60_000
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-// Module-level event emitter (replaces window.CustomEvent 'rq:likes-update')
+// ── Module-level event emitter ─────────────────────────────────────────────
 type LikesListener = (total: number) => void
 const likesListeners = new Set<LikesListener>()
 export function emitLikesUpdate(total: number) {
   likesListeners.forEach(fn => fn(total))
 }
 
-export default function LikesBadge() {
-  const { isTablet } = useDeviceLayout()
-  const insets = useSafeAreaInsets()
+// ── Shared hook ────────────────────────────────────────────────────────────
+export function useLikesState() {
   const [studentId, setStudentId] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const popAnim = useRef(new Animated.Value(1)).current
   const prevTotal = useRef(0)
 
-  // Load student ID from AsyncStorage
   useEffect(() => {
     AsyncStorage.getItem('readquest_student_id').then(setStudentId)
   }, [])
 
-  const fetchLikes = async () => {
-    if (!studentId) return
+  const fetchLikes = async (id: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/stories/public/likes/total?student_id=${studentId}`)
+      const res = await fetch(`${API_URL}/api/stories/public/likes/total?student_id=${id}`)
       const data = await res.json()
       const newTotal: number = data.total_likes ?? 0
       if (newTotal > prevTotal.current) {
-        // Pop animation on new likes
         Animated.sequence([
-          Animated.spring(popAnim, { toValue: 1.3, useNativeDriver: true }),
-          Animated.spring(popAnim, { toValue: 1, useNativeDriver: true }),
+          Animated.spring(popAnim, { toValue: 1.25, useNativeDriver: true }),
+          Animated.spring(popAnim, { toValue: 1,    useNativeDriver: true }),
         ]).start()
       }
       prevTotal.current = newTotal
@@ -56,51 +51,62 @@ export default function LikesBadge() {
 
   useEffect(() => {
     if (!studentId) return
-    fetchLikes()
-    const interval = setInterval(fetchLikes, POLL_INTERVAL)
-
-    // Subscribe to instant updates
-    const listener: LikesListener = (t) => setTotal(t)
+    fetchLikes(studentId)
+    const interval = setInterval(() => fetchLikes(studentId), POLL_INTERVAL)
+    const listener: LikesListener = t => setTotal(t)
     likesListeners.add(listener)
-
-    return () => {
-      clearInterval(interval)
-      likesListeners.delete(listener)
-    }
+    return () => { clearInterval(interval); likesListeners.delete(listener) }
   }, [studentId])
 
+  return { total, popAnim, studentId }
+}
+
+// ── Inline chip ────────────────────────────────────────────────────────────
+export function LikesChip() {
+  const { total, popAnim, studentId } = useLikesState()
+  if (!studentId) return null
+  return (
+    <Animated.View style={[chip.pill, { transform: [{ scale: popAnim }] }]}>
+      <Text style={chip.icon}>♥</Text>
+      <Text style={chip.value}>{total.toLocaleString()}</Text>
+      <Text style={chip.unit}>Likes</Text>
+    </Animated.View>
+  )
+}
+
+const chip = StyleSheet.create({
+  pill: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1a1035',
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: '#F74B6D',
+    gap: 3,
+  },
+  icon:  { fontSize: 11, color: '#f472b6' },
+  value: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  unit:  { fontSize: 10, color: '#7a79a0', fontWeight: '600' },
+})
+
+// ── Default export: floating overlay ──────────────────────────────────────
+export default function LikesBadge() {
+  const { isTablet } = useDeviceLayout()
+  const insets = useSafeAreaInsets()
+  const { total, popAnim, studentId } = useLikesState()
+
   const segments = useSegments()
-  // Hide on the read screen — overlaps story/quiz content
   const isReadScreen = segments.some(s => s === 'read' || s.startsWith('[storyId]') || s.includes('storyId'))
 
   if (!studentId || isReadScreen) return null
 
   return (
-    <View
-      style={{
-        position: 'absolute',
-        top: insets.top + 44, // below XpBadge (~36px) + gap
-        right: 12,
-        zIndex: 9998,
-      }}
-    >
-      <Animated.View
-        className="flex-row items-center bg-nb-card rounded-full px-3 py-1.5"
-        style={{ borderColor: '#F74B6D', borderWidth: 1, transform: [{ scale: popAnim }] }}
-      >
-        <Text className="text-rq-coral mr-1" style={{ fontSize: isTablet ? 14 : 12 }}>♥</Text>
-        <Text
-          className="text-white font-bold"
-          style={{ fontSize: isTablet ? 14 : 12 }}
-        >
-          {total.toLocaleString()}
-        </Text>
-        <Text
-          className="text-rq-text-muted ml-1"
-          style={{ fontSize: isTablet ? 12 : 10 }}
-        >
-          Likes
-        </Text>
+    <View style={{ position: 'absolute', top: insets.top + 44, right: 12, zIndex: 9998 }}>
+      <Animated.View style={[chip.pill, {
+        paddingHorizontal: 12, paddingVertical: 7,
+        transform: [{ scale: popAnim }],
+      }]}>
+        <Text style={[chip.icon, { fontSize: isTablet ? 14 : 12 }]}>♥</Text>
+        <Text style={[chip.value, { fontSize: isTablet ? 14 : 12 }]}>{total.toLocaleString()}</Text>
+        <Text style={[chip.unit, { fontSize: isTablet ? 12 : 10 }]}>Likes</Text>
       </Animated.View>
     </View>
   )

@@ -25,7 +25,8 @@ import { supabase } from '../../src/lib/supabase'
 import { storage } from '../../src/lib/storage'
 import { storiesApi, rewardsApi, roadmapApi } from '../../src/lib/api'
 import type { RoadmapOut, RoadmapGameItem } from '../../src/lib/api'
-import { emitXpUpdate } from '../../src/components/XpBadge'
+import { emitXpUpdate, XpChip } from '../../src/components/XpBadge'
+import { LikesChip } from '../../src/components/LikesBadge'
 import StudentDropdown from '../../src/components/StudentDropdown'
 import type { Child } from '../../src/components/StudentDropdown'
 import { useDeviceLayout } from '../../src/hooks/useDeviceLayout'
@@ -374,26 +375,18 @@ export default function DashboardScreen() {
 
       {/* ── Hero Header ── */}
       <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.greetingText, isDesktopWeb && styles.greetingTextDesktop]}>{greeting} 👋</Text>
-          <Text style={[styles.heroName, isDesktopWeb && styles.heroNameDesktop]} numberOfLines={1}>
-            Welcome back, {childName}!
-            {selectedChild && (
-              <Text style={styles.heroParent}> · {parentName.split(' ')[0]}</Text>
-            )}
-          </Text>
-        </View>
 
-        {/* Avatar + Student switcher */}
-        <View style={{ alignItems: 'flex-end', gap: 6, flexDirection: 'row', alignItems: 'center' }}>
-          {!childrenLoading && children.length > 0 && (
-            <StudentDropdown
-              children={children}
-              selected={selectedChild}
-              onChange={selectChild}
-              allowAll={children.length > 1}
-            />
-          )}
+        {/* Row 1: Greeting + Avatar */}
+        <View style={styles.headerRow1}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.greetingText, isDesktopWeb && styles.greetingTextDesktop]}>{greeting} 👋</Text>
+            <Text style={[styles.heroName, isDesktopWeb && styles.heroNameDesktop]} numberOfLines={1}>
+              {childName}
+              {selectedChild && (
+                <Text style={styles.heroParent}> · {parentName.split(' ')[0]}</Text>
+              )}
+            </Text>
+          </View>
           {childAvatar ? (
             <Image source={{ uri: childAvatar }} style={styles.heroAvatar} contentFit="cover" />
           ) : (
@@ -402,6 +395,22 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
+
+        {/* Row 2: XP chip + Likes chip + Student switcher */}
+        <View style={styles.headerRow2}>
+          <XpChip />
+          <LikesChip />
+          <View style={{ flex: 1 }} />
+          {!childrenLoading && children.length > 0 && (
+            <StudentDropdown
+              children={children}
+              selected={selectedChild}
+              onChange={selectChild}
+              allowAll={children.length > 1}
+            />
+          )}
+        </View>
+
       </View>
 
       {/* ── Content ── */}
@@ -556,21 +565,29 @@ const styles = StyleSheet.create({
 
   // ── Header ──
   header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 16,
+    paddingBottom: 10,
+  },
+  headerRow1: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  headerRow2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 4,
   },
   // Desktop overrides
   headerDesktop: {
     paddingHorizontal: 36,
-    paddingTop: 28,
-    paddingBottom: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(150,110,255,0.1)',
     backgroundColor: 'rgba(12,5,32,0.82)',
-    alignItems: 'center',
   },
   greetingText: {
     color: '#69537B',

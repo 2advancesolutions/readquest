@@ -10,15 +10,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, Image,
-  StyleSheet, ActivityIndicator, FlatList, Modal, Pressable,
-  Animated, Dimensions,
+  StyleSheet, ActivityIndicator, Modal, Pressable,
+  Animated, Platform, useWindowDimensions,
 } from 'react-native'
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { storiesApi } from '../../src/lib/api'
 import { getSelectedStudentId } from '../../src/lib/storage'
-
-const { width: SW } = Dimensions.get('window')
 const API_BASE = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000'}/api`
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -151,7 +149,9 @@ function useSave(storyId: string | null) {
 }
 
 // ── BookCard ──────────────────────────────────────────────────────────────────
-function BookCard({ book, onPress, selected }: { book: PublicBook; onPress: () => void; selected: boolean }) {
+function BookCard({ book, onPress, selected, compact = false }: {
+  book: PublicBook; onPress: () => void; selected: boolean; compact?: boolean
+}) {
   const emoji = themeEmoji(book.theme)
   const { likeCount, alreadyLiked, like } = useLike(book.id, book.like_count)
   const scaleAnim = useRef(new Animated.Value(1)).current
@@ -177,7 +177,7 @@ function BookCard({ book, onPress, selected }: { book: PublicBook; onPress: () =
             <Image source={{ uri: book.cover_media_url }} style={styles.coverImg} resizeMode="cover" />
           ) : (
             <View style={styles.coverPlaceholder}>
-              <Text style={styles.coverEmoji}>{emoji}</Text>
+              <Text style={compact ? styles.coverEmojiCompact : styles.coverEmoji}>{emoji}</Text>
             </View>
           )}
           {/* Art style badge */}
@@ -188,13 +188,19 @@ function BookCard({ book, onPress, selected }: { book: PublicBook; onPress: () =
         </View>
 
         {/* Info */}
-        <Text style={styles.bookTitle} numberOfLines={2}>{book.title}</Text>
-        <Text style={styles.bookCreator} numberOfLines={1}>by {book.creator_name}</Text>
-        {book.created_at ? <Text style={styles.bookDate}>{formatDate(book.created_at)}</Text> : null}
+        <Text style={compact ? styles.bookTitleCompact : styles.bookTitle} numberOfLines={compact ? 1 : 2}>
+          {book.title}
+        </Text>
+        {!compact && (
+          <Text style={styles.bookCreator} numberOfLines={1}>by {book.creator_name}</Text>
+        )}
+        {!compact && book.created_at && (
+          <Text style={styles.bookDate}>{formatDate(book.created_at)}</Text>
+        )}
 
         {/* Likes */}
         <TouchableOpacity
-          style={styles.likeRow}
+          style={[styles.likeRow, compact && styles.likeRowCompact]}
           onPress={e => { e.stopPropagation?.(); like() }}
           activeOpacity={0.75}
         >
@@ -381,8 +387,11 @@ export default function CommunityScreen() {
     setLoadingMore(false)
   }
 
-  const numCols = 2
-  const cardW = (SW - 48 - 12) / numCols
+  const { width: winW } = useWindowDimensions()
+  // Responsive columns: desktop=5, tablet=3, mobile=2
+  const isDesktopWeb = Platform.OS === 'web' && winW >= 1024
+  const isTablet     = winW >= 768 && winW < 1024
+  const numCols      = isDesktopWeb ? 5 : isTablet ? 3 : 2
 
   return (
     <View style={styles.root}>
@@ -455,36 +464,44 @@ export default function CommunityScreen() {
           <Text style={styles.emptySub}>Try a different search or filter</Text>
         </View>
       ) : (
-        <FlatList
-          data={books}
-          keyExtractor={b => b.id}
-          numColumns={numCols}
-          columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.grid}
+        <ScrollView
           showsVerticalScrollIndicator={false}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.footerLoader}>
-                <ActivityIndicator size="small" color="#702AE1" />
-              </View>
-            ) : books.length < total ? (
-              <TouchableOpacity style={styles.loadMoreBtn} onPress={handleLoadMore}>
-                <Text style={styles.loadMoreText}>Show More Books</Text>
-              </TouchableOpacity>
-            ) : null
-          }
-          renderItem={({ item }) => (
-            <View style={{ width: cardW, margin: 6 }}>
+          contentContainerStyle={[styles.grid, { flexDirection: 'row', flexWrap: 'wrap' }]}
+          onScroll={({ nativeEvent }) => {
+            const { layoutMeasurement, contentOffset, contentSize } = nativeEvent
+            const nearEnd = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200
+            if (nearEnd) handleLoadMore()
+          }}
+          scrollEventThrottle={400}
+        >
+          {books.map(item => (
+            <View
+              key={item.id}
+              style={{
+                width: `${100 / numCols}%` as any,
+                padding: isDesktopWeb ? 4 : 6,
+              }}
+            >
               <BookCard
                 book={item}
                 selected={selected?.id === item.id}
                 onPress={() => setSelected(item)}
+                compact={isDesktopWeb}
               />
             </View>
+          ))}
+          {/* Load more footer */}
+          {loadingMore && (
+            <View style={[styles.footerLoader, { width: '100%' }]}>
+              <ActivityIndicator size="small" color="#702AE1" />
+            </View>
           )}
-        />
+          {!loadingMore && books.length < total && (
+            <TouchableOpacity style={[styles.loadMoreBtn, { width: '100%' }]} onPress={handleLoadMore}>
+              <Text style={styles.loadMoreText}>Show More Books</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
       )}
     </View>
   )
@@ -521,29 +538,31 @@ const styles = StyleSheet.create({
   totalCount: { color: '#69537B', fontSize: 12, paddingHorizontal: 20, marginBottom: 4 },
 
   // Grid
-  grid: { paddingHorizontal: 14, paddingBottom: 120 },
-  row: { justifyContent: 'space-between' },
+  grid: { paddingHorizontal: 8, paddingBottom: 120, alignItems: 'flex-start' },
 
   // Book card
   bookCard: {
-    backgroundColor: '#1C1033', borderRadius: 16,
+    backgroundColor: '#1C1033', borderRadius: 12,
     overflow: 'hidden', borderWidth: 1, borderColor: '#2E1B5A',
   },
   bookCardSelected: { borderColor: '#702AE1' },
-  coverWrap: { position: 'relative', aspectRatio: 0.75, backgroundColor: '#2E1B5A' },
+  coverWrap: { position: 'relative', aspectRatio: 0.72, backgroundColor: '#2E1B5A' },
   coverImg: { width: '100%', height: '100%' },
   coverPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  coverEmoji: { fontSize: 40 },
-  artBadge: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(13,7,32,0.75)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
-  artBadgeText: { color: '#C4A8F5', fontSize: 9, fontWeight: '700' },
+  coverEmoji:        { fontSize: 40 },
+  coverEmojiCompact: { fontSize: 24 },
+  artBadge: { position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(13,7,32,0.80)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
+  artBadgeText: { color: '#C4A8F5', fontSize: 8, fontWeight: '700' },
   selectedOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(112,42,225,0.15)', borderWidth: 2, borderColor: '#702AE1' },
-  bookTitle:   { color: '#F8F0FF', fontSize: 12, fontWeight: '700', paddingHorizontal: 10, paddingTop: 8, lineHeight: 17 },
-  bookCreator: { color: '#9B8AB4', fontSize: 10, paddingHorizontal: 10, marginTop: 2 },
-  bookDate:    { color: '#69537B', fontSize: 9,  paddingHorizontal: 10, marginTop: 1 },
-  likeRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, gap: 4 },
-  likeHeart:      { fontSize: 14, color: '#9B8AB4' },
+  bookTitle:        { color: '#F8F0FF', fontSize: 12, fontWeight: '700', paddingHorizontal: 8, paddingTop: 6, lineHeight: 16 },
+  bookTitleCompact: { color: '#F8F0FF', fontSize: 10, fontWeight: '700', paddingHorizontal: 6, paddingTop: 5, lineHeight: 14 },
+  bookCreator: { color: '#9B8AB4', fontSize: 10, paddingHorizontal: 8, marginTop: 2 },
+  bookDate:    { color: '#69537B', fontSize: 9,  paddingHorizontal: 8, marginTop: 1 },
+  likeRow:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8,  paddingVertical: 7, gap: 4 },
+  likeRowCompact: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6,  paddingVertical: 4, gap: 3 },
+  likeHeart:      { fontSize: 13, color: '#9B8AB4' },
   likeHeartActive: { color: '#EC4899' },
-  likeCount:   { color: '#9B8AB4', fontSize: 11 },
+  likeCount:   { color: '#9B8AB4', fontSize: 10 },
 
   // States
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },

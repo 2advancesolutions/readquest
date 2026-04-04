@@ -15,7 +15,7 @@
  * - Active tab: glowing gradient pill indicator
  * - Animated spring on tab press
  */
-import { Redirect, Tabs } from 'expo-router'
+import { Redirect, Tabs, usePathname } from 'expo-router'
 import { View, Platform, useWindowDimensions, StyleSheet } from 'react-native'
 import { useAuth } from '../_layout'
 import { useDeviceLayout } from '../../src/hooks/useDeviceLayout'
@@ -29,17 +29,23 @@ export default function AppLayout() {
   const { session } = useAuth()
   const { isTablet } = useDeviceLayout()
   const { width } = useWindowDimensions()
+  const pathname = usePathname()
 
   // Show desktop sidebar on web at >= 1024px width
   const isDesktopWeb = Platform.OS === 'web' && width >= 1024
+
+  // Dashboard embeds XP + Likes inline in its header — hide global overlays there
+  const isDashboard = pathname === '/dashboard' || pathname === '/(app)/dashboard'
 
   if (!session) return <Redirect href="/(auth)/login" />
 
   return (
     <View style={layoutStyles.root}>
-      <XpBadge />
-      <LikesBadge />
-      <MuteButton />
+      {/* Global overlays — mobile only; desktop uses inline header chips */}
+      {!isDashboard && !isDesktopWeb && <XpBadge />}
+      {!isDashboard && !isDesktopWeb && <LikesBadge />}
+      {!isDesktopWeb && <MuteButton />}
+
 
       {/* Desktop sidebar — web only */}
       {isDesktopWeb && <DesktopSidebar />}

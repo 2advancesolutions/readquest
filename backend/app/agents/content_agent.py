@@ -955,30 +955,56 @@ Story Text:
 
 For every page, create 3 questions testing comprehension of that specific page. Make them fun and age-appropriate for grade {state['grade']}.
 
+IMPORTANT: The correct answer must be placed at a DIFFERENT position (A, B, C, or D) for each question. Do NOT always put the correct answer in position B. Vary the positions evenly across A, B, C, and D.
+
 Output ONLY valid JSON — an array of objects:
 [
   {{
     "page_index": 1,
-    "question": "Question about page 1?",
-    "choices": ["Choice A", "Choice B", "Choice C", "Choice D"],
-    "correct_answer": "Choice B",
+    "question": "What was the main character doing at the start?",
+    "choices": ["Exploring the forest", "Sleeping in bed", "Eating breakfast", "Flying a kite"],
+    "correct_answer": "Exploring the forest",
     "explanation": "Brief kid-friendly explanation"
   }},
   {{
     "page_index": 1,
-    "question": "Another question about page 1?",
-    "choices": ["Choice A", "Choice B", "Choice C", "Choice D"],
-    "correct_answer": "Choice A",
+    "question": "Where did the story begin?",
+    "choices": ["Under the sea", "On a mountain", "In a magical forest", "Inside a spaceship"],
+    "correct_answer": "In a magical forest",
+    "explanation": "Brief kid-friendly explanation"
+  }},
+  {{
+    "page_index": 2,
+    "question": "Why was the hero surprised?",
+    "choices": ["The sky turned green", "A friend appeared", "The map was wrong", "They found a glowing stone"],
+    "correct_answer": "They found a glowing stone",
     "explanation": "Brief kid-friendly explanation"
   }}
 ]
 """
+    import random as _random
+
     try:
         raw = await _call_gemini_text(system="You generate quiz questions. Respond with valid JSON only.", user=prompt)
         if "```" in raw:
             raw = raw.split("```")[1]
             if raw.startswith("json"): raw = raw[4:]
-        state["quiz_questions"] = json.loads(raw.strip())
+        parsed_qs = json.loads(raw.strip())
+
+        # ── Shuffle choices after parsing ─────────────────────────────────────
+        # No matter what position the LLM chose, we randomly shuffle the answer
+        # list. We track correct_answer by its TEXT value, so it stays correct
+        # after the shuffle — this guarantees A/B/C/D are all equally likely.
+        for q in parsed_qs:
+            choices = q.get("choices", [])
+            correct = q.get("correct_answer", "")
+            if choices and correct in choices:
+                _random.shuffle(choices)
+                q["choices"] = choices
+                # correct_answer is stored as the answer text, not a letter index
+                # so no update needed — the frontend matches by value, not position
+
+        state["quiz_questions"] = parsed_qs
     except Exception:
         state["quiz_questions"] = []
     return state

@@ -1,32 +1,29 @@
 /**
- * XpBadge — persistent XP counter overlay (React Native conversion).
+ * XpBadge — XP counter chip.
  *
- * Replaces web window.CustomEvent / localStorage with:
- * - A global module-level EventEmitter for instant in-session updates
- * - AsyncStorage for persistent XP across sessions
+ * TWO modes:
+ * 1. <XpBadge />            — legacy floating absolute overlay (kept for non-dashboard screens)
+ * 2. <XpBadge inline />     — inline chip for embedding in headers / rows
  *
- * On native: positioned absolutely via SafeAreaView top-right.
- * On tablet: slightly larger badge.
+ * Module-level emitter preserved so any screen can call emitXpUpdate().
  */
 import { useState, useEffect, useRef } from 'react'
-import { View, Text, Animated } from 'react-native'
+import { View, Text, Animated, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useDeviceLayout } from '../hooks/useDeviceLayout'
 
 const XP_KEY = 'readquest_student_xp'
 
-// ── Module-level event emitter (replaces window.CustomEvent) ───────────────
+// ── Module-level event emitter ─────────────────────────────────────────────
 type XpListener = (total: number, delta?: number) => void
 const xpListeners = new Set<XpListener>()
 
-/** Call this anywhere in the app to update the XP badge instantly */
 export function emitXpUpdate(newTotal: number, delta?: number) {
   AsyncStorage.setItem(XP_KEY, String(newTotal)).catch(() => {})
   xpListeners.forEach(fn => fn(newTotal, delta))
 }
 
-/** Read current XP from AsyncStorage (async) */
 export async function getStoredXp(): Promise<number> {
   try {
     const val = await AsyncStorage.getItem(XP_KEY)
@@ -36,26 +33,20 @@ export async function getStoredXp(): Promise<number> {
   }
 }
 
-export default function XpBadge() {
-  const { isTablet } = useDeviceLayout()
-  const insets = useSafeAreaInsets()
+// ── Shared hook ────────────────────────────────────────────────────────────
+export function useXpState() {
   const [xp, setXp] = useState(0)
   const [delta, setDelta] = useState<number | null>(null)
   const deltaAnim = useRef(new Animated.Value(0)).current
   const deltaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load initial XP from AsyncStorage
-  useEffect(() => {
-    getStoredXp().then(setXp)
-  }, [])
+  useEffect(() => { getStoredXp().then(setXp) }, [])
 
-  // Subscribe to in-session XP updates
   useEffect(() => {
     const listener: XpListener = (total, d) => {
       setXp(total)
       if (d && d > 0) {
         setDelta(d)
-        // Animate delta: float up + fade out
         deltaAnim.setValue(0)
         Animated.sequence([
           Animated.timing(deltaAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -73,47 +64,63 @@ export default function XpBadge() {
     }
   }, [])
 
-  return (
-    <View
-      style={{
-        position: 'absolute',
-        top: insets.top + 8,
-        right: 12,
-        zIndex: 9999,
-        alignItems: 'flex-end',
-      }}
-    >
-      {/* XP chip */}
-      <View
-        className="flex-row items-center bg-nb-card rounded-full px-3 py-1.5"
-        style={{ borderColor: '#702AE1', borderWidth: 1 }}
-      >
-        <Text className="text-yellow-400 mr-1" style={{ fontSize: isTablet ? 14 : 12 }}>⚡</Text>
-        <Text
-          className="text-white font-bold"
-          style={{ fontSize: isTablet ? 14 : 12 }}
-        >
-          {xp.toLocaleString()}
-        </Text>
-        <Text
-          className="text-rq-text-muted ml-1"
-          style={{ fontSize: isTablet ? 12 : 10 }}
-        >
-          XP
-        </Text>
-      </View>
+  return { xp, delta, deltaAnim }
+}
 
-      {/* Delta +N float animation */}
+// ── Inline chip (for embedding in headers) ────────────────────────────────
+export function XpChip() {
+  const { xp, delta, deltaAnim } = useXpState()
+  return (
+    <View style={chip.wrap}>
+      <View style={chip.pill}>
+        <Text style={chip.icon}>⚡</Text>
+        <Text style={chip.value}>{xp.toLocaleString()}</Text>
+        <Text style={chip.unit}>XP</Text>
+      </View>
       {delta !== null && (
         <Animated.Text
-          className="text-rq-gold font-bold text-sm"
-          style={{
+          style={[chip.delta, {
             opacity: deltaAnim,
-            transform: [{
-              translateY: deltaAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -20] }),
-            }],
-          }}
+            transform: [{ translateY: deltaAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -16] }) }],
+          }]}
         >
+          +{delta}
+        </Animated.Text>
+      )}
+    </View>
+  )
+}
+
+const chip = StyleSheet.create({
+  wrap:  { alignItems: 'center', position: 'relative' },
+  pill:  {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1a1035',
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: '#702AE1',
+    gap: 3,
+  },
+  icon:  { fontSize: 12, color: '#facc15' },
+  value: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  unit:  { fontSize: 10, color: '#7a79a0', fontWeight: '600' },
+  delta: { position: 'absolute', top: -4, right: -4, fontSize: 11, fontWeight: '800', color: '#facc15' },
+})
+
+// ── Default export: floating overlay (kept for non-dashboard screens) ──────
+export default function XpBadge() {
+  const { isTablet } = useDeviceLayout()
+  const insets = useSafeAreaInsets()
+  const { xp, delta, deltaAnim } = useXpState()
+
+  return (
+    <View style={{ position: 'absolute', top: insets.top + 8, right: 12, zIndex: 9999, alignItems: 'flex-end' }}>
+      <View style={[chip.pill, { paddingHorizontal: 12, paddingVertical: 7 }]}>
+        <Text style={[chip.icon, { fontSize: isTablet ? 14 : 12 }]}>⚡</Text>
+        <Text style={[chip.value, { fontSize: isTablet ? 14 : 12 }]}>{xp.toLocaleString()}</Text>
+        <Text style={[chip.unit, { fontSize: isTablet ? 12 : 10 }]}>XP</Text>
+      </View>
+      {delta !== null && (
+        <Animated.Text style={[chip.delta, { opacity: deltaAnim, transform: [{ translateY: deltaAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -20] }) }] }]}>
           +{delta}
         </Animated.Text>
       )}
