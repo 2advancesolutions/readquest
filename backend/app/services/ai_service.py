@@ -13,6 +13,7 @@ async def generate_story_with_ai(
     art_style: str = "cartoon",
     character_description: Optional[str] = None,
     character_universe: Optional[str] = None,
+    character_image_url: Optional[str] = None,
 ) -> dict:
     """
     Generate a complete story with pages, quizzes, and image prompts.
@@ -26,5 +27,6 @@ async def generate_story_with_ai(
         art_style=art_style,
         character_description=character_description,
         character_universe=character_universe,
+        character_image_url=character_image_url,
     )
     return result

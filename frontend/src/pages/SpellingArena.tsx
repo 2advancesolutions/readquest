@@ -67,6 +67,7 @@ export default function SpellingArena() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [sessionXP, setSessionXP] = useState(0)
+  const [missedWords, setMissedWords] = useState<string[]>([])
 
   // Resolve studentId + name from the keys the Dashboard writes
   useEffect(() => {
@@ -189,6 +190,7 @@ export default function SpellingArena() {
       setSessionId(sessionRes.data.session_id)
       setWordIndex(0)
       setResults([])
+      setMissedWords([])
       setFeedback(null)
       setAttemptCount(0)
       setCoachState('intro')
@@ -215,11 +217,10 @@ export default function SpellingArena() {
       setFeedback({ correct: result.is_correct, correct_answer: result.correct_answer, xp: result.xp_awarded })
 
       if (result.is_correct) {
-        // ── Instant celebratory sound + rotating TTS cheer
+        // ── Correct: cheer + XP
         playCorrectSound()
         const cheer = nextCheer(result.newly_mastered)
         speak(cheer, 'quiz')
-        // Update running session XP + global badge
         const newTotal = getStoredXp() + result.xp_awarded
         setSessionXP(prev => prev + result.xp_awarded)
         emitXpUpdate(newTotal, result.xp_awarded)
@@ -231,24 +232,15 @@ export default function SpellingArena() {
           setCoachState('correct')
           setCoachMsg(undefined)
         }
-      } else {
-        // ── Gentle wrong-answer sound + rotating TTS encouragement
-        playWrongSound()
-        const encouragement = nextEncouragement(result.correct_answer)
-        speak(encouragement, 'teacher')
-        setCoachState('wrong')
-        setCoachMsg(undefined)
-        setAttemptCount(prev => prev + 1)
-      }
 
-      if (result.is_correct) {
         setResults(prev => [...prev, {
           word: currentWord.word,
           correct: true,
           xpEarned: result.xp_awarded,
           mastered: result.mastered,
         }])
-        // Advance after short delay
+
+        // Advance after short celebratory delay
         setTimeout(() => {
           if (wordIndex + 1 >= words.length) {
             setPhase('summary')
@@ -260,14 +252,28 @@ export default function SpellingArena() {
             setCoachMsg(undefined)
           }
         }, 1600)
-      } else if (attemptCount >= 1) {
-        // After 2 wrong attempts, reveal and move on
+
+      } else {
+        // ── Wrong: 0 XP, track as missed, show correct answer, immediately move on
+        playWrongSound()
+        const encouragement = nextEncouragement(result.correct_answer)
+        speak(encouragement, 'teacher')
+        setCoachState('wrong')
+        setCoachMsg(undefined)
+
+        // Accumulate missed word (deduped)
+        setMissedWords(prev =>
+          prev.includes(currentWord.word) ? prev : [...prev, currentWord.word]
+        )
+
         setResults(prev => [...prev, {
           word: currentWord.word,
           correct: false,
           xpEarned: 0,
           mastered: false,
         }])
+
+        // Show correct answer for 2.2s then move to next word — no second attempt
         setTimeout(() => {
           if (wordIndex + 1 >= words.length) {
             setPhase('summary')
@@ -278,7 +284,7 @@ export default function SpellingArena() {
             setCoachState('idle')
             setCoachMsg(undefined)
           }
-        }, 2800)
+        }, 2200)
       }
     } catch {
       setCoachState('wrong')
@@ -564,7 +570,33 @@ export default function SpellingArena() {
                 </div>
               </div>
 
-              {/* Word results list */}
+              {/* Missed words panel */}
+              {missedWords.length > 0 && (
+                <div className="sp-missed-panel">
+                  <div className="sp-missed-header">
+                    <span className="sp-missed-icon">📋</span>
+                    <span className="sp-missed-title">Words to Practice</span>
+                    <span className="sp-missed-count">{missedWords.length}</span>
+                  </div>
+                  <div className="sp-missed-grid">
+                    {missedWords.map((word, i) => (
+                      <motion.div
+                        key={word}
+                        className="sp-missed-word"
+                        initial={{ opacity: 0, scale: 0.85 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: i * 0.07 }}
+                      >
+                        <span className="sp-missed-bullet">❌</span>
+                        {word}
+                      </motion.div>
+                    ))}
+                  </div>
+                  <p className="sp-missed-hint">These words will appear in your next "My Words" session!</p>
+                </div>
+              )}
+
+              {/* Word-by-word result list */}
               <div className="sp-results-list">
                 {results.map((r, i) => (
                   <div key={i} className={`sp-result-row ${r.correct ? 'correct' : 'wrong'}`}>
@@ -584,6 +616,14 @@ export default function SpellingArena() {
                   whileTap={{ scale: 0.96 }}
                 >
                   🔁 Play Again
+                </motion.button>
+                <motion.button
+                  className="sp-secondary-btn"
+                  onClick={() => navigate('/spelling-scores')}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                >
+                  📊 View Scores
                 </motion.button>
                 <motion.button
                   className="sp-secondary-btn sp-back-home"

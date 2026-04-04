@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { examsApi } from '../services/api'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { examsApi, spellingApi, SpellingSessionOut, SpellingStatsOut } from '../services/api'
 import { supabase } from '../lib/supabase'
+import StudentDropdown from '../components/StudentDropdown'
 
 import { preloadSpellingWelcome } from '../lib/spellingWelcome'
 import {
@@ -13,6 +15,8 @@ import {
   GradeReadiness, SectionStatus, EXAM_SECTIONS, GRADE_LABELS,
 } from '../types'
 import '../styles/exams.css'
+import '../styles/spelling-scores.css'
+
 
 type View = 'hub' | 'generating' | 'testing' | 'results'
 type Child = { id: string; name: string; grade_level: number; school?: string }
@@ -54,72 +58,7 @@ const RELIABLE_CHARS = [
   { name: 'Toothless',    img: 'https://upload.wikimedia.org/wikipedia/en/thumb/9/96/Toothless_HTTYD.png/250px-Toothless_HTTYD.png' },
 ]
 
-// ── Child Switcher ────────────────────────────────────────────────────────────
 
-function ChildSwitcher({
-  children, activeId, onSwitch,
-}: {
-  children: Child[]
-  activeId: string
-  onSwitch: (child: Child) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const active = children.find(c => c.id === activeId)
-  const CHILD_COLORS = ['#702AE1','#F59E0B','#10B981','#3B82F6','#EC4899','#F97316']
-
-  if (children.length === 0) return null
-
-  return (
-    <div className="exam-child-switcher" style={{ position: 'relative' }}>
-      <button
-        className="exam-child-switcher-btn"
-        onClick={() => setOpen(v => !v)}
-        title="Switch student"
-      >
-        <span
-          className="exam-child-avatar"
-          style={{ background: CHILD_COLORS[children.findIndex(c => c.id === activeId) % CHILD_COLORS.length] }}
-        >
-          {(active?.name ?? '?')[0].toUpperCase()}
-        </span>
-        <span className="exam-child-name">{firstNameOnly(active?.name ?? '')}</span>
-        <span className="exam-child-grade-tag">
-          {GRADE_LABELS[active?.grade_level ?? 1] ?? `Grade ${active?.grade_level}`}
-        </span>
-        <span style={{ color: 'rgba(192,132,252,0.5)', fontSize: '0.7rem' }}>▾</span>
-      </button>
-
-      {open && (
-        <div className="exam-child-dropdown">
-          <div className="exam-child-dropdown-title">Switch Student</div>
-          {children.map((c, i) => (
-            <button
-              key={c.id}
-              className={`exam-child-dropdown-item${c.id === activeId ? ' active' : ''}`}
-              onClick={() => { onSwitch(c); setOpen(false) }}
-            >
-              <span
-                className="exam-child-avatar"
-                style={{ background: CHILD_COLORS[i % CHILD_COLORS.length] }}
-              >
-                {c.name[0].toUpperCase()}
-              </span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: '#e9e3f5', fontSize: '0.9rem' }}>
-                  {firstNameOnly(c.name)}
-                </div>
-                <div style={{ fontSize: '0.74rem', color: 'rgba(192,132,252,0.55)' }}>
-                  {GRADE_LABELS[c.grade_level] ?? `Grade ${c.grade_level}`}
-                </div>
-              </div>
-              {c.id === activeId && <span style={{ color: '#4ade80', fontSize: '0.8rem' }}>✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Voice Tutorial Hook (manual 🔊 button) ──────────────────────────────────────────
 
@@ -884,9 +823,162 @@ function ResultsView({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// ── Spelling Scores helpers (re-used from SpellingScores page) ───────────────
+const SP_GAUGE_R = 90, SP_GAUGE_CX = 130, SP_GAUGE_CY = 120
+const SP_CIRCUMFERENCE = Math.PI * SP_GAUGE_R
+function spPolarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = (angleDeg * Math.PI) / 180
+  return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) }
+}
+function spGaugePath() {
+  const start = spPolarToCartesian(SP_GAUGE_CX, SP_GAUGE_CY, SP_GAUGE_R, 180)
+  const end   = spPolarToCartesian(SP_GAUGE_CX, SP_GAUGE_CY, SP_GAUGE_R, 0)
+  return `M ${start.x} ${start.y} A ${SP_GAUGE_R} ${SP_GAUGE_R} 0 0 1 ${end.x} ${end.y}`
+}
+function spGetColor(pct: number) { return pct >= 70 ? '#22c55e' : pct >= 40 ? '#f59e0b' : '#ef4444' }
+function spFormatDate(iso: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+function SpellingTab({ studentId }: { studentId: string }) {
+  const navigate = useNavigate()
+  const [sessions, setSessions] = useState<SpellingSessionOut[]>([])
+  const [stats, setStats]       = useState<SpellingStatsOut | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState('')
+  const [gaugePct, setGaugePct] = useState(0)
+
+  useEffect(() => {
+    if (!studentId || studentId === 'guest') { setLoading(false); return }
+    setLoading(true); setError('')
+    Promise.all([spellingApi.getHistory(studentId), spellingApi.getStats(studentId)])
+      .then(([h, s]) => {
+        setSessions(h.data); setStats(s.data)
+        setTimeout(() => setGaugePct(s.data.accuracy_pct), 300)
+      })
+      .catch(() => setError('Could not load spelling scores.'))
+      .finally(() => setLoading(false))
+  }, [studentId])
+
+  const trackPath  = spGaugePath()
+  const dashOffset = SP_CIRCUMFERENCE - (gaugePct / 100) * SP_CIRCUMFERENCE
+  const gaugeColor = spGetColor(gaugePct)
+  const overallPct = stats?.accuracy_pct ?? 0
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: '60px 20px', color: 'rgba(192,132,252,0.7)' }}>
+      <div className="ss-spinner" style={{ margin: '0 auto 16px' }} />
+      <span>Loading spelling scores…</span>
+    </div>
+  )
+  if (error) return <p style={{ color: '#f87171', textAlign: 'center', marginTop: 24 }}>{error}</p>
+
+  return (
+    <div style={{ maxWidth: 860, margin: '0 auto', padding: '0 16px 80px' }}>
+      {/* Gauge */}
+      <motion.div
+        className="ss-gauge-section"
+        initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="ss-gauge-wrap">
+          <svg className="ss-gauge-svg" viewBox="0 0 260 130" aria-label={`Spelling accuracy: ${overallPct}%`}>
+            <path className="ss-gauge-track" d={trackPath} strokeDasharray={SP_CIRCUMFERENCE} strokeDashoffset={0} />
+            <path className="ss-gauge-fill" d={trackPath} stroke={gaugeColor}
+              strokeDasharray={SP_CIRCUMFERENCE} strokeDashoffset={dashOffset}
+              style={{ filter: `drop-shadow(0 0 8px ${gaugeColor}80)` }} />
+          </svg>
+          <div className="ss-gauge-center">
+            <span className="ss-gauge-pct" style={{ color: gaugeColor }}>{Math.round(gaugePct)}%</span>
+            <span className="ss-gauge-label">Overall Accuracy</span>
+          </div>
+        </div>
+        <div className="ss-gauge-zones">
+          <span className="ss-zone-label red">Needs Work</span>
+          <span className="ss-zone-label amber">Good</span>
+          <span className="ss-zone-label green">Excellent</span>
+        </div>
+      </motion.div>
+
+      {/* Stat cards */}
+      <motion.div className="ss-stats-grid"
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+      >
+        {[
+          { icon: '📋', value: stats?.total_sessions ?? 0,  label: 'Tests Taken' },
+          { icon: '⭐', value: stats?.words_mastered ?? 0,  label: 'Words Mastered' },
+          { icon: '🎯', value: `${overallPct}%`,            label: 'Overall Accuracy', featured: true },
+          { icon: '⚡', value: sessions.reduce((s, r) => s + r.xp_earned, 0), label: 'Total XP' },
+        ].map((card, i) => (
+          <motion.div key={card.label} className={`ss-stat-card${(card as any).featured ? ' featured' : ''}`}
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 + i * 0.06 }}
+          >
+            <span className="ss-stat-icon">{card.icon}</span>
+            <span className="ss-stat-value">{card.value}</span>
+            <span className="ss-stat-label">{card.label}</span>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {/* Session history */}
+      <motion.div className="ss-history-section"
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+      >
+        <h2 className="ss-history-title">📅 Test History</h2>
+        {sessions.length === 0 ? (
+          <div className="ss-empty">
+            <span className="ss-empty-icon">🌟</span>
+            <h3>No tests yet!</h3>
+            <p>Complete a spelling session to see your scores here.</p>
+          </div>
+        ) : (
+          <div className="ss-history-list">
+            {sessions.map((s, i) => {
+              const barColor = spGetColor(s.accuracy_pct)
+              const accClass = s.accuracy_pct >= 70 ? 'high' : s.accuracy_pct >= 40 ? 'mid' : 'low'
+              return (
+                <motion.div key={s.session_id} className="ss-session-card"
+                  initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.35 + i * 0.04 }}
+                >
+                  <div className="ss-session-left">
+                    <div className="ss-session-char">{s.character_name.split(' ')[0]}</div>
+                    <span className="ss-session-date">{spFormatDate(s.started_at || s.completed_at)}</span>
+                  </div>
+                  <div className="ss-session-middle">
+                    <span className="ss-session-score-text">{s.correct_count}/{s.total_words} correct</span>
+                    <div className="ss-session-mini-bar-track">
+                      <div className="ss-session-mini-bar-fill" style={{ width: `${s.accuracy_pct}%`, background: barColor, boxShadow: `0 0 6px ${barColor}60` }} />
+                    </div>
+                  </div>
+                  <div className="ss-session-right">
+                    <span className={`ss-acc-pill ${accClass}`}>{s.accuracy_pct}%</span>
+                    {s.xp_earned > 0 && <span className="ss-xp-label">+{s.xp_earned} XP</span>}
+                  </div>
+                </motion.div>
+              )
+            })}
+          </div>
+        )}
+      </motion.div>
+
+      <div className="ss-cta">
+        <button className="ss-cta-btn" onClick={() => navigate('/spelling')}>🎮 Practice Spelling</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function ReadingExams() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = (searchParams.get('tab') ?? 'exams') as 'exams' | 'spelling'
   const [view, setView] = useState<View>('hub')
   const [exam, setExam] = useState<ReadingExam | null>(null)
   const [result, setResult] = useState<ExamResult | null>(null)
@@ -1052,16 +1144,30 @@ export default function ReadingExams() {
         <button className="exam-nav-back" onClick={() => navigate('/dashboard')}>← Dashboard</button>
         <div className="exam-nav-logo">ReadQuest ✨</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Scores quick link */}
+          {/* Tab switcher */}
           <button
-            className={`exam-nav-tab${location.pathname === '/scores' ? ' active' : ''}`}
-            onClick={() => navigate('/scores')}
-            title="View all exam scores"
+            className={`exam-nav-tab${activeTab === 'exams' ? ' active' : ''}`}
+            onClick={() => setSearchParams({ tab: 'exams' })}
+            title="Exam scores"
           >
-            📊 Scores
+            📊 Exams
           </button>
-          {/* Child switcher */}
-          <ChildSwitcher children={children} activeId={studentId} onSwitch={switchStudent} />
+          <button
+            className={`exam-nav-tab${activeTab === 'spelling' ? ' active' : ''}`}
+            onClick={() => setSearchParams({ tab: 'spelling' })}
+            title="Spelling scores"
+          >
+            📝 Spelling
+          </button>
+          {/* Student switcher */}
+          {children.length > 0 && (
+            <StudentDropdown
+              children={children}
+              selected={children.find(c => c.id === studentId) ?? null}
+              onChange={(child) => child && switchStudent(child)}
+              allowAll={false}
+            />
+          )}
           {/* Voice tutorial */}
           <button className="exam-voice-tutorial-btn" onClick={playTutorial} title={speaking ? 'Stop' : 'Hear how this works'}>
             {speaking ? <><div className="exam-voice-dot" /> Stop</> : <><span className="btn-icon">🔊</span> How to use</>}
@@ -1084,8 +1190,8 @@ export default function ReadingExams() {
         <ResultsView result={result} onRetake={handleRetake} onBackToHub={handleBackToHub} />
       )}
 
-      {/* ── Hub ── */}
-      {view === 'hub' && (
+      {/* ── Hub (exams tab) ── */}
+      {activeTab === 'exams' && view === 'hub' && (
         <HubView
           history={history}
           readiness={readiness}
@@ -1096,6 +1202,11 @@ export default function ReadingExams() {
           onReset={handleReset}
           loadingHistory={loadingHistory}
         />
+      )}
+
+      {/* ── Spelling tab ── */}
+      {activeTab === 'spelling' && view === 'hub' && (
+        <SpellingTab studentId={studentId} />
       )}
     </div>
   )

@@ -62,7 +62,7 @@ async def get_students_by_parent(parent_id: str, db: AsyncSession = Depends(get_
     return [
         StudentResponse(
             id=s.id, parent_id=s.parent_id, name=s.name, grade_level=s.grade_level,
-            school=s.school, created_at=str(s.created_at)
+            school=s.school, avatar_url=s.avatar_url, created_at=str(s.created_at)
         ) for s in students
     ]
 
@@ -77,3 +77,16 @@ async def get_student(student_id: str, db: AsyncSession = Depends(get_session)):
         grade_level=student.grade_level, school=student.school,
         created_at=str(student.created_at)
     )
+class UpdateAvatarRequest(BaseModel):
+    avatar_url: str
+
+@router.patch("/{student_id}/avatar")
+async def update_student_avatar(student_id: str, req: UpdateAvatarRequest, db: AsyncSession = Depends(get_session)):
+    """Save a generated avatar URL for a student."""
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, detail="Student not found")
+    student.avatar_url = req.avatar_url
+    await db.commit()
+    return {"avatar_url": student.avatar_url}

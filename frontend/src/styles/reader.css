@@ -377,25 +377,36 @@
 .reader-word {
   display: inline-block;
   cursor: pointer;
-  border-radius: 5px;
-  padding: 1px 3px;
-  margin: 0;
-  transition: background 0.2s, color 0.2s, transform 0.1s;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: 0 1px;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
   white-space: nowrap;
 }
+/* ✅ Correct — vivid green, no animation needed */
 .reader-word.correct {
-  color: #16a34a;
-  background: rgba(34,197,94,0.12);
+  color: #15803d;
+  background: rgba(34, 197, 94, 0.18);
   font-weight: 700;
+  outline: 1.5px solid rgba(34, 197, 94, 0.35);
 }
+/* ❌ Wrong — immediate bright red, hard to miss */
 .reader-word.wrong {
-  color: #dc2626;
-  background: rgba(239,68,68,0.1);
-  text-decoration: underline wavy rgba(239,68,68,0.6) 1px;
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.16);
+  font-weight: 700;
+  outline: 1.5px solid rgba(239, 68, 68, 0.45);
+  text-decoration: underline wavy #ef4444 2px;
+  animation: word-wrong-flash 0.35s ease-out;
 }
+@keyframes word-wrong-flash {
+  0%   { background: rgba(239, 68, 68, 0.55); transform: scale(1.06); }
+  100% { background: rgba(239, 68, 68, 0.16); transform: scale(1); }
+}
+/* Current highlighted word */
 .reader-word.current {
   color: #7c3aed;
-  background: rgba(124,58,237,0.12);
+  background: rgba(124, 58, 237, 0.12);
   transform: scale(1.08);
 }
 
@@ -459,15 +470,16 @@
   gap: 10px;
 }
 
-/* Mic button — main CTA, always prominent */
+/* Mic button — pill shape with icon + label */
 .reader-mic-btn {
-  width: 62px; height: 62px;
-  border-radius: 50%;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 999px;
   background: linear-gradient(135deg, #702ae1, #6411d5);
   border: 2.5px solid rgba(178,140,255,0.4);
   color: white;
-  font-size: 1.5rem;
   display: flex; align-items: center; justify-content: center;
+  gap: 8px;
   cursor: pointer;
   box-shadow:
     0 4px 20px rgba(112,42,225,0.6),
@@ -476,6 +488,13 @@
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 0 18px 0 14px;
 }
 .reader-mic-btn:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(112,42,225,0.75), 0 0 0 6px rgba(112,42,225,0.2); }
 .reader-mic-btn.listening {

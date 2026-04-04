@@ -85,9 +85,9 @@ async def _generate_frame_image(prompt: str) -> Optional[str]:
 
         # Enhance prompt for cinematic storybook style
         enhanced_prompt = (
-            f"{prompt[:450]}. "
+            f"MASTERPIECE, 8K, extremely detailed, {prompt[:450]}. "
             "Cinematic children's storybook illustration, vibrant colors, "
-            "detailed scene, safe for kids, no text, high quality."
+            "sharp focus, professional lighting, safe for kids, no text, high quality."
         )
 
         result = await asyncio.to_thread(
@@ -97,7 +97,7 @@ async def _generate_frame_image(prompt: str) -> Optional[str]:
                 "prompt": enhanced_prompt[:500],
                 "image_size": "landscape_4_3",   # 16:9-ish for cinematic look
                 "num_inference_steps": 28,
-                "guidance_scale": 3.5,
+                "guidance_scale": 4.5,
                 "num_images": 1,
                 "enable_safety_checker": True,
                 "output_format": "png",

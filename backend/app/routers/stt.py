@@ -20,6 +20,18 @@ router = APIRouter()
 
 def _transcribe_sync(audio_bytes: bytes, mime_type: str, lang: str) -> str:
     """Synchronous Gemini transcription — runs in executor."""
+    import asyncio
+
+    # Thread pool executors have no event loop — create one so the Gemini SDK
+    # (which calls asyncio.get_event_loop internally) doesn't crash.
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
     from google import genai as _genai
     from google.genai import types as _gt
 
@@ -78,12 +90,14 @@ async def transcribe(
         "audio/webm": "audio/webm",
         "audio/webm;codecs=opus": "audio/webm",
         "audio/mp4": "audio/mp4",
+        "audio/m4a": "audio/mp4",        # Expo iOS records .m4a (mp4 container)
+        "audio/x-m4a": "audio/mp4",      # alternate m4a MIME
         "audio/wav": "audio/wav",
         "audio/mpeg": "audio/mpeg",
         "audio/ogg": "audio/ogg",
         "audio/ogg;codecs=opus": "audio/ogg",
     }
-    mime_type = mime_map.get(ct, "audio/webm")
+    mime_type = mime_map.get(ct, "audio/mp4")  # default mp4 instead of webm for RN
 
     loop = asyncio.get_running_loop()
     try:

@@ -25,6 +25,16 @@ class Story(Base):
     sel_reflections: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # AI reflections + Socratic hints
     # Story mode: 'free_play' (default) | 'quest' (structured progression)
     story_mode: Mapped[str] = mapped_column(String(20), default="free_play")
+    # Art style used for image generation (cartoon, comic, watercolor, anime, realistic, fantasy)
+    art_style: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="cartoon")
+    # Community voting (public thumbs up/down)
+    vote_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Public view counter
+    view_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Public like counter (one like per session, no unlike)
+    like_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Whether this story appears in the public book gallery
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class StoryPage(Base):

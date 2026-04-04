@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { loadGameLevel } from '../games/wordBanks'
 import { sfx, playUiNavigate, isSfxMuted, toggleSfxMute } from '../lib/gameAudio'
+import { gameProgressApi } from '../services/api'
 import '../styles/games.css'
 
 const GRADE_LABELS = ['Kindergarten', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th']
@@ -115,6 +116,22 @@ export default function GamesArcade() {
   const grade = parseInt(localStorage.getItem('readquest_student_grade') || '1', 10)
   const [selectedGrade, setSelectedGrade] = useState(grade)
   const [muted, setMuted] = useState(isSfxMuted())
+
+  // Sync localStorage game levels to backend on load
+  useEffect(() => {
+    const studentId = localStorage.getItem('readquest_student_id')
+    if (!studentId) return
+    // Sync all games for current grade
+    GAMES.forEach(game => {
+      const lvl = loadGameLevel(game.id, selectedGrade)
+      const starsKey = `rq_game_${game.id}_g${selectedGrade}_stars`
+      const starsData = JSON.parse(localStorage.getItem(starsKey) || '{}')
+      const totalStarsVal = Object.values(starsData).reduce((a: number, b) => a + (b as number), 0)
+      if (lvl > 1 || totalStarsVal > 0) {
+        gameProgressApi.upsert(studentId, game.id, selectedGrade, lvl, totalStarsVal).catch(() => {})
+      }
+    })
+  }, [selectedGrade])
 
   const handleGameClick = (game: GameDef) => {
     if (game.minGrade > selectedGrade) return

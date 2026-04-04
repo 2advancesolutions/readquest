@@ -47,3 +47,15 @@ class SpellingStatsOut(BaseModel):
     total_attempts: int
     correct_attempts: int
     accuracy_pct: float
+
+
+class SpellingSessionOut(BaseModel):
+    session_id: str
+    character_name: str
+    total_words: int
+    correct_count: int
+    accuracy_pct: float
+    xp_earned: int
+    completed_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    missed_words: list[str] = []   # words the student got wrong in this session

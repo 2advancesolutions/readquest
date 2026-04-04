@@ -52,18 +52,63 @@ export const studentsApi = {
 export const storiesApi = {
   analyzeCharacter: (character: string) =>
     api.post('/stories/analyze-character', { character }),
-  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon') =>
+  removeBackground: (imageUrl: string) =>
+    api.post<{ transparent_url: string }>('/stories/remove-background', { image_url: imageUrl }, { timeout: 60000 }),
+  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = false) =>
     api.post('/stories/generate',
-      { grade, theme, character_name, language, art_style: artStyle },
-      { timeout: 300000 }, // 5 min — story text + 5 images
+      { grade, theme, character_name, language, art_style: artStyle, is_public },
+      { timeout: 300000 },
     ),
-  generateBackground: (theme: string, characterName?: string, sceneDescription?: string) =>
+  generateBackground: (theme: string, characterName?: string, sceneDescription?: string, characterDescription?: string) =>
     api.post('/stories/generate-background',
-      { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null },
+      { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null, character_description: characterDescription ?? null },
       { timeout: 120000 }), // 2 min — allow for cold-start + image generation on mobile
   list: () => deduplicate('stories:list', () => api.get('/stories')),
   get: (id: string) => deduplicate(`stories:${id}`, () => api.get(`/stories/${id}`)),
   delete: (id: string) => api.delete(`/stories/${id}`),
+  /** Fetch publicly listed books — no auth required. Supports search & type filter. */
+  publicList: (params?: { search?: string; type?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.search) qs.set('search', params.search)
+    if (params?.type) qs.set('type', params.type)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.offset) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return api.get(`/stories/public${suffix}`)
+  },
+  /** Like a story once per session. */
+  publicLike: (storyId: string, sessionKey: string) =>
+    fetch('/api/stories/public/like', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_key: sessionKey, story_id: storyId }),
+    }).then(r => r.json()),
+  /** Get like status for a story. */
+  getLikeStatus: (storyId: string, sessionKey: string) =>
+    fetch(`/api/stories/public/like/${storyId}?session_key=${sessionKey}`).then(r => r.json()),
+  /** Get total likes received by a student's books. */
+  getTotalLikes: (studentId: string) =>
+    fetch(`/api/stories/public/likes/total?student_id=${studentId}`).then(r => r.json()),
+  /** Save a community book to a student's library. */
+  saveStory: (studentId: string, storyId: string) =>
+    fetch('/api/stories/public/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ student_id: studentId, story_id: storyId }),
+    }).then(r => r.json()),
+  /** Remove a saved book from a student's library. */
+  unsaveStory: (studentId: string, storyId: string) =>
+    fetch('/api/stories/public/save', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ student_id: studentId, story_id: storyId }),
+    }).then(r => r.json()),
+  /** Check if a story is saved by this student. */
+  getSaveStatus: (studentId: string, storyId: string) =>
+    fetch(`/api/stories/public/save/${storyId}?student_id=${studentId}`).then(r => r.json()),
+  /** List all community books saved to a student's library. */
+  listSaved: (studentId: string) =>
+    fetch(`/api/stories/public/saved?student_id=${studentId}`).then(r => r.json()),
 };
 
 export const quizzesApi = {
@@ -335,6 +380,11 @@ export const spellingApi = {
     api.get<SpellingStatsOut>('/spelling/stats', {
       headers: { 'X-Student-ID': studentId },
     }),
+
+  getHistory: (studentId: string) =>
+    api.get<SpellingSessionOut[]>('/spelling/history', {
+      headers: { 'X-Student-ID': studentId },
+    }),
 }
 
 // ── Spelling API types ─────────────────────────────────────────────────────
@@ -362,5 +412,80 @@ export interface SpellingStatsOut {
   accuracy_pct: number
 }
 
+export interface SpellingSessionOut {
+  session_id: string
+  character_name: string
+  total_words: number
+  correct_count: number
+  accuracy_pct: number
+  xp_earned: number
+  completed_at: string | null
+  started_at: string | null
+  missed_words: string[]   // words the student got wrong in this session
+}
+
+
+// ── Game Progress API ──────────────────────────────────────────────────────
+export const gameProgressApi = {
+  /** Save or update a student's level/stars for a game at a grade level. */
+  upsert: (studentId: string, gameId: string, gradeLevel: number, level: number, stars: number) =>
+    api.post<GameProgressOut>('/game-progress', { game_id: gameId, grade_level: gradeLevel, level, stars }, {
+      headers: { 'X-Student-ID': studentId },
+    }),
+
+  /** Load all game progress records for the current student. */
+  getAll: (studentId: string) =>
+    api.get<GameProgressOut[]>('/game-progress', {
+      headers: { 'X-Student-ID': studentId },
+    }),
+}
+
+export interface GameProgressOut {
+  game_id: string
+  grade_level: number
+  level: number
+  stars: number
+  updated_at?: string
+}
+
+// ── Roadmap API ────────────────────────────────────────────────────────────
+export interface RoadmapCategoryOut {
+  pct: number
+  label: string
+  detail: string
+}
+
+export interface RoadmapGameItem {
+  id: string
+  title: string
+  emoji: string
+  level: number
+  max_level: number
+  pct: number
+  stars: number
+}
+
+export interface SmartSuggestionOut {
+  area: string
+  emoji: string
+  pct: number
+  message: string
+  action_url: string
+}
+
+export interface RoadmapOut {
+  reading: RoadmapCategoryOut
+  quizzes: RoadmapCategoryOut
+  comprehension: RoadmapCategoryOut
+  spelling: RoadmapCategoryOut
+  exams: RoadmapCategoryOut
+  games: { overall_pct: number; breakdown: RoadmapGameItem[] }
+  smart_suggestion: SmartSuggestionOut
+}
+
+export const roadmapApi = {
+  get: (studentId: string) =>
+    api.get<RoadmapOut>('/roadmap', { headers: { 'X-Student-ID': studentId } }),
+}
 
 export default api;

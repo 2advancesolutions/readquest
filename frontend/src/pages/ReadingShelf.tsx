@@ -6,7 +6,22 @@ import { readingLogsApi, rewardsApi, storiesApi, progressApi } from '../services
 import '../styles/shelf.css'
 import '../styles/app-shell.css'
 
-interface Child { id: string; name: string; grade_level: number }
+interface Child { id: string; name: string; grade_level: number; avatar_url?: string }
+
+const BACKGROUND_THEMES = [
+  { id: 'enchanted-forest',   emoji: '🌲', label: 'Enchanted Forest' },
+  { id: 'outer-space',        emoji: '🚀', label: 'Outer Space' },
+  { id: 'underwater-kingdom', emoji: '🐠', label: 'Underwater Kingdom' },
+  { id: 'candy-land',         emoji: '🍬', label: 'Candy Land' },
+  { id: 'dinosaur-jungle',    emoji: '🦕', label: 'Dino Jungle' },
+  { id: 'magical-castle',     emoji: '🏰', label: 'Magical Castle' },
+  { id: 'pirate-adventure',   emoji: '⚓', label: 'Pirate Adventure' },
+  { id: 'superhero-city',     emoji: '🦸', label: 'Superhero City' },
+  { id: 'arctic-tundra',      emoji: '🐧', label: 'Arctic Tundra' },
+  { id: 'cloud-kingdom',      emoji: '☁️', label: 'Cloud Kingdom' },
+  { id: 'volcanic-island',    emoji: '🌋', label: 'Volcanic Island' },
+  { id: 'cyberpunk-city',     emoji: '🤖', label: 'Cyber City' },
+]
 
 interface ReadingLog {
   story_id: string
@@ -77,6 +92,126 @@ function formatDate(iso: string) {
   try {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   } catch { return '' }
+}
+
+/* ─── Generate Avatar Modal ────────────────────────────────────────── */
+function GenerateAvatarModal({
+  child, onClose, onSaved
+}: {
+  child: Child
+  onClose: () => void
+  onSaved: (url: string) => void
+}) {
+  const API = import.meta.env.VITE_API_URL ?? ''
+  const [description, setDescription] = useState('')
+  const [bgTheme, setBgTheme]         = useState(BACKGROUND_THEMES[0].label)
+  const [generating, setGenerating]   = useState(false)
+  const [preview, setPreview]         = useState<string | null>(child.avatar_url ?? null)
+  const [error, setError]             = useState('')
+
+  const generate = async () => {
+    if (!description.trim()) { setError('Describe your character first!'); return }
+    setError('')
+    setGenerating(true)
+    try {
+      const res = await fetch(`${API}/api/stories/generate-background`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          theme: bgTheme,
+          character_name: child.name,
+          character_description: description.trim(),
+          scene_description: `${child.name} standing heroically in a ${bgTheme} world`,
+        }),
+      })
+      const data = await res.json()
+      const url = data.portrait_url ?? data.background_url
+      if (!url) throw new Error('No image returned')
+      setPreview(url)
+      // Save to backend
+      await fetch(`${API}/api/students/${child.id}/avatar`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar_url: url }),
+      })
+      onSaved(url)
+    } catch {
+      setError('Generation failed — try again!')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  return (
+    <div className="avatar-modal-overlay" onClick={onClose}>
+      <motion.div
+        className="avatar-modal"
+        initial={{ opacity: 0, scale: 0.9, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 16 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+        onClick={e => e.stopPropagation()}>
+
+        <button className="avatar-modal-close" onClick={onClose}>✕</button>
+        <h2 className="avatar-modal-title">✨ Generate Avatar</h2>
+        <p className="avatar-modal-sub">Design a unique avatar for <strong>{child.name}</strong></p>
+
+        {/* Preview */}
+        <div className="avatar-preview-wrap">
+          {preview ? (
+            <img src={preview} alt="avatar preview" className="avatar-preview-img" />
+          ) : (
+            <div className="avatar-preview-placeholder">
+              <span>{child.name.charAt(0).toUpperCase()}</span>
+            </div>
+          )}
+          {generating && (
+            <div className="avatar-generating-overlay">
+              <div className="avatar-spinner" />
+              <span>Generating…</span>
+            </div>
+          )}
+        </div>
+
+        {/* Description */}
+        <label className="avatar-label">Character description</label>
+        <textarea
+          className="avatar-textarea"
+          rows={3}
+          placeholder={`e.g. a brave girl with curly red hair, green eyes, wearing a purple cape and silver armor...`}
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          disabled={generating}
+        />
+
+        {/* Background theme */}
+        <label className="avatar-label">Background world</label>
+        <div className="avatar-bg-grid">
+          {BACKGROUND_THEMES.map(t => (
+            <button
+              key={t.id}
+              className={`avatar-bg-chip${bgTheme === t.label ? ' selected' : ''}`}
+              onClick={() => setBgTheme(t.label)}
+              disabled={generating}>
+              <span>{t.emoji}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="avatar-error">{error}</p>}
+
+        <motion.button
+          className="avatar-generate-btn"
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          disabled={generating}
+          onClick={generate}>
+          {generating ? '⏳ Generating…' : preview ? '🔄 Regenerate Avatar' : '✨ Generate Avatar'}
+        </motion.button>
+      </motion.div>
+    </div>
+  )
 }
 
 /* ─── Per-student shelf panel ─────────────────────────────────────── */
@@ -173,6 +308,19 @@ function StudentShelf({ child }: { child: Child }) {
     ? (completedEntries.reduce((s, e) => s + (e.log?.stars ?? 0), 0) / completedEntries.length).toFixed(1)
     : '—'
 
+  const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
+
+  const removeOwnedBook = async (storyId: string) => {
+    try {
+      await storiesApi.delete(storyId)
+      setEntries(prev => prev.filter(e => e.storyId !== storyId))
+    } catch {
+      // silent — entry stays in list
+    } finally {
+      setConfirmingRemove(null)
+    }
+  }
+
   return (
     <div className="shelf-student-panel">
       {/* Mini stats — only if something completed */}
@@ -239,11 +387,16 @@ function StudentShelf({ child }: { child: Child }) {
 
               return (
                 <motion.div key={entry.storyId}
-                  className={`shelf-card ${isOpen ? 'expanded' : ''}`}
+                  className={`shelf-card ${isOpen ? 'expanded' : ''} ${entry.completed ? 'shelf-card-done' : 'shelf-card-active'}`}
                   initial={{ opacity: 0, y: 32, scale: 0.93 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ delay: i * 0.06, type: 'spring', stiffness: 240, damping: 22 }}
                   onClick={() => setExpanded(isOpen ? null : entry.storyId)}>
+
+                  {/* Status badge */}
+                  <div className={`shelf-status-badge ${entry.completed ? 'badge-completed' : 'badge-active'}`}>
+                    {entry.completed ? '✅ Completed' : '📖 Active'}
+                  </div>
 
                   {/* Cover */}
                   <div className="shelf-cover-wrapper">
@@ -309,6 +462,35 @@ function StudentShelf({ child }: { child: Child }) {
                         whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
                         onClick={e => { e.stopPropagation(); navigate(`/read/${entry.storyId}`) }}>
                         {entry.completionPct > 0 ? '📖 Keep Reading' : '🚀 Start Reading'}
+                      </motion.button>
+                    )}
+
+                    {/* Remove from library */}
+                    {confirmingRemove === entry.storyId ? (
+                      <div className="shelf-remove-confirm">
+                        <span>Delete this book?</span>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                          <motion.button
+                            className="shelf-remove-btn"
+                            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                            onClick={e => { e.stopPropagation(); removeOwnedBook(entry.storyId) }}>
+                            Yes, delete
+                          </motion.button>
+                          <motion.button
+                            className="shelf-cancel-btn"
+                            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                            onClick={e => { e.stopPropagation(); setConfirmingRemove(null) }}>
+                            Cancel
+                          </motion.button>
+                        </div>
+                      </div>
+                    ) : (
+                      <motion.button
+                        className="shelf-remove-btn"
+                        style={{ marginTop: 6 }}
+                        whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                        onClick={e => { e.stopPropagation(); setConfirmingRemove(entry.storyId) }}>
+                        ✕ Remove
                       </motion.button>
                     )}
 
@@ -386,9 +568,9 @@ function AppSidebar({ active }: { active: string }) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
           <span>Progress & Metrics</span>
         </button>
-        <button className={`app-sidebar-link ${active==='shelf'?'active':''}`} onClick={() => navigate('/shelf')}>
+        <button className={`app-sidebar-link ${active==='shelf'?'active':''}`} onClick={() => navigate('/library')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-          <span>Reading Shelf</span>
+          <span>Library</span>
         </button>
         <button className={`app-sidebar-link ${active==='generate'?'active':''}`} onClick={() => navigate('/generate')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -413,9 +595,33 @@ function AppSidebar({ active }: { active: string }) {
 /* ─── Main Page ───────────────────────────────────────────────────── */
 export default function ReadingShelf() {
   const navigate = useNavigate()
-  const [children, setChildren]       = useState<Child[]>([])
+  const [children, setChildren]         = useState<Child[]>([])
   const [childLoading, setChildLoading] = useState(true)
-  const [activeChild, setActiveChild] = useState<Child | null>(null)
+  const [activeChild, setActiveChild]   = useState<Child | null>(null)
+  const [savedBooks, setSavedBooks]     = useState<{ id: string; title: string; cover_media_url?: string; grade_level: number; theme?: string; creator_name: string }[]>([])
+  const [savedLoading, setSavedLoading] = useState(true)
+  const [studentId, setStudentId]       = useState<string | null>(null)
+  const [avatarModal, setAvatarModal]   = useState<Child | null>(null)
+
+  // Fetch saved community books using student ID from localStorage
+  useEffect(() => {
+    const sid = localStorage.getItem('readquest_student_id')
+    setStudentId(sid)
+    if (sid) {
+      storiesApi.listSaved(sid)
+        .then((r: { books: typeof savedBooks }) => setSavedBooks(r.books ?? []))
+        .catch(() => {})
+        .finally(() => setSavedLoading(false))
+    } else {
+      setSavedLoading(false)
+    }
+  }, [])
+
+  const removeSaved = async (storyId: string) => {
+    if (!studentId) return
+    await storiesApi.unsaveStory(studentId, storyId).catch(() => {})
+    setSavedBooks(prev => prev.filter(b => b.id !== storyId))
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -440,6 +646,7 @@ export default function ReadingShelf() {
   }, [])
 
   return (
+    <>
     <div className="app-shell">
       <AppSidebar active="shelf" />
 
@@ -452,7 +659,7 @@ export default function ReadingShelf() {
           <div className="shelf-hero">
             <motion.div className="shelf-hero-content"
               initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}>
-              <h1 className="shelf-title">📚 Reading Shelf</h1>
+              <h1 className="shelf-title">📚 Library</h1>
               <p className="shelf-subtitle">Tap a student to view their completed books</p>
             </motion.div>
 
@@ -465,14 +672,17 @@ export default function ReadingShelf() {
                     key={child.id}
                     className={`shelf-student-tab ${activeChild?.id === child.id ? 'active' : ''}`}
                     onClick={() => handleTabClick(child)}
-                    whileHover={{ scale: 1.04 }}
+                    whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 + i * 0.07 }}>
                     <div className="shelf-tab-avatar"
-                      style={{ background: `hsl(${(i * 137) % 360}, 70%, 60%)` }}>
-                      {child.name.charAt(0).toUpperCase()}
+                      style={child.avatar_url ? {} : { background: `hsl(${(i * 137) % 360}, 70%, 60%)` }}>
+                      {child.avatar_url
+                        ? <img src={child.avatar_url} alt={child.name} className="shelf-tab-avatar-img" />
+                        : child.name.charAt(0).toUpperCase()
+                      }
                     </div>
                     <div className="shelf-tab-info">
                       <span className="shelf-tab-name">{child.name}</span>
@@ -505,9 +715,114 @@ export default function ReadingShelf() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* ── Community Saved Books ── always visible */}
+            {!savedLoading && savedBooks.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <div className="shelf-community-section">
+                  <h3 className="shelf-community-title">🌍 Community Books</h3>
+                  <p className="shelf-community-sub">Books you saved from the public library — click to read anytime</p>
+                  <div className="shelf-grid">
+                    {savedBooks.map((book, i) => {
+                      const fallbackGrad = COVER_FALLBACK_GRADIENTS[i % COVER_FALLBACK_GRADIENTS.length]
+                      const fallbackEmoji = COVER_EMOJIS[i % COVER_EMOJIS.length]
+                      const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+                      const coverUrl = book.cover_media_url
+                        ? (book.cover_media_url.startsWith('/static') ? `${API_BASE}${book.cover_media_url}` : book.cover_media_url)
+                        : undefined
+                      return (
+                        <motion.div key={book.id}
+                          className="shelf-card shelf-card-community"
+                          initial={{ opacity: 0, y: 24, scale: 0.94 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ delay: i * 0.06, type: 'spring', stiffness: 240, damping: 22 }}>
+
+                          <div className="shelf-status-badge badge-community">🌍 Community</div>
+
+                          <div className="shelf-cover-wrapper">
+                            <div className="shelf-cover">
+                              {coverUrl ? (
+                                <img src={coverUrl} alt={book.title} className="shelf-cover-img"
+                                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                              ) : (
+                                <div className="shelf-cover-fallback" style={{ background: fallbackGrad }}>
+                                  <span className="shelf-cover-emoji">{fallbackEmoji}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="shelf-body">
+                            <h3 className="shelf-book-title">{book.title}</h3>
+                            <div className="shelf-community-creator">by {book.creator_name}</div>
+                            <div className="shelf-community-actions">
+                              <motion.button
+                                className="shelf-keep-reading-btn"
+                                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                                onClick={() => navigate(`/read/${book.id}`, { state: { fromBooks: true } })}>
+                                📖 Read Now
+                              </motion.button>
+                              <motion.button
+                                className="shelf-remove-btn"
+                                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                                onClick={() => removeSaved(book.id)}>
+                                ✕ Remove
+                              </motion.button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* No content at all */}
+            {!childLoading && !savedLoading && children.length === 0 && savedBooks.length === 0 && (
+              <motion.div className="shelf-empty"
+                initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+                <div className="shelf-empty-art">
+                  <div className="shelf-empty-shelf">
+                    <div className="shelf-empty-book" style={{ background: '#FDA4AF' }} />
+                    <div className="shelf-empty-book" style={{ background: '#86EFAC', height: 90 }} />
+                    <div className="shelf-empty-book" style={{ background: '#7DD3FC', height: 75 }} />
+                  </div>
+                  <div className="shelf-empty-icon">📭</div>
+                </div>
+                <h2>Your library is empty</h2>
+                <p>Save a book from the community gallery, or generate your own story!</p>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <motion.button className="shelf-cta" whileHover={{ scale: 1.05 }} onClick={() => navigate('/books')}>
+                    🌍 Browse Community Books
+                  </motion.button>
+                  <motion.button className="shelf-cta" style={{ background: 'rgba(124,58,237,0.2)', color: '#c4b5fd', border: '1.5px solid rgba(124,58,237,0.4)' }}
+                    whileHover={{ scale: 1.05 }} onClick={() => navigate('/generate')}>
+                    ✨ Generate a Story
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
           </div>
         </div>
       </div>
     </div>
+
+    {/* Avatar generation modal */}
+    <AnimatePresence>
+      {avatarModal && (
+        <GenerateAvatarModal
+          child={avatarModal}
+          onClose={() => setAvatarModal(null)}
+          onSaved={(url) => {
+            const id = avatarModal!.id
+            setChildren(prev => prev.map(c => c.id === id ? { ...c, avatar_url: url } : c))
+            setAvatarModal(null)
+          }}
+        />
+      )}
+    </AnimatePresence>
+    </>
   )
 }
