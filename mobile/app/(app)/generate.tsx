@@ -19,11 +19,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native'
 import type { ImageSourcePropType } from 'react-native'
 import { Image } from 'expo-image'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 import { googleSpeak, googleStop } from '../../src/lib/tts'
@@ -43,6 +43,7 @@ interface Child { id: string; name: string; grade_level: number }
 interface CharacterData {
   character_name: string; universe: string; description: string
   visual_appearance: string; character_media_url: string | null
+  character_image_url?: string | null   // backend field — mapped to character_media_url
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -144,6 +145,9 @@ const ALL_CHARACTERS: StaticChar[] = [
   { name: 'Stone Guard',    emoji: '🪨', img: CHAR_ICONS.hero_stoneguard },
 ]
 
+interface SavedChar { name: string; imageUrl: string; emoji: string }
+const SAVED_CHARS_KEY = 'readquest_saved_characters'
+
 
 // ── Portrait Circle ───────────────────────────────────────────────────────────
 function PortraitCircle({ char, selected, onPress }: {
@@ -195,14 +199,73 @@ function PortraitCircle({ char, selected, onPress }: {
   )
 }
 
+// ── URL-based Portrait Circle (for AI-generated saved characters) ──────────────
+function PortraitCircleUrl({ char, selected, onPress, onLongPress }: {
+  char: SavedChar; selected: boolean; onPress: () => void; onLongPress?: () => void
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onLongPress={onLongPress}
+      activeOpacity={0.75}
+      style={{ alignItems: 'center', width: '20%', marginBottom: 18, paddingHorizontal: 2 }}
+    >
+      <View style={{
+        width: 64, height: 64, borderRadius: 32,
+        borderWidth: selected ? 3 : 2,
+        borderColor: selected ? '#f59e0b' : 'rgba(245,158,11,0.35)',
+        overflow: 'hidden',
+        backgroundColor: '#1a1000',
+        shadowColor: '#f59e0b',
+        shadowOpacity: selected ? 0.9 : 0.3,
+        shadowRadius: selected ? 16 : 6,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: selected ? 12 : 4,
+      }}>
+        <Image
+          source={{ uri: char.imageUrl }}
+          style={{ width: '100%', height: '100%' }}
+          contentFit="cover"
+        />
+        {/* AI badge */}
+        <View style={{
+          position: 'absolute', top: 0, left: 0,
+          width: 18, height: 18, borderRadius: 9,
+          backgroundColor: '#f59e0b', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Text style={{ fontSize: 9 }}>✨</Text>
+        </View>
+        {selected && (
+          <View style={{
+            position: 'absolute', bottom: 0, right: 0,
+            width: 18, height: 18, borderRadius: 9,
+            backgroundColor: '#22c55e', alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1.5, borderColor: '#fff',
+          }}>
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>✓</Text>
+          </View>
+        )}
+      </View>
+      <Text numberOfLines={2} style={{
+        color: selected ? '#fcd34d' : '#9a8060',
+        fontSize: 9, marginTop: 5,
+        textAlign: 'center',
+        fontWeight: selected ? '800' : '600',
+        width: 68,
+      }}>{char.name}</Text>
+    </TouchableOpacity>
+  )
+}
+
 
 const STORY_STEPS = [
-  { icon:'✍️', label:'Writing your story…',        sub:'Crafting pages & plot twists' },
-  { icon:'🎨', label:'Designing each scene…',       sub:'Painting every moment' },
-  { icon:'🖼️', label:'Rendering illustrations…',   sub:'Bringing characters to life' },
-  { icon:'🧩', label:'Composing page layouts…',     sub:'Arranging words & art' },
-  { icon:'🌟', label:'Adding magic touches…',       sub:'Polishing every detail' },
-  { icon:'📖', label:'Finalizing your book…',       sub:'Almost ready — hang tight!' },
+  { icon: '✍️', label: 'Writing your story…',          sub: 'Crafting pages & plot twists' },
+  { icon: '🗺️', label: 'Building the world…',          sub: 'Setting the scene & characters' },
+  { icon: '🎨', label: 'Painting scene 1…',             sub: 'Bringing page 1 to life' },
+  { icon: '🖼️', label: 'Painting scene 2…',            sub: 'Illustrating page 2' },
+  { icon: '🌟', label: 'Painting scene 3…',             sub: 'Illustrating page 3' },
+  { icon: '🧩', label: 'Painting scene 4…',             sub: 'Illustrating page 4' },
+  { icon: '📖', label: 'Finishing touches…',            sub: 'Scene 5 — almost ready!' },
 ]
 
 const PROHIBITED = ['kill','murder','dead','death','blood','gun','shoot','bomb','sex','porn','abuse','violent','violence']
@@ -287,13 +350,38 @@ export default function GenerateScreen() {
   const [charLoading,    setCharLoading]    = useState(false)
   const [charError,      setCharError]      = useState('')
   const [selectedGallery,setSelectedGallery]= useState('')
+  // Accordion open state for hero sections
+  const [createdOpen, setCreatedOpen] = useState(true)
+  const [starterOpen, setStarterOpen] = useState(true)
+  const createdAnim = useRef(new Animated.Value(1)).current
+  const starterAnim = useRef(new Animated.Value(1)).current
+  const createdChevron = useRef(new Animated.Value(1)).current
+  const starterChevron = useRef(new Animated.Value(1)).current
+  const toggleCreated = () => {
+    const next = !createdOpen
+    setCreatedOpen(next)
+    Animated.parallel([
+      Animated.spring(createdAnim, { toValue: next ? 1 : 0, useNativeDriver: false, tension: 60, friction: 9 }),
+      Animated.spring(createdChevron, { toValue: next ? 1 : 0, useNativeDriver: true, tension: 60, friction: 9 }),
+    ]).start()
+  }
+  const toggleStarter = () => {
+    const next = !starterOpen
+    setStarterOpen(next)
+    Animated.parallel([
+      Animated.spring(starterAnim, { toValue: next ? 1 : 0, useNativeDriver: false, tension: 60, friction: 9 }),
+      Animated.spring(starterChevron, { toValue: next ? 1 : 0, useNativeDriver: true, tension: 60, friction: 9 }),
+    ]).start()
+  }
+  const [stepOneArt,     setStepOneArt]     = useState('cartoon')  // art style selected on step 1
+  const [savedCharacters,setSavedCharacters] = useState<SavedChar[]>([])
 
   // Scene / Background
   const [sceneDesc,      setSceneDesc]      = useState('')
+  const [shortStory,     setShortStory]     = useState('')
+  const [shortStoryMode, setShortStoryMode] = useState(false)
+  const [shortStoryExpanding, setShortStoryExpanding] = useState(false)
   const [isMuted,        setIsMuted]        = useState(false)
-  const [themeBackground,setThemeBackground]= useState<string|null>(null)
-  const [bgLoading,      setBgLoading]      = useState(false)
-  const bgAbortRef = useRef<ReturnType<typeof setTimeout>|null>(null)
 
   // Theme / Art / Language / Visibility
   const [selectedTheme,  setSelectedTheme]  = useState<string|null>(null)
@@ -313,15 +401,56 @@ export default function GenerateScreen() {
   const [generated,      setGenerated]      = useState<{id:string;title:string}|null>(null)
   const [genTitle,       setGenTitle]       = useState('')
   const genInterval = useRef<ReturnType<typeof setInterval>|null>(null)
+  const scrollRef   = useRef<any>(null)
+
+  // Progressive image slots — fills as each of 5 page images arrives
+  const [pageImageSlots, setPageImageSlots] = useState<(string|null)[]>([null,null,null,null,null])
+  const [imagesComplete, setImagesComplete] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval>|null>(null)
 
   // Voice
   const [isSpeaking,     setIsSpeaking]     = useState(false)
+
+  // Spinning animation for generation loader
+  const spinAnim = useRef(new Animated.Value(0)).current
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  // Smooth continuous progress bar (0→1 over 120s while generating)
+  const genProgressAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (step === 'preview') {
+      // Always spin on this screen
+      Animated.loop(
+        Animated.timing(spinAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
+      ).start()
+      // Pulse glow
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.12, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        ])
+      ).start()
+      if (isGenerating) {
+        // Smooth progress: 0 → 0.95 over 90s (phase1 ~25s + 5 images ~8s each)
+        genProgressAnim.setValue(0)
+        Animated.timing(genProgressAnim, { toValue: 0.95, duration: 90000, useNativeDriver: false }).start()
+      }
+    } else {
+      spinAnim.stopAnimation(); pulseAnim.stopAnimation()
+      spinAnim.setValue(0); pulseAnim.setValue(1)
+      genProgressAnim.stopAnimation(); genProgressAnim.setValue(0)
+    }
+  }, [step, isGenerating])
 
   // Derived: grade from selected child
   const grade = selectedChild?.grade_level ?? 3
 
   useEffect(() => {
     AsyncStorage.getItem('readquest_muted').then(v => setIsMuted(v === 'true')).catch(() => {})
+    // Load saved AI-generated characters
+    AsyncStorage.getItem(SAVED_CHARS_KEY).then(raw => {
+      if (raw) { try { setSavedCharacters(JSON.parse(raw)) } catch {} }
+    }).catch(() => {})
     const unsub = onMuteChange(muted => {
       setIsMuted(muted)
       if (muted) { void googleStop(); setIsSpeaking(false) }
@@ -375,7 +504,22 @@ export default function GenerateScreen() {
       description: `${name} — ready for an epic adventure!`,
       visual_appearance: name, character_media_url: null,
     })
-    setSceneDesc(''); setSelectedTheme(null); setThemeBackground(null); setBgLoading(false)
+    // Clear ALL step 2 state so it always starts fresh
+    setSceneDesc('')
+    setShortStory('')
+    setShortStoryMode(false)
+    setShortStoryExpanding(false)
+    setSelectedTheme(null)
+    setSelectedArt(null)
+    setSelectedLang('en')
+    setIsPublic(false)
+    setThemeCat('Fantasy')
+    setThemeSearch('')
+    setSceneError('')
+    setGenError('')
+    setGenerated(null)
+    setGenStep(0)
+    setGenTitle('')
     Haptics.selectionAsync()
     setTimeout(() => setStep('scene'), 200)
   }
@@ -387,66 +531,110 @@ export default function GenerateScreen() {
     if (badContent(name)) { setCharError(badContent(name) ?? ''); return }
     setCharError(''); setCharLoading(true)
     try {
-      const res = await storiesApi.analyzeCharacter(name)
-      setCharData(res.data)
+      // Pass the art style selected in Step 1 — backend uses Recraft V3 with this style
+      const res = await storiesApi.analyzeCharacter(name, stepOneArt)
+      const data = res.data as any
+      // Map character_image_url (backend field) → character_media_url (app field)
+      const newChar: CharacterData = {
+        character_name: data.character_name ?? name,
+        universe:       data.universe ?? 'Adventure',
+        description:    data.description ?? '',
+        visual_appearance: data.visual_appearance ?? name,
+        character_media_url: data.character_image_url ?? data.character_media_url ?? null,
+      }
+      setCharData(newChar)
+      // ── Save to persistent gallery so it shows up next time ─────────────────────────
+      if (newChar.character_media_url) {
+        const saved: SavedChar = {
+          name: newChar.character_name,
+          imageUrl: newChar.character_media_url,
+          emoji: '✨',
+        }
+        setSavedCharacters(prev => {
+          // Deduplicate by name
+          const filtered = prev.filter(c => c.name.toLowerCase() !== saved.name.toLowerCase())
+          const updated = [saved, ...filtered]  // newest first
+          AsyncStorage.setItem(SAVED_CHARS_KEY, JSON.stringify(updated)).catch(() => {})
+          return updated
+        })
+      }
+      // Lock in the art style from Step 1 so Step 4 is pre-selected
+      setSelectedArt(stepOneArt)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       setStep('scene')
     } catch { setCharError('Could not analyze character. Try a different name.') }
     finally { setCharLoading(false) }
-  }, [charInput])
+  }, [charInput, stepOneArt])
 
-  // ── Theme select: generate AI background ─────────────────────────────
+  // ── Theme select — just pick, no AI background generation ────────────────
   const handleThemeSelect = useCallback((themeId: string) => {
     setSelectedTheme(themeId)
     setSceneError('')
-    setBgLoading(true)
-    setThemeBackground(null)
-    const theme = THEMES.find(t => t.id === themeId)
-    const label = theme?.label ?? themeId
-    storiesApi.generateBackground(label, charData?.character_name, undefined, charData?.visual_appearance)
-      .then((res: any) => {
-        const url = res.data?.background_url ?? null
-        setThemeBackground(url)
-      })
-      .catch(() => setThemeBackground(null))
-      .finally(() => setBgLoading(false))
     Haptics.selectionAsync()
-  }, [charData])
+  }, [])
 
-  // ── Scene validation ────────────────────────────────────────────────────
+  // ── Expand short story seed using Gemini ─────────────────────────────────
+  const expandShortStory = useCallback(async () => {
+    const seed = shortStory.trim()
+    if (!seed) return
+    if (badContent(seed)) { setSceneError(badContent(seed) ?? ''); return }
+    const charName = charData?.character_name ?? charInput.trim() ?? 'the hero'
+    setShortStoryExpanding(true)
+    setSceneError('')
+    try {
+      const res = await storiesApi.expandStory(seed, charName, grade)
+      setShortStory((res.data as any).story ?? seed)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    } catch (e: any) {
+      setSceneError(e?.response?.data?.detail ?? 'Could not generate story. Try again.')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+    } finally { setShortStoryExpanding(false) }
+  }, [shortStory, charData, charInput, grade])
+
+  // ── Scene validation ─────────────────────────────────────────────────────
+  // Button enabled when: theme text ≥ 25 chars, OR shortStoryMode with ≥ 25 chars
+  const sceneReady = shortStoryMode
+    ? shortStory.trim().length >= 25
+    : sceneDesc.trim().length >= 25
+
   const proceedScene = () => {
-    if (!selectedTheme) { setSceneError('Pick a story world!'); return }
-    const err = badContent(sceneDesc)
+    if (!sceneReady) {
+      setSceneError('Add at least 25 characters, or tap "AI Create Story" for help!')
+      return
+    }
+    const err = badContent(sceneDesc) || badContent(shortStory)
     if (err) { setSceneError(err); return }
     setSceneError(''); setStep('language')
   }
 
-  // ── Main generation ──────────────────────────────────────────────────────
+  // ── Main generation (full pipeline — all images ready before result card) ──
   const generateStory = useCallback(async () => {
-    if (!charData || !selectedTheme || !selectedArt) return
+    const effectiveArt = selectedArt ?? stepOneArt ?? 'cartoon'
+    if (!charData) return
     setIsGenerating(true); setGenStep(0); setGenError(''); setGenerated(null)
 
+    // Cycle step labels every 10s — 7 steps covers ~70s of the ~90s generation
     genInterval.current = setInterval(() => {
-      setGenStep(prev => {
-        const next = prev + 1
-        if (next >= STORY_STEPS.length - 1) { clearInterval(genInterval.current!); return prev }
-        return next
-      })
-    }, 22000)
+      setGenStep(prev => Math.min(prev + 1, STORY_STEPS.length - 2))
+    }, 10000)
 
     try {
       await storage.getString('readquest_student_id').then(sid => {
-        if (sid) {
-          storage.setString('readquest_student_id', sid)
-        }
+        if (sid) { storage.setString('readquest_student_id', sid) }
       })
-      const sid = await storage.getString('readquest_student_id')
+      // Priority: short story paste > custom typed text > selected world card
+      const effectiveTheme = shortStoryMode && shortStory.trim()
+        ? shortStory.trim()
+        : sceneDesc.trim() || selectedTheme || 'exciting adventure'
       const res = await storiesApi.generate(
-        grade, selectedTheme, charData.character_name,
-        selectedLang, selectedArt, isPublic,
+        grade, effectiveTheme, charData.character_name,
+        selectedLang, effectiveArt, isPublic,
+        charData.character_media_url ?? undefined,
       )
       clearInterval(genInterval.current!)
       setGenStep(STORY_STEPS.length - 1)
+      // Snap progress bar to 100% on completion
+      Animated.timing(genProgressAnim, { toValue: 1, duration: 400, useNativeDriver: false }).start()
       setGenerated({ id: (res.data as any).id, title: (res.data as any).title })
       setGenTitle((res.data as any).title ?? '')
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -455,9 +643,83 @@ export default function GenerateScreen() {
       setGenError(e?.response?.data?.detail ?? 'Generation failed. Try again.')
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
     } finally { setIsGenerating(false) }
-  }, [charData, selectedTheme, selectedArt, selectedLang, isPublic, grade])
+  }, [charData, selectedTheme, selectedArt, stepOneArt, selectedLang, isPublic, grade, shortStoryMode, shortStory, sceneDesc, genProgressAnim])
 
   useEffect(() => () => { if (genInterval.current) clearInterval(genInterval.current) }, [])
+
+  // ── Full reset — clears all state and returns to step 1 ─────────────────────
+  const resetAll = useCallback(() => {
+    setStep('character')
+    setCharData(null)
+    setCharInput('')
+    setSelectedGallery('')
+    setStepOneArt('cartoon')
+    setSceneDesc('')
+    setShortStory('')
+    setShortStoryMode(false)
+    setShortStoryExpanding(false)
+    setSelectedTheme(null)
+    setSelectedArt(null)
+    setSelectedLang('en')
+    setIsPublic(false)
+    setThemeCat('Fantasy')
+    setThemeSearch('')
+    setSceneError('')
+    setCharError('')
+    setGenError('')
+    setGenerated(null)
+    setGenStep(0)
+    setGenTitle('')
+    setIsGenerating(false)
+    setPageImageSlots([null, null, null, null, null])
+    setImagesComplete(false)
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    scrollRef.current?.scrollTo({ y: 0, animated: false })
+    Haptics.selectionAsync()
+  }, [])
+
+  // ── Reset every time the screen is focused — always start at step 1 ─────────
+  useFocusEffect(useCallback(() => { resetAll() }, [resetAll]))
+
+  // ── Poll for page images every 2s after story API returns ────────────────────
+  // As each page's media_url is saved by the background task, it pops into its slot.
+  useEffect(() => {
+    if (!generated?.id || imagesComplete) return
+    const storyId = generated.id
+    const poll = async () => {
+      try {
+        // Use direct fetch (no dedup cache) so every poll gets fresh data
+        const { data: { session: s } } = await (await import('../../src/lib/supabase')).supabase.auth.getSession()
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (s?.user?.id) headers['X-Student-ID'] = s.user.id
+        const res = await fetch(`${API_URL}/api/stories/${storyId}`, { headers })
+        if (!res.ok) return
+        const json = await res.json()
+        const pages: any[] = json?.pages ?? []
+        const slots = [...pages]
+          .sort((a: any, b: any) => a.page_number - b.page_number)
+          .slice(0, 5)
+          .map((p: any) => {
+            const url = p.media_url ?? null
+            if (!url) return null
+            return url.startsWith('http') ? url : `${API_URL}${url}`
+          })
+        while (slots.length < 5) slots.push(null)
+        setPageImageSlots(slots as (string|null)[])
+        // Complete when all 5 pages exist AND all available images are loaded
+        // If a page has no image (null) but all 5 pages are present, still complete
+        const allPagesPresent = pages.length >= 5
+        const allImagesLoaded = slots.every(Boolean)
+        if (allImagesLoaded || (allPagesPresent && slots.filter(Boolean).length >= 4)) {
+          setImagesComplete(true)
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+        }
+      } catch { /* keep polling */ }
+    }
+    poll()
+    pollRef.current = setInterval(poll, 2000)
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  }, [generated?.id, imagesComplete])
 
   const filteredThemes = THEMES.filter(t =>
     t.cat === themeCat &&
@@ -477,6 +739,23 @@ export default function GenerateScreen() {
             {selectedChild ? `For ${selectedChild.name} · Grade ${selectedChild.grade_level}` : 'Create an AI-powered adventure'}
           </Text>
         </View>
+        {/* 🗑 Clear button — visible when user has any progress */}
+        {(step !== 'character' || !!charData || charInput.trim().length > 0) && (
+          <TouchableOpacity
+            onPress={resetAll}
+            activeOpacity={0.75}
+            style={{
+              flexDirection:'row', alignItems:'center', gap:5,
+              backgroundColor:'rgba(239,68,68,0.12)',
+              borderRadius:20, paddingHorizontal:12, paddingVertical:7,
+              borderWidth:1, borderColor:'rgba(239,68,68,0.3)',
+              marginLeft:10,
+            }}
+          >
+            <Text style={{ fontSize:12 }}>🗑️</Text>
+            <Text style={{ color:'#ef4444', fontSize:12, fontWeight:'700' }}>Clear</Text>
+          </TouchableOpacity>
+        )}
         {/* Child picker */}
         {children.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -512,6 +791,7 @@ export default function GenerateScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'} style={{ flex:1 }}>
         <ScrollView
+          ref={scrollRef}
           style={{ flex:1 }}
           contentContainerStyle={{ padding:16, paddingBottom:120 }}
           showsVerticalScrollIndicator={false}
@@ -522,14 +802,18 @@ export default function GenerateScreen() {
           {step === 'character' && (
             <View>
               {/* Hero headline */}
-              <Text style={{ color:'#fff', fontWeight:'900', fontSize:26, marginBottom:2 }}>Who's{"\n"}<Text style={{ color:'#B28CFF' }}>the Hero?</Text></Text>
+              <Text style={{ color:'#fff', fontWeight:'900', fontSize:26, marginBottom:2 }}>Who's <Text style={{ color:'#B28CFF' }}>the Hero?</Text></Text>
               <Text style={{ color:'#8a7aaa', fontSize:13, marginBottom:14 }}>Pick any character — or even yourself!</Text>
 
               {/* Search input */}
-              <View style={{ flexDirection:'row', gap:8, marginBottom:12 }}>
+              <View style={{ flexDirection:'row', gap:8, marginBottom:10 }}>
                 <TextInput
                   value={charInput}
-                  onChangeText={setCharInput}
+                  onChangeText={text => {
+                    setCharInput(text)
+                    // Clear stale portrait so old character doesn't show while user types
+                    if (charData) { setCharData(null); setSelectedGallery('') }
+                  }}
                   placeholder="e.g. Luna Star, Sky Knight, Jade Dragon…"
                   placeholderTextColor="#3a3a5a"
                   style={{
@@ -552,6 +836,35 @@ export default function GenerateScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* ── Art Style picker (Step 1) ── */}
+              <Text style={{ color:'#6b5d80', fontSize:11, fontWeight:'700', marginBottom:8, letterSpacing:0.5 }}>
+                🎨 ILLUSTRATION STYLE
+              </Text>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:14 }}>
+                {ART_STYLES.map(style => {
+                  const isSelected = stepOneArt === style.id
+                  return (
+                    <TouchableOpacity
+                      key={style.id}
+                      onPress={() => { setStepOneArt(style.id); Haptics.selectionAsync() }}
+                      style={{
+                        flexDirection:'row', alignItems:'center', gap:6,
+                        paddingHorizontal:12, paddingVertical:8, borderRadius:20,
+                        borderWidth: isSelected ? 2 : 1,
+                        borderColor: isSelected ? '#B28CFF' : '#2a2a4a',
+                        backgroundColor: isSelected ? 'rgba(178,140,255,0.15)' : '#1a1a35',
+                      }}
+                    >
+                      <Text style={{ fontSize:16 }}>{style.emoji}</Text>
+                      <Text style={{
+                        color: isSelected ? '#B28CFF' : '#7a6a9a',
+                        fontSize:12, fontWeight: isSelected ? '800' : '600',
+                      }}>{style.label}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+
               {/* Quick picks */}
               <View style={{ flexDirection:'row', alignItems:'center', gap:6, marginBottom:16, flexWrap:'wrap' }}>
                 <Text style={{ color:'#6b5d80', fontSize:12, fontWeight:'600' }}>Quick picks:</Text>
@@ -567,16 +880,125 @@ export default function GenerateScreen() {
               {/* Gallery headline */}
               <Text style={{ color:'#fff', fontWeight:'700', fontSize:13, marginBottom:12 }}>Pick your hero — click one to start! ✨</Text>
 
-              {/* Portrait grid */}
-              <View style={{ flexDirection:'row', flexWrap:'wrap', justifyContent:'flex-start' }}>
-                {ALL_CHARACTERS.map(char => (
-                  <PortraitCircle
-                    key={char.name}
-                    char={char}
-                    selected={selectedGallery === char.name}
-                    onPress={() => selectFromGallery(char.name)}
-                  />
-                ))}
+              {/* ── Saved AI-generated characters — Accordion ── */}
+              {savedCharacters.length > 0 && (
+                <View style={{ marginBottom: 4 }}>
+                  {/* Accordion header */}
+                  <TouchableOpacity
+                    onPress={toggleCreated}
+                    activeOpacity={0.75}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      backgroundColor: 'rgba(245,158,11,0.08)',
+                      borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9,
+                      borderWidth: 1, borderColor: 'rgba(245,158,11,0.22)',
+                      marginBottom: 2,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>✨</Text>
+                    <Text style={{ color: '#f59e0b', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, flex: 1 }}>
+                      YOUR CREATED HEROES
+                    </Text>
+                    <Text style={{ color: '#6b5d50', fontSize: 10, marginRight: 4 }}>long press to remove</Text>
+                    <Animated.Text style={{
+                      color: '#f59e0b', fontSize: 13, fontWeight: '700',
+                      transform: [{ rotate: createdChevron.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] }) }],
+                    }}>▾</Animated.Text>
+                  </TouchableOpacity>
+
+                  {/* Collapsible content */}
+                  <Animated.View style={{
+                    opacity: createdAnim,
+                    overflow: 'hidden',
+                    maxHeight: createdAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 2000] }),
+                  }}>
+                    <View style={{
+                      flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start',
+                      paddingTop: 8, paddingBottom: 4,
+                    }}>
+                      {savedCharacters.map(sc => (
+                        <PortraitCircleUrl
+                          key={sc.name}
+                          char={sc}
+                          selected={selectedGallery === sc.name}
+                          onPress={() => {
+                            setSelectedGallery(sc.name)
+                            setCharInput(sc.name)
+                            setCharData({
+                              character_name: sc.name, universe: 'Original',
+                              description: `${sc.name} — your created hero!`,
+                              visual_appearance: sc.name,
+                              character_media_url: sc.imageUrl,
+                            })
+                            setSelectedArt(stepOneArt)
+                            setSceneDesc(''); setShortStory(''); setShortStoryMode(false)
+                            setShortStoryExpanding(false); setSelectedTheme(null)
+                            setSelectedLang('en'); setIsPublic(false); setThemeCat('Fantasy')
+                            setThemeSearch(''); setSceneError(''); setGenError(''); setGenerated(null)
+                            setGenStep(0); setGenTitle('')
+                            Haptics.selectionAsync()
+                            setTimeout(() => setStep('scene'), 200)
+                          }}
+                          onLongPress={() => {
+                            setSavedCharacters(prev => {
+                              const updated = prev.filter(c => c.name !== sc.name)
+                              AsyncStorage.setItem(SAVED_CHARS_KEY, JSON.stringify(updated)).catch(() => {})
+                              return updated
+                            })
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+                          }}
+                        />
+                      ))}
+                    </View>
+                  </Animated.View>
+                </View>
+              )}
+
+              {/* ── Starter Heroes — Accordion ── */}
+              <View style={{ marginBottom: 4 }}>
+                {/* Accordion header */}
+                <TouchableOpacity
+                  onPress={toggleStarter}
+                  activeOpacity={0.75}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 8,
+                    backgroundColor: 'rgba(112,42,225,0.08)',
+                    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9,
+                    borderWidth: 1, borderColor: 'rgba(112,42,225,0.2)',
+                    marginBottom: 2,
+                  }}
+                >
+                  <Text style={{ fontSize: 14 }}>🌟</Text>
+                  <Text style={{ color: '#B28CFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, flex: 1 }}>
+                    STARTER HEROES
+                  </Text>
+                  <Text style={{ color: '#6b5d80', fontSize: 10, marginRight: 4 }}>{ALL_CHARACTERS.length} heroes</Text>
+                  <Animated.Text style={{
+                    color: '#B28CFF', fontSize: 13, fontWeight: '700',
+                    transform: [{ rotate: starterChevron.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] }) }],
+                  }}>▾</Animated.Text>
+                </TouchableOpacity>
+
+                {/* Collapsible content */}
+                <Animated.View style={{
+                  opacity: starterAnim,
+                  overflow: 'hidden',
+                  maxHeight: starterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 4000] }),
+                }}>
+                  <View style={{
+                    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start',
+                    paddingTop: 8,
+                  }}>
+                    {ALL_CHARACTERS.map(char => (
+                      <PortraitCircle
+                        key={char.name}
+                        char={char}
+                        selected={selectedGallery === char.name}
+                        onPress={() => selectFromGallery(char.name)}
+                      />
+                    ))}
+                  </View>
+                </Animated.View>
               </View>
 
               {charError ? <Text style={{ color:'#ef4444', fontSize:13, marginTop:8 }}>{charError}</Text> : null}
@@ -587,232 +1009,245 @@ export default function GenerateScreen() {
           {step === 'scene' && (
             <View style={{ flex: 1 }}>
 
-              {/* ── AI Background fills the top hero area ── */}
+              {/* ── Character preview card (replaces AI background hero) ── */}
               <View style={{
-                height: 260, borderRadius: 20, overflow: 'hidden',
-                marginBottom: 14,
+                flexDirection: 'row', alignItems: 'center', gap: 14,
                 backgroundColor: selectedTheme
-                  ? (THEMES.find(t => t.id === selectedTheme)?.bg ?? '#1a1a35')
+                  ? (THEMES.find(t => t.id === selectedTheme)?.bg ?? '#1a1a35') + 'cc'
                   : '#120d2e',
+                borderRadius: 20, padding: 14, marginBottom: 14,
+                borderWidth: 1, borderColor: 'rgba(178,140,255,0.25)',
               }}>
-                {/* Background image when loaded */}
-                {themeBackground ? (
+                {/* Character portrait */}
+                <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden', borderWidth: 2, borderColor: '#702AE1' }}>
                   <Image
-                    source={{ uri: themeBackground }}
-                    style={{ position: 'absolute', width: '100%', height: '100%' }}
+                    source={(() => {
+                      const sc = ALL_CHARACTERS.find(c => c.name === charData?.character_name)
+                      if (sc) return sc.img as any
+                      if (charData?.character_media_url) return { uri: charData.character_media_url }
+                      return ALL_CHARACTERS[0].img as any
+                    })()}
+                    style={{ width: '100%', height: '100%' }}
                     contentFit="cover"
+                    contentPosition={{ top: '10%' }}
                   />
-                ) : null}
-
-                {/* Dark overlay for readability */}
-                <View style={{
-                  position: 'absolute', width: '100%', height: '100%',
-                  backgroundColor: themeBackground ? 'rgba(10,5,30,0.35)' : 'rgba(10,5,30,0.7)',
-                }} />
-
-                {/* Top-right: AI painting loader OR selected theme badge */}
-                <View style={{
-                  position: 'absolute', top: 10, right: 10, zIndex: 10,
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  backgroundColor: 'rgba(20,10,50,0.75)',
-                  borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
-                  borderWidth: 1, borderColor: 'rgba(178,140,255,0.3)',
-                }}>
-                  {bgLoading ? (
-                    <>
-                      <ActivityIndicator size="small" color="#B28CFF" />
-                      <Text style={{ color: '#B28CFF', fontSize: 11, fontWeight: '700' }}>🎨 AI painting your world…</Text>
-                    </>
-                  ) : selectedTheme ? (
-                    <Text style={{ color: '#B28CFF', fontSize: 11, fontWeight: '700' }}>
-                      ✓ {THEMES.find(t => t.id === selectedTheme)?.label}
-                    </Text>
+                </View>
+                {/* Name + theme */}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>
+                    {charData?.character_name ?? 'Your Hero'}
+                  </Text>
+                  {selectedTheme ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                      <Text style={{ fontSize: 13 }}>{THEMES.find(t => t.id === selectedTheme)?.emoji}</Text>
+                      <Text style={{ color: '#B28CFF', fontSize: 12, fontWeight: '700' }}>
+                        {THEMES.find(t => t.id === selectedTheme)?.label}
+                      </Text>
+                    </View>
                   ) : (
-                    <Text style={{ color: '#6b5d80', fontSize: 11 }}>Pick a world below</Text>
-                  )}
-                </View>
-
-                {/* Character floating in center */}
-                {charData && (
-                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                    <Image
-                      source={(() => {
-                        const sc = ALL_CHARACTERS.find(c => c.name === charData.character_name)
-                        if (sc) return sc.img as any
-                        if (charData.character_media_url) return { uri: charData.character_media_url }
-                        return ALL_CHARACTERS[0].img as any
-                      })()}
-                      style={{ width: 160, height: 200 }}
-                      contentFit="contain"
-                    />
-                  </View>
-                )}
-
-                {/* Character name + theme badge at bottom */}
-                <View style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  paddingHorizontal: 16, paddingBottom: 14,
-                  alignItems: 'center',
-                }}>
-                  {charData && (
-                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 20, textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 8 }}>
-                      {charData.character_name}
-                    </Text>
-                  )}
-                  {selectedTheme && charData && (
-                    <View style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 4,
-                      backgroundColor: 'rgba(112,42,225,0.6)', borderRadius: 12,
-                      paddingHorizontal: 10, paddingVertical: 4, marginTop: 4,
-                      borderWidth: 1, borderColor: 'rgba(178,140,255,0.4)',
-                    }}>
-                      <Text style={{ fontSize: 12 }}>{THEMES.find(t => t.id === selectedTheme)?.emoji}</Text>
-                      <Text style={{ color: '#d2bbff', fontSize: 11, fontWeight: '700' }}>
-                        {charData.character_name} · {THEMES.find(t => t.id === selectedTheme)?.label}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              {/* ── STORY SETTINGS panel ── */}
-              <View style={{
-                backgroundColor: 'rgba(20,12,45,0.9)', borderRadius: 16,
-                padding: 14, marginBottom: 14,
-                borderWidth: 1, borderColor: 'rgba(112,42,225,0.3)',
-              }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 }}>
-                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 1 }}>STORY SETTINGS</Text>
-                  <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22c55e' }} />
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                  {charData && (
-                    <View style={{ backgroundColor: '#702AE1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
-                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{charData.character_name}</Text>
-                    </View>
-                  )}
-                  {selectedTheme && (
-                    <View style={{ backgroundColor: 'rgba(251,191,36,0.2)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(251,191,36,0.5)' }}>
-                      <Text style={{ color: '#fbbf24', fontSize: 11, fontWeight: '700' }}>
-                        {THEMES.find(t => t.id === selectedTheme)?.emoji} {THEMES.find(t => t.id === selectedTheme)?.label}
-                      </Text>
-                    </View>
+                    <Text style={{ color: '#4a3a6a', fontSize: 12, marginTop: 4 }}>Pick a world below 👇</Text>
                   )}
                   {selectedChild && (
-                    <View style={{ backgroundColor: 'rgba(20,184,166,0.2)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(20,184,166,0.4)' }}>
-                      <Text style={{ color: '#14b8a6', fontSize: 11, fontWeight: '700' }}>Grade {selectedChild.grade_level}</Text>
-                    </View>
+                    <Text style={{ color: '#6b5d80', fontSize: 11, marginTop: 2 }}>Grade {grade} · {selectedChild.name}</Text>
                   )}
                 </View>
-                <Text style={{ color: '#6b5d80', fontSize: 10, fontWeight: '600', letterSpacing: 0.5, marginBottom: 4 }}>PREVIEW</Text>
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15, marginBottom: 2 }}>
-                  {charData ? `${charData.character_name}'s Adventure` : 'Your Adventure'}
-                </Text>
-                <Text style={{ color: '#8a7aaa', fontSize: 12, marginBottom: 8 }}>
-                  {selectedTheme ? THEMES.find(t => t.id === selectedTheme)?.label : 'Choose a theme below…'}
-                </Text>
-                {selectedChild && (
-                  <View style={{ backgroundColor: '#702AE1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' }}>
-                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>For {selectedChild.name}</Text>
-                  </View>
-                )}
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 8,
-                  backgroundColor: 'rgba(112,42,225,0.12)', borderRadius: 10,
-                  padding: 10, marginTop: 10,
-                  borderWidth: 1, borderColor: 'rgba(112,42,225,0.25)',
-                }}>
-                  <Text style={{ fontSize: 18 }}>🤖</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#B28CFF', fontWeight: '700', fontSize: 12 }}>AI Enhancement Active</Text>
-                    <Text style={{ color: '#6b5d80', fontSize: 11 }}>Reading Grade {grade} optimized theme</Text>
-                  </View>
+                {/* AI badge */}
+                <View style={{ backgroundColor: 'rgba(112,42,225,0.2)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(112,42,225,0.4)' }}>
+                  <Text style={{ color: '#B28CFF', fontSize: 10, fontWeight: '800' }}>🤖 AI</Text>
                 </View>
               </View>
 
-              {/* ── World Picker ── */}
-              <View style={{ backgroundColor: 'rgba(15,10,35,0.95)', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: 'rgba(112,42,225,0.2)' }}>
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, marginBottom: 2 }}>🌍 Choose Your World</Text>
-                <Text style={{ color: '#6b5d80', fontSize: 11, marginBottom: 12 }}>Pick a setting — scroll to explore {THEMES.length} worlds</Text>
 
-                {/* Search */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a35', borderRadius: 10, paddingHorizontal: 10, marginBottom: 10, borderWidth: 1, borderColor: '#2a2a4a' }}>
-                  <Text style={{ fontSize: 13, marginRight: 6 }}>🔍</Text>
-                  <TextInput
-                    value={themeSearch} onChangeText={setThemeSearch}
-                    placeholder="Search worlds…" placeholderTextColor="#3a3a5a"
-                    style={{ flex: 1, color: '#fff', fontSize: 13, paddingVertical: 9 }}
-                  />
-                </View>
+              {/* ── Theme / Story Input ── */}
+              <View style={{ backgroundColor: 'rgba(15,10,35,0.95)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(112,42,225,0.2)' }}>
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, marginBottom: 4 }}>✏️ What's the story about?</Text>
+                <Text style={{ color: '#6b5d80', fontSize: 12, marginBottom: 12 }}>Type any theme — the AI will build a full illustrated story around it.</Text>
 
-                {/* Category tabs */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                  {THEME_CATS.map(cat => (
-                    <TouchableOpacity key={cat} onPress={() => setThemeCat(cat)}
-                      style={{
-                        backgroundColor: themeCat === cat ? '#702AE1' : '#1a1a35',
-                        borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 6,
-                        borderWidth: 1, borderColor: themeCat === cat ? '#702AE1' : '#2a2a4a',
-                      }}>
-                      <Text style={{ color: themeCat === cat ? '#fff' : '#8a7aaa', fontWeight: '700', fontSize: 11 }}>{cat}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                {/* 3-col theme card grid */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                  {filteredThemes.map(th => (
-                    <TouchableOpacity
-                      key={th.id}
-                      onPress={() => handleThemeSelect(th.id)}
-                      activeOpacity={0.8}
-                      style={{
-                        width: '31%', aspectRatio: 1.1,
-                        borderRadius: 12, overflow: 'hidden',
-                        backgroundColor: th.bg,
-                        alignItems: 'center', justifyContent: 'center',
-                        borderWidth: 2,
-                        borderColor: selectedTheme === th.id ? '#fff' : 'transparent',
-                      }}
-                    >
-                      <Text style={{ fontSize: 26 }}>{th.emoji}</Text>
-                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 9, textAlign: 'center', marginTop: 4, paddingHorizontal: 4 }} numberOfLines={2}>{th.label}</Text>
-                      {selectedTheme === th.id && (
-                        <View style={{
-                          position: 'absolute', top: 5, right: 5,
-                          width: 16, height: 16, borderRadius: 8,
-                          backgroundColor: '#702AE1', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>{bgLoading ? '…' : '✓'}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                  {filteredThemes.length === 0 && (
-                    <Text style={{ color: '#6b5d80', fontSize: 13, padding: 12 }}>No worlds found — try a different search!</Text>
-                  )}
-                </View>
-
-                {/* Or describe your own world */}
-                <Text style={{ color: '#B28CFF', fontSize: 12, fontWeight: '600', marginTop: 14, marginBottom: 6 }}>✏️ Or describe your own world</Text>
                 <TextInput
                   value={sceneDesc} onChangeText={setSceneDesc}
-                  placeholder='e.g. "Underwater volcano kingdom"…'
+                  placeholder='e.g. "A dragon guarding a lost city…"'
                   placeholderTextColor="#3a3a5a"
-                  style={{ backgroundColor: '#1a1a35', borderRadius: 10, borderWidth: 1, borderColor: '#2a2a4a', color: '#fff', fontSize: 13, padding: 11, marginBottom: 4 }}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  style={{
+                    backgroundColor: '#1a1a35', borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: sceneDesc.trim().length >= 25 ? '#702AE1' : sceneDesc.trim() ? '#f59e0b' : '#2a2a4a',
+                    color: '#fff', fontSize: 14, padding: 12,
+                    minHeight: 80, lineHeight: 20, marginBottom: 6,
+                  }}
                 />
+                {/* Char count + AI button row */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{
+                    fontSize: 11,
+                    color: sceneDesc.trim().length >= 25 ? '#22c55e' : sceneDesc.trim().length > 0 ? '#f59e0b' : '#3a3a5a',
+                  }}>
+                    {sceneDesc.trim().length > 0
+                      ? sceneDesc.trim().length >= 25
+                        ? `✓ ${sceneDesc.trim().length} chars — ready!`
+                        : `${sceneDesc.trim().length}/25 chars needed`
+                      : '25 characters minimum'}
+                  </Text>
+                  {/* ✨ AI Create Story — available as soon as user has typed anything */}
+                  {!shortStoryMode && (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        const seed = sceneDesc.trim() || 'a magical adventure'
+                        const charName = charData?.character_name ?? 'the hero'
+                        setShortStoryExpanding(true)
+                        setSceneError('')
+                        try {
+                          const res = await storiesApi.expandStory(seed, charName, grade)
+                          const expanded = (res.data as any).story ?? seed
+                          setSceneDesc(expanded)
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                        } catch (e: any) {
+                          setSceneError(e?.response?.data?.detail ?? 'Could not expand. Try again.')
+                        } finally { setShortStoryExpanding(false) }
+                      }}
+                      disabled={shortStoryExpanding}
+                      activeOpacity={0.85}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        backgroundColor: shortStoryExpanding ? '#2a1a4a' : 'rgba(112,42,225,0.85)',
+                        borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
+                        borderWidth: 1, borderColor: '#9d6ee8',
+                      }}
+                    >
+                      {shortStoryExpanding
+                        ? <ActivityIndicator size="small" color="#B28CFF" />
+                        : <Text style={{ fontSize: 12 }}>✨</Text>}
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 11 }}>
+                        {shortStoryExpanding ? 'Creating…' : 'AI Create Story'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {/* ── Paste Your Own Story ── */}
+                <View style={{
+                  marginTop: 18, borderTopWidth: 1, borderTopColor: '#2a2a4a', paddingTop: 16,
+                }}>
+                  {/* Toggle header */}
+                  <TouchableOpacity
+                    onPress={() => { setShortStoryMode(prev => !prev); setShortStory(''); setSceneError('') }}
+                    activeOpacity={0.8}
+                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}
+                  >
+                    <View style={{
+                      width: 20, height: 20, borderRadius: 10, borderWidth: 2,
+                      borderColor: shortStoryMode ? '#702AE1' : '#3a3a5a',
+                      backgroundColor: shortStoryMode ? '#702AE1' : 'transparent',
+                      alignItems: 'center', justifyContent: 'center', marginRight: 8,
+                    }}>
+                      {shortStoryMode && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>✓</Text>}
+                    </View>
+                    <Text style={{ color: shortStoryMode ? '#B28CFF' : '#6b5d80', fontSize: 13, fontWeight: '700' }}>
+                      📖 Use my own story instead
+                    </Text>
+                  </TouchableOpacity>
+
+                  {shortStoryMode && (
+                    <View>
+                      <Text style={{ color: '#6b5d80', fontSize: 11, marginBottom: 8, lineHeight: 16 }}>
+                        Paste or type your story below. The AI will adapt it into 5 illustrated pages starring your chosen character.
+                      </Text>
+                      <TextInput
+                        value={shortStory}
+                        onChangeText={setShortStory}
+                        placeholder="Once upon a time, in a land far away…"
+                        placeholderTextColor="#3a3a5a"
+                        multiline
+                        numberOfLines={6}
+                        textAlignVertical="top"
+                        style={{
+                          backgroundColor: '#0f0f28',
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: shortStory.trim().length > 20 ? '#702AE1' : '#2a2a4a',
+                          color: '#fff',
+                          fontSize: 13,
+                          padding: 13,
+                          minHeight: 130,
+                          lineHeight: 20,
+                        }}
+                      />
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                        <Text style={{ color: shortStory.trim().length > 20 ? '#22c55e' : '#3a3a5a', fontSize: 11 }}>
+                          {shortStory.trim().length > 0 ? `${shortStory.trim().length} characters` : 'Minimum 20 characters'}
+                        </Text>
+                        {shortStory.trim().length > 0 && (
+                          <TouchableOpacity onPress={() => setShortStory('')}>
+                            <Text style={{ color: '#6b5d80', fontSize: 11 }}>Clear ✕</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* ✨ AI Write It For Me button */}
+                      <TouchableOpacity
+                        onPress={expandShortStory}
+                        activeOpacity={0.85}
+                        disabled={shortStoryExpanding || shortStory.trim().length < 3}
+                        style={{
+                          marginTop: 12,
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          opacity: shortStory.trim().length < 3 ? 0.4 : 1,
+                        }}
+                      >
+                        <View style={{
+                          backgroundColor: shortStoryExpanding ? '#2a1a4a' : '#702AE1',
+                          borderRadius: 12,
+                          padding: 13,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderWidth: 1,
+                          borderColor: '#9d6ee8',
+                        }}>
+                          {shortStoryExpanding ? (
+                            <>
+                              <ActivityIndicator size="small" color="#B28CFF" style={{ marginRight: 8 }} />
+                              <Text style={{ color: '#B28CFF', fontWeight: '700', fontSize: 14 }}>Writing your story…</Text>
+                            </>
+                          ) : (
+                            <>
+                              <Text style={{ fontSize: 16, marginRight: 8 }}>✨</Text>
+                              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                                {shortStory.trim().length > 100 ? 'Rewrite with AI' : 'AI Write It For Me'}
+                              </Text>
+                            </>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      {shortStory.trim().length >= 3 && shortStory.trim().length < 100 && !shortStoryExpanding && (
+                        <Text style={{ color: '#4a3a6a', fontSize: 10, marginTop: 5, textAlign: 'center' }}>
+                          Type a short idea above, tap to let AI write the full story ✨
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
 
                 {sceneError ? <Text style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{sceneError}</Text> : null}
               </View>
 
-              {/* CTA */}
-              <TouchableOpacity onPress={proceedScene}
-                activeOpacity={0.85}
+              {/* CTA — disabled until 25 chars typed or AI created */}
+              <TouchableOpacity
+                onPress={sceneReady ? proceedScene : () => setSceneError('Type at least 25 characters about your story, or tap \"AI Create Story\"!')}
+                activeOpacity={sceneReady ? 0.85 : 1}
                 style={{
-                  backgroundColor: selectedTheme ? '#702AE1' : '#2a2a4a',
+                  backgroundColor: sceneReady ? '#702AE1' : '#1a1a35',
                   borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 14,
-                }}>
-                <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>Next: Language →</Text>
+                  borderWidth: 1.5,
+                  borderColor: sceneReady ? '#9d6ee8' : '#2a2a4a',
+                  opacity: sceneReady ? 1 : 0.55,
+                }}
+              >
+                <Text style={{ color: sceneReady ? '#fff' : '#4a3a6a', fontWeight: '900', fontSize: 16 }}>
+                  {sceneReady ? 'Next: Language →' : 'Write your story to continue ✏️'}
+                </Text>
               </TouchableOpacity>
 
               {/* Back */}
@@ -844,9 +1279,21 @@ export default function GenerateScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <TouchableOpacity onPress={() => setStep('artStyle')}
-                style={{ backgroundColor:'#702AE1', borderRadius:14, padding:15, alignItems:'center', marginTop:20 }}>
-                <Text style={{ color:'#fff', fontWeight:'800', fontSize:15 }}>Continue →</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Use the art style already picked in Step 1 (or default to cartoon)
+                  const art = selectedArt ?? stepOneArt ?? 'cartoon'
+                  setSelectedArt(art)
+                  setIsGenerating(true)
+                  setGenStep(0)
+                  setGenError('')
+                  setGenerated(null)
+                  setStep('preview')
+                  setTimeout(() => generateStory(), 80)
+                }}
+                style={{ backgroundColor:'#702AE1', borderRadius:14, padding:15, alignItems:'center', marginTop:20 }}
+              >
+                <Text style={{ color:'#fff', fontWeight:'800', fontSize:15 }}>✨ Create My Story!</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -903,7 +1350,15 @@ export default function GenerateScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => { setStep('preview'); generateStory() }}
+                onPress={() => {
+                  // Set generating FIRST so the preview step opens with the spinner visible
+                  setIsGenerating(true)
+                  setGenStep(0)
+                  setGenError('')
+                  setGenerated(null)
+                  setStep('preview')
+                  generateStory()
+                }}
                 disabled={!selectedArt}
                 style={{ backgroundColor: selectedArt ? '#702AE1' : '#2a2a4a', borderRadius:14, padding:15, alignItems:'center', marginTop:16 }}>
                 <Text style={{ color:'#fff', fontWeight:'800', fontSize:15 }}>✨ Generate My Story!</Text>
@@ -914,157 +1369,128 @@ export default function GenerateScreen() {
           {/* ── STEP 5: PREVIEW / GENERATING ── */}
           {step === 'preview' && (
             <View style={{ alignItems: 'center' }}>
-              {isGenerating ? (
-                // ── Cinematic card loader — matches web design ──────────────
-                <View style={{ width: '100%', paddingVertical: 24 }}>
+              {(isGenerating || (generated && !imagesComplete)) ? (
+                // ── Cinematic loader with live image reveal ────────────────
+                <View style={{ width: '100%', minHeight: 540, justifyContent: 'center' }}>
 
-                  {/* Blurred scene background behind card */}
-                  {themeBackground && (
-                    <Image
-                      source={{ uri: themeBackground }}
-                      style={{
-                        position: 'absolute', top: 0, left: -16, right: -16, bottom: 0,
-                        opacity: 0.35,
-                      }}
-                      contentFit="cover"
-                      blurRadius={18}
-                    />
-                  )}
+                  {/* Dark bg */}
+                  <View style={{ position: 'absolute', top: -20, left: -20, right: -20, bottom: -20, backgroundColor: '#07041a' }} />
 
-                  {/* Glass card */}
-                  <View style={{
-                    backgroundColor: 'rgba(22,14,50,0.88)',
-                    borderRadius: 24,
-                    padding: 20,
-                    borderWidth: 1,
-                    borderColor: 'rgba(112,42,225,0.35)',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 16,
-                    shadowColor: '#702AE1',
-                    shadowOpacity: 0.4,
-                    shadowRadius: 24,
-                    shadowOffset: { width: 0, height: 8 },
-                    elevation: 16,
-                  }}>
-
-                    {/* LEFT: Portrait circle with glow ring */}
-                    <View style={{ alignItems: 'center', justifyContent: 'center', width: 110, height: 110 }}>
-                      {/* Outer glow ring */}
-                      <View style={{
-                        position: 'absolute', width: 110, height: 110, borderRadius: 55,
-                        borderWidth: 2.5,
-                        borderColor: '#9333ea',
-                        shadowColor: '#a855f7',
-                        shadowOpacity: 0.8,
-                        shadowRadius: 16,
-                        shadowOffset: { width: 0, height: 0 },
-                      }} />
-                      {/* Inner circle bg */}
-                      <View style={{
-                        width: 100, height: 100, borderRadius: 50,
-                        backgroundColor: '#1e0a3c',
-                        overflow: 'hidden',
-                        alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <Image
-                          source={(() => {
-                            const sc = ALL_CHARACTERS.find(c => c.name === charData?.character_name)
-                            if (sc) return sc.img as any
-                            if (charData?.character_media_url) return { uri: charData.character_media_url }
-                            return ALL_CHARACTERS[0].img as any
-                          })()}
-                          style={{ width: 96, height: 96 }}
-                          contentFit="contain"
-                        />
-                      </View>
-                    </View>
-
-                    {/* RIGHT: Text content */}
-                    <View style={{ flex: 1 }}>
-                      {/* ✦ CREATING YOUR STORY */}
-                      <Text style={{
-                        color: '#a855f7', fontSize: 10, fontWeight: '800',
-                        letterSpacing: 1.2, marginBottom: 6,
-                      }}>✦ CREATING YOUR STORY</Text>
-
-                      {/* Story title */}
-                      <Text style={{
-                        color: '#fff', fontWeight: '900', fontSize: 20,
-                        fontStyle: 'italic', lineHeight: 26, marginBottom: 4,
-                      }}>
-                        {genTitle || `${charData?.character_name}'s Adventure`}
-                      </Text>
-
-                      {/* Character name */}
-                      <Text style={{
-                        color: '#8a7aaa', fontSize: 11, fontWeight: '700',
-                        letterSpacing: 0.8, marginBottom: 12,
-                        textTransform: 'uppercase',
-                      }}>
-                        {charData?.character_name}
-                      </Text>
-
-                      {/* Current step row */}
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center',
-                        backgroundColor: 'rgba(255,255,255,0.06)',
-                        borderRadius: 12, padding: 10, gap: 10, marginBottom: 12,
-                      }}>
-                        <Text style={{ fontSize: 20 }}>{STORY_STEPS[genStep].icon}</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                            {STORY_STEPS[genStep].label}
-                          </Text>
-                          <Text style={{ color: '#6b5d80', fontSize: 11, marginTop: 1 }}>
-                            {STORY_STEPS[genStep].sub}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Progress bar */}
-                      <View style={{
-                        height: 3, backgroundColor: 'rgba(255,255,255,0.1)',
-                        borderRadius: 2, marginBottom: 8, overflow: 'hidden',
-                      }}>
-                        <View style={{
-                          height: 3, borderRadius: 2,
-                          backgroundColor: '#702AE1',
-                          width: `${Math.min(98, (genStep / (STORY_STEPS.length - 1)) * 100)}%`,
-                        }} />
-                      </View>
-
-                      {/* Progress dots */}
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        {STORY_STEPS.map((_, i) => (
-                          <View key={i} style={{
-                            width: i <= genStep ? 16 : 7,
-                            height: 7, borderRadius: 4,
-                            backgroundColor: i <= genStep ? '#702AE1' : 'rgba(255,255,255,0.15)',
-                          }} />
-                        ))}
-                      </View>
+                  {/* ── Character + title ── */}
+                  <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                    <Animated.View style={{
+                      position: 'absolute', width: 170, height: 170, borderRadius: 85,
+                      backgroundColor: '#702AE1', opacity: 0.12,
+                      transform: [{ scale: pulseAnim }],
+                    }} />
+                    <Animated.View style={{
+                      width: 154, height: 154, borderRadius: 77, position: 'absolute',
+                      borderWidth: 2.5,
+                      borderTopColor: '#a855f7', borderRightColor: '#702AE1',
+                      borderBottomColor: 'transparent', borderLeftColor: 'transparent',
+                      transform: [{ rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+                    }} />
+                    <View style={{ width: 130, height: 130, alignItems: 'center', justifyContent: 'center' }}>
+                      <Image
+                        source={(() => {
+                          const sc = ALL_CHARACTERS.find(c => c.name === charData?.character_name)
+                          if (sc) return sc.img as any
+                          if (charData?.character_media_url) return { uri: charData.character_media_url }
+                          return ALL_CHARACTERS[0].img as any
+                        })()}
+                        style={{ width: 130, height: 130 }}
+                        contentFit="contain"
+                      />
                     </View>
                   </View>
 
-                  <Text style={{ color: '#6b5d80', fontSize: 12, marginTop: 16, textAlign: 'center' }}>
-                    This takes 2–3 minutes.{'\n'}AI is painting each page illustration ✨
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 20, textAlign: 'center', marginBottom: 2, fontStyle: 'italic' }}>
+                    {genTitle || `${charData?.character_name}'s Adventure`}
+                  </Text>
+                  <Text style={{ color: '#6040a0', fontSize: 10, fontWeight: '800', textAlign: 'center', letterSpacing: 2, marginBottom: 20, textTransform: 'uppercase' }}>
+                    ✦ PAINTING YOUR STORY
+                  </Text>
+
+                  {/* ── 5 live image boxes ── */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+                    {pageImageSlots.map((url, i) => {
+                      const isActive = !url && pageImageSlots.slice(0, i).every(Boolean)
+                      return (
+                        <View
+                          key={i}
+                          style={{
+                            width: 58, height: 72, borderRadius: 12, overflow: 'hidden',
+                            backgroundColor: url ? '#000' : isActive ? 'rgba(112,42,225,0.2)' : 'rgba(255,255,255,0.04)',
+                            borderWidth: 2,
+                            borderColor: url ? '#a855f7' : isActive ? '#702AE1' : '#1e1a3a',
+                          }}
+                        >
+                          {url ? (
+                            <Image
+                              source={{ uri: url }}
+                              style={{ width: '100%', height: '100%' }}
+                              contentFit="cover"
+                            />
+                          ) : isActive ? (
+                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                              <ActivityIndicator size="small" color="#B28CFF" />
+                              <Text style={{ color: '#6040a0', fontSize: 8, marginTop: 4 }}>p.{i+1}</Text>
+                            </View>
+                          ) : (
+                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: '#2a2050', fontSize: 13 }}>○</Text>
+                              <Text style={{ color: '#2a2050', fontSize: 8, marginTop: 2 }}>p.{i+1}</Text>
+                            </View>
+                          )}
+                        </View>
+                      )
+                    })}
+                  </View>
+
+                  {/* Image counter */}
+                  <Text style={{ color: '#4a3a6a', fontSize: 11, textAlign: 'center', marginBottom: 18 }}>
+                    {(() => {
+                      const done = pageImageSlots.filter(Boolean).length
+                      if (isGenerating && done === 0) return 'Writing story…'
+                      if (done === 5) return '✓ All 5 scenes painted!'
+                      return `Painting scene ${done + 1} of 5…`
+                    })()}
+                  </Text>
+
+                  {/* ── Segmented progress bar — 5 blocks ── */}
+                  <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+                    {[0,1,2,3,4].map(i => {
+                      const filled = pageImageSlots[i] != null
+                      const active = !filled && pageImageSlots.slice(0, i).every(Boolean)
+                      return (
+                        <View key={i} style={{ flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                          {filled ? (
+                            <View style={{ flex: 1, backgroundColor: '#7c3aed', borderRadius: 4 }} />
+                          ) : active ? (
+                            <Animated.View style={{
+                              flex: 1, borderRadius: 4, backgroundColor: 'rgba(112,42,225,0.45)',
+                            }}>
+                              {/* Shimmer sweep on active block */}
+                              <Animated.View style={{
+                                position: 'absolute', top: 0, bottom: 0, width: 30,
+                                backgroundColor: 'rgba(196,148,255,0.6)',
+                                transform: [{ translateX: spinAnim.interpolate({ inputRange: [0,1], outputRange: [-30, 80] }) }],
+                              }} />
+                            </Animated.View>
+                          ) : null}
+                        </View>
+                      )
+                    })}
+                  </View>
+                  <Text style={{ color: '#2a1a50', fontSize: 10, textAlign: 'center' }}>
+                    {pageImageSlots.filter(Boolean).length}/5 scenes complete
                   </Text>
                 </View>
               ) : generated ? (
-                // ── Cinematic "Story Ready" — full-bleed like web ─────────
                 <View style={{ width: '100%', minHeight: 480, borderRadius: 20, overflow: 'hidden', marginVertical: 8 }}>
 
-                  {/* Full-bleed AI background */}
-                  {themeBackground ? (
-                    <Image
-                      source={{ uri: themeBackground }}
-                      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#1a0a3c' }} />
-                  )}
+                  {/* Solid dark cinematic background */}
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#1a0a3c' }} />
 
                   {/* Dark cinematic vignette overlay */}
                   <View style={{
@@ -1075,8 +1501,16 @@ export default function GenerateScreen() {
                   {/* Layout: character left + glass card right */}
                   <View style={{ flexDirection: 'row', minHeight: 480, alignItems: 'flex-end' }}>
 
-                    {/* LEFT — character full height, no frame */}
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 0 }}>
+                    {/* LEFT — character transparent, overflows card top */}
+                    <View style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      paddingBottom: 0,
+                      overflow: 'visible',
+                      // Extend above card so character stands tall
+                      marginTop: -80,
+                    }}>
                       <Image
                         source={(() => {
                           const sc = ALL_CHARACTERS.find(c => c.name === charData?.character_name)
@@ -1084,7 +1518,7 @@ export default function GenerateScreen() {
                           if (charData?.character_media_url) return { uri: charData.character_media_url }
                           return ALL_CHARACTERS[0].img as any
                         })()}
-                        style={{ width: 180, height: 300 }}
+                        style={{ width: 200, height: 400 }}
                         contentFit="contain"
                       />
                       {/* Name plate */}
@@ -1109,18 +1543,40 @@ export default function GenerateScreen() {
                       shadowOffset: { width: 0, height: 8 }, elevation: 16,
                     }}>
 
-                      {/* ✦ STORY READY! badge */}
+                      {/* Dynamic badge — shows gen progress vs ready state */}
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', gap: 6,
-                        backgroundColor: 'rgba(34,197,94,0.2)',
+                        backgroundColor: imagesComplete ? 'rgba(34,197,94,0.2)' : 'rgba(112,42,225,0.2)',
                         borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
                         alignSelf: 'flex-start', marginBottom: 12,
-                        borderWidth: 1, borderColor: 'rgba(34,197,94,0.4)',
+                        borderWidth: 1, borderColor: imagesComplete ? 'rgba(34,197,94,0.4)' : 'rgba(168,85,247,0.4)',
                       }}>
-                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22c55e' }} />
-                        <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>
-                          STORY READY!
+                        {!imagesComplete && <ActivityIndicator size="small" color="#B28CFF" style={{ marginRight: 2 }} />}
+                        {imagesComplete && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22c55e' }} />}
+                        <Text style={{ color: imagesComplete ? '#22c55e' : '#B28CFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>
+                          {imagesComplete ? 'STORY READY!' : `PAINTING SCENES… ${pageImageSlots.filter(Boolean).length}/5`}
                         </Text>
+                      </View>
+
+                      {/* 5-image strip — taller so you can actually see the illustrations */}
+                      <View style={{ flexDirection: 'row', gap: 5, marginBottom: 14 }}>
+                        {pageImageSlots.map((url, i) => (
+                          <View key={i} style={{
+                            flex: 1, height: 90, borderRadius: 10, overflow: 'hidden',
+                            backgroundColor: url ? 'rgba(20,10,40,0.8)' : 'rgba(255,255,255,0.05)',
+                            borderWidth: 1, borderColor: url ? 'rgba(168,85,247,0.6)' : '#2a2050',
+                          }}>
+                            {url
+                              ? <Image source={{ uri: url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                              : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                  {imagesComplete
+                                    ? <Text style={{ fontSize: 20 }}>🖼️</Text>
+                                    : <ActivityIndicator size="small" color="#3a2060" />
+                                  }
+                                </View>
+                            }
+                          </View>
+                        ))}
                       </View>
 
                       {/* Story title */}
@@ -1155,33 +1611,69 @@ export default function GenerateScreen() {
                         )}
                       </View>
 
-                      {/* Start Reading CTA */}
+                      {/* Start Reading CTA — only unlocks when all images are ready */}
                       <TouchableOpacity
                         onPress={() => router.push(`/(app)/read/${generated.id}` as any)}
+                        disabled={!imagesComplete}
                         activeOpacity={0.85}
                         style={{
-                          backgroundColor: '#fff',
+                          backgroundColor: imagesComplete ? '#fff' : 'rgba(255,255,255,0.25)',
                           borderRadius: 14, paddingVertical: 13,
                           flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                           gap: 6, marginBottom: 10,
                         }}
                       >
-                        <Text style={{ color: '#0d0d1f', fontWeight: '900', fontSize: 15 }}>Start Reading!</Text>
-                        <Text style={{ color: '#0d0d1f', fontSize: 15, fontWeight: '900' }}>→</Text>
+                        <Text style={{ color: '#0d0d1f', fontWeight: '900', fontSize: 15 }}>
+                          {imagesComplete ? 'Start Reading!' : `Painting scenes… ${pageImageSlots.filter(Boolean).length}/5`}
+                        </Text>
+                        <Text style={{ color: '#0d0d1f', fontSize: 15, fontWeight: '900' }}>{imagesComplete ? '→' : '⏳'}</Text>
                       </TouchableOpacity>
 
-                      {/* Back to Dashboard */}
-                      <TouchableOpacity onPress={() => router.push('/(app)/dashboard' as any)} style={{ alignItems: 'center' }}>
-                        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>← Back to Dashboard</Text>
+                      {/* Back to Dashboard — ghost pill */}
+                      <TouchableOpacity
+                        onPress={() => router.push('/(app)/dashboard' as any)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                          gap: 6, paddingVertical: 12, paddingHorizontal: 20,
+                          borderRadius: 50,
+                          borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+                          backgroundColor: 'rgba(255,255,255,0.06)',
+                          marginBottom: 10,
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>←</Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '600', letterSpacing: 0.3 }}>
+                          Back to Dashboard
+                        </Text>
                       </TouchableOpacity>
 
-                      {/* Generate another */}
-                      <TouchableOpacity onPress={() => {
-                        setStep('character'); setCharData(null); setCharInput(''); setSelectedGallery('')
-                        setSelectedTheme(null); setSelectedArt(null); setGenerated(null); setGenError('')
-                        setThemeBackground(null)
-                      }} style={{ alignItems: 'center', marginTop: 8 }}>
-                        <Text style={{ color: 'rgba(178,140,255,0.6)', fontSize: 12 }}>✨ Generate Another Story</Text>
+                      {/* Generate Another Story — glowing purple gradient pill */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          resetAll()
+                          setGenTitle('')
+                          // Scroll back to top so Step 1 is immediately visible
+                          setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 50)
+                        }}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                          gap: 7, paddingVertical: 12, paddingHorizontal: 22,
+                          borderRadius: 50,
+                          backgroundColor: 'rgba(112,42,225,0.22)',
+                          borderWidth: 1, borderColor: 'rgba(168,85,247,0.5)',
+                          shadowColor: '#a855f7',
+                          shadowOpacity: 0.45,
+                          shadowRadius: 12,
+                          shadowOffset: { width: 0, height: 4 },
+                          elevation: 8,
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={{ fontSize: 14 }}>✨</Text>
+                        <Text style={{ color: '#d8b4fe', fontSize: 13, fontWeight: '700', letterSpacing: 0.4 }}>
+                          Generate Another Story
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1197,7 +1689,26 @@ export default function GenerateScreen() {
                     <Text style={{ color:'#fff', fontWeight:'800' }}>Try Again</Text>
                   </TouchableOpacity>
                 </View>
-              ) : null}
+              ) : (
+                // Fallback: spinner shown immediately to avoid blank screen
+                <View style={{ width: '100%', alignItems: 'center', paddingVertical: 60 }}>
+                  <View style={{ alignItems: 'center', marginBottom: 28 }}>
+                    <Animated.View style={{
+                      width: 96, height: 96, borderRadius: 48,
+                      borderWidth: 4,
+                      borderTopColor: '#a855f7',
+                      borderRightColor: '#702AE1',
+                      borderBottomColor: 'transparent',
+                      borderLeftColor: 'transparent',
+                      transform: [{ rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+                    }} />
+                  </View>
+                  <Text style={{ color: '#a855f7', fontSize: 13, fontWeight: '700', letterSpacing: 1 }}>✦ STARTING…</Text>
+                  <Text style={{ color: '#6b5d80', fontSize: 12, marginTop: 8, textAlign: 'center' }}>
+                    Warming up the story engine…
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 

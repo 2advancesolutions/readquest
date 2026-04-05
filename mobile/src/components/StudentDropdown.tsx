@@ -1,17 +1,12 @@
 /**
- * StudentDropdown — child selector (React Native conversion).
+ * StudentDropdown — child selector (React Native).
  *
- * On phone: tapping the trigger opens a bottom-sheet Modal
- * On tablet: tapping opens an inline dropdown panel (popover style)
- *
- * Replaces:
- * - framer-motion AnimatePresence → Animated + Modal
- * - <img> → expo-image <Image>
- * - CSS position absolute flyout → Modal (phone) / View overlay (tablet)
+ * Phone:  tapping opens a bottom-sheet Modal (always above content)
+ * Tablet: tapping opens an inline dropdown panel with high z-index
  */
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import {
-  View, Text, TouchableOpacity, Modal, ScrollView, Animated,
+  View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet,
 } from 'react-native'
 import { Image } from 'expo-image'
 import { useDeviceLayout } from '../hooks/useDeviceLayout'
@@ -69,18 +64,18 @@ function ChildItem({
 }) {
   return (
     <TouchableOpacity
-      className={`flex-row items-center px-4 py-3 rounded-rq-md mb-1 ${isSelected ? 'bg-rq-purple/20' : ''}`}
+      style={[s.childItem, isSelected && s.childItemSelected]}
       onPress={onPress}
       activeOpacity={0.7}
     >
       <Avatar child={child} color={color} size={36} />
-      <View className="flex-1 ml-3">
-        <Text className={`font-semibold ${isSelected ? 'text-rq-purple-light' : 'text-white'}`}>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={[s.childName, isSelected && s.childNameSelected]}>
           {child.name}
         </Text>
-        <Text className="text-rq-text-muted text-xs">Grade {child.grade_level}</Text>
+        <Text style={s.childGrade}>Grade {child.grade_level}</Text>
       </View>
-      {isSelected && <Text className="text-rq-purple-light ml-2">✓</Text>}
+      {isSelected && <Text style={{ color: '#B28CFF', marginLeft: 8 }}>✓</Text>}
     </TouchableOpacity>
   )
 }
@@ -107,12 +102,11 @@ export default function StudentDropdown({
   // ── Trigger button ───────────────────────────────────────────────────────
   const Trigger = (
     <TouchableOpacity
-      className="flex-row items-center bg-nb-surface rounded-full px-3 py-1.5 gap-2"
+      style={s.trigger}
       onPress={() => setOpen(o => !o)}
       activeOpacity={0.8}
     >
-      {label && <Text className="text-rq-text-muted text-xs mr-1">{label}</Text>}
-
+      {label && <Text style={s.triggerLabel}>{label}</Text>}
       {selected ? (
         <>
           <Avatar
@@ -120,33 +114,33 @@ export default function StudentDropdown({
             color={CHILD_COLORS[activeIdx % CHILD_COLORS.length]}
             size={24}
           />
-          <Text className="text-white text-sm font-semibold">{selected.name}</Text>
-          <Text className="text-rq-text-muted text-xs">G{selected.grade_level}</Text>
+          <Text style={s.triggerName}>{selected.name}</Text>
+          <Text style={s.triggerGrade}>G{selected.grade_level}</Text>
         </>
       ) : (
         <>
           <Text>👥</Text>
-          <Text className="text-white text-sm font-semibold">All Students</Text>
+          <Text style={s.triggerName}>All Students</Text>
         </>
       )}
-      <Text className="text-rq-text-muted text-xs ml-1">{open ? '▲' : '▼'}</Text>
+      <Text style={s.triggerCaret}>{open ? '▲' : '▼'}</Text>
     </TouchableOpacity>
   )
 
-  // ── Options list (shared between phone and tablet) ───────────────────────
+  // ── Options list (shared) ────────────────────────────────────────────────
   const OptionsList = () => (
     <ScrollView bounces={false}>
       {allowAll && (
         <TouchableOpacity
-          className={`flex-row items-center px-4 py-3 rounded-rq-md mb-1 ${selected === null ? 'bg-rq-purple/20' : ''}`}
+          style={[s.childItem, selected === null && s.childItemSelected]}
           onPress={() => handleSelect(null)}
           activeOpacity={0.7}
         >
-          <Text className="text-2xl mr-3">👥</Text>
-          <Text className={`flex-1 font-semibold ${selected === null ? 'text-rq-purple-light' : 'text-white'}`}>
+          <Text style={{ fontSize: 24, marginRight: 12 }}>👥</Text>
+          <Text style={[s.childName, selected === null && s.childNameSelected, { flex: 1 }]}>
             All Students
           </Text>
-          {selected === null && <Text className="text-rq-purple-light">✓</Text>}
+          {selected === null && <Text style={{ color: '#B28CFF' }}>✓</Text>}
         </TouchableOpacity>
       )}
       {children.map((child, i) => (
@@ -161,27 +155,26 @@ export default function StudentDropdown({
     </ScrollView>
   )
 
-  // ── Phone: bottom sheet Modal ────────────────────────────────────────────
+  // ── Phone: Modal bottom-sheet — always floats above everything ───────────
   if (!isTablet) {
     return (
-      <View>
+      <View style={{ zIndex: 100, elevation: 100 }}>
         {Trigger}
         <Modal
           visible={open}
           transparent
           animationType="slide"
           onRequestClose={() => setOpen(false)}
+          statusBarTranslucent
         >
           <TouchableOpacity
-            className="flex-1 bg-black/60 justify-end"
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}
             onPress={() => setOpen(false)}
             activeOpacity={1}
           >
-            <View className="bg-nb-card rounded-t-3xl px-4 pt-4"
-              style={{ paddingBottom: 40 }}
-            >
-              <View className="w-12 h-1 bg-rq-text-light rounded-full self-center mb-4" />
-              <Text className="text-white text-lg font-bold mb-3 px-2">Select Student</Text>
+            <View style={s.sheet}>
+              <View style={s.sheetHandle} />
+              <Text style={s.sheetTitle}>Select Student</Text>
               <OptionsList />
             </View>
           </TouchableOpacity>
@@ -190,22 +183,23 @@ export default function StudentDropdown({
     )
   }
 
-  // ── Tablet: inline dropdown panel ───────────────────────────────────────
+  // ── Tablet / Web: inline dropdown – high z-index stack ───────────────────
   return (
-    <View style={{ position: 'relative', zIndex: 100 }}>
+    <View style={{ position: 'relative', zIndex: 200, elevation: 200 }}>
       {Trigger}
       {open && (
         <>
-          {/* Backdrop to close */}
+          {/* Invisible backdrop to close on outside tap */}
           <TouchableOpacity
-            style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000 }}
+            style={{
+              position: 'absolute',
+              top: -2000, left: -2000, right: -2000, bottom: -2000,
+              zIndex: 190, elevation: 190,
+            }}
             onPress={() => setOpen(false)}
           />
-          <View
-            className="absolute bg-nb-card rounded-rq-lg p-3"
-            style={{ top: 44, right: 0, minWidth: 220, zIndex: 200,
-              shadowColor: '#702AE1', shadowOpacity: 0.2, shadowRadius: 12, elevation: 10 }}
-          >
+          {/* Panel itself — must be above backdrop */}
+          <View style={s.panel}>
             <OptionsList />
           </View>
         </>
@@ -213,3 +207,53 @@ export default function StudentDropdown({
     </View>
   )
 }
+
+// ── Styles ──────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  trigger: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#1a1a35',
+    borderRadius: 100, paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: 'rgba(112,42,225,0.5)',
+  },
+  triggerLabel: { color: '#6b5d80', fontSize: 12, marginRight: 4 },
+  triggerName: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  triggerGrade: { color: '#6b5d80', fontSize: 12 },
+  triggerCaret: { color: '#6b5d80', fontSize: 11, marginLeft: 4 },
+
+  childItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 12, marginBottom: 4,
+  },
+  childItemSelected: { backgroundColor: 'rgba(112,42,225,0.2)' },
+  childName: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  childNameSelected: { color: '#B28CFF' },
+  childGrade: { color: '#6b5d80', fontSize: 12, marginTop: 1 },
+
+  // Bottom-sheet (phone)
+  sheet: {
+    backgroundColor: '#16103a',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 48,
+  },
+  sheetHandle: {
+    width: 48, height: 4, backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 2, alignSelf: 'center', marginBottom: 16,
+  },
+  sheetTitle: {
+    color: '#fff', fontSize: 18, fontWeight: '700',
+    marginBottom: 12, paddingHorizontal: 8,
+  },
+
+  // Inline panel (tablet/web)
+  panel: {
+    position: 'absolute', top: 44, right: 0, minWidth: 220,
+    backgroundColor: '#16103a',
+    borderRadius: 16, padding: 12,
+    zIndex: 300, elevation: 300,
+    shadowColor: '#702AE1', shadowOpacity: 0.4,
+    shadowRadius: 20, shadowOffset: { width: 0, height: 6 },
+    borderWidth: 1, borderColor: 'rgba(112,42,225,0.35)',
+  },
+})

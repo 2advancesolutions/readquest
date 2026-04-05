@@ -1,11 +1,12 @@
 """Stories router — generate, list, get"""
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
 from app.database import get_session
 from app.models.story import Story, StoryPage
+from app.models.character_portrait import CharacterPortrait
 from app.models.quiz import QuizQuestion
 from app.services.ai_service import generate_story_with_ai
 from app.services.gamification_service import award_xp
@@ -120,6 +121,7 @@ class GenerateRequest(BaseModel):
 
 class AnalyzeCharacterRequest(BaseModel):
     character: str
+    art_style: str = "cartoon"
 
 
 class PageResponse(BaseModel):
@@ -151,155 +153,324 @@ class StoryResponse(BaseModel):
     quiz_questions: list[QuizResponse] = []
     created_at: str
 
+
 @router.post("/analyze-character")
 async def analyze_character(req: AnalyzeCharacterRequest):
-    """Generate a character portrait — uses Gemini to enrich the character first, then FLUX Dev for the image."""
-    import asyncio
-    from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes, _call_gemini_text
+    """Generate a character portrait using Recraft V3.
+    Checks the character_portraits DB cache first — if found, returns instantly.
+    """
+    from app.agents.content_agent import _generate_image_nano_banana2, remove_background_from_bytes
+    from app.database import AsyncSessionLocal
 
     char = req.character.strip()
+    art_style = req.art_style or "cartoon"
+    cache_key = char.lower().strip()
 
-    # ── Step 1: Use Gemini to identify the character and get their real visual description ──
-    char_info = {
-        "universe": "Adventure",
-        "description": f"{char} — a brave and adventurous hero",
-        "visual_appearance": char,
-    }
+    print(f"[analyze-character] char='{char}', art_style='{art_style}'")
+
+    # ── 1. Check server-side portrait cache ───────────────────────────────────
     try:
-        gemini_prompt = f"""You are a character identification expert for children's media.
+        async with AsyncSessionLocal() as cache_db:
+            cached = await cache_db.execute(
+                select(CharacterPortrait).where(CharacterPortrait.name == cache_key)
+            )
+            cached_row = cached.scalar_one_or_none()
+            if cached_row:
+                print(f"[analyze-character] ✓ Cache hit for '{char}' — returning instantly")
+                return {
+                    "character_name": char,
+                    "universe": "Original",
+                    "description": f"{char} — ready for an epic adventure!",
+                    "visual_appearance": char,
+                    "character_image_url": cached_row.portrait_url,
+                    "cached": True,
+                }
+    except Exception as cache_err:
+        print(f"[analyze-character] Cache lookup failed (non-fatal): {cache_err}")
 
-The user typed: "{char}"
+    # ── Known character visual descriptions (no Gemini) ──────────────────────────
+    # For well-known characters, inject their real visual so Recraft renders them
+    # recognizably. Keyed by lowercase name. Custom names fall back to the name itself.
+    KNOWN_CHARACTERS: dict[str, str] = {
+        # Marvel
+        "iron man":        "Iron Man in iconic red and gold metal armor suit, arc reactor glowing blue on chest, full helmet on, heroic pose",
+        "spider-man":      "Spider-Man in red and blue spandex suit with web pattern, black spider logo on chest, full mask on",
+        "spiderman":       "Spider-Man in red and blue spandex suit with web pattern, black spider logo on chest, full mask on",
+        "spider man":      "Spider-Man in red and blue spandex suit with web pattern, black spider logo on chest, full mask on",
+        "captain america": "Captain America in blue suit with red and white stripes, star on chest, round vibranium shield",
+        "thor":            "Thor with long blonde hair, red flowing cape, winged helmet, holding Mjolnir hammer, muscular warrior",
+        "hulk":            "The Hulk, massive green muscular giant, purple torn pants, angry expression, enormous green physique",
+        "black panther":   "Black Panther in sleek black vibranium suit with claw gauntlets and silver trim, full mask on",
+        "captain marvel":  "Captain Marvel in red blue and gold suit, star emblem on chest, short blonde hair, determined expression",
+        "thanos":          "Thanos, giant purple-skinned alien warlord, golden Infinity Gauntlet with six Infinity Stones, heavy armor",
+        "deadpool":        "Deadpool in red and black mercenary suit, twin katanas on back, full mask on, thumbs up pose",
+        "wolverine":       "Wolverine with three adamantium metal claws extended from each fist, blue and yellow X-Men suit, wild brown hair",
+        "venom":           "Venom, massive black symbiote figure, white spider logo, long tongue, razor sharp teeth",
+        # DC
+        "batman":          "Batman in dark grey armored bat-suit, large black cape and cowl, gold utility belt, bat logo on chest",
+        "superman":        "Superman in blue suit, flowing red cape, yellow and red S shield on chest, hands on hips heroic stance",
+        "wonder woman":    "Wonder Woman in red and gold armor, golden tiara, golden lasso at hip, silver bracelets, long dark hair",
+        "the flash":       "The Flash in bright red suit with lightning bolt logo, gold accents, yellow boots, running stance",
+        "aquaman":         "Aquaman in orange and green scale armor, long blonde hair, holding tall golden trident",
+        "joker":           "The Joker in purple suit and green tie, bright green hair, white face makeup, red lipstick smile",
+        "green lantern":   "Green Lantern in green and black suit, glowing green power ring on right hand, green power symbol",
+        # Disney / Pixar
+        "elsa":            "Elsa in ice-blue sparkly flowing gown, platinum blonde side braid, ice crown, magical ice sparkling from hands",
+        "anna":            "Anna in blue and magenta folk dress, auburn pigtail braids, freckles, warm friendly smile",
+        "moana":           "Moana in red and white tapa cloth outfit, long wavy thick black hair, holding green heart of Te Fiti",
+        "simba":           "Adult Simba as majestic lion with full golden mane, warm amber eyes, proud stance on Pride Rock",
+        "woody":           "Woody the cowboy in yellow cowboy hat with red band, plaid shirt, denim jeans, sheriff badge",
+        "buzz lightyear":  "Buzz Lightyear in white green and purple space ranger armor suit, retractable wings, clear helmet",
+        "mickey mouse":    "Mickey Mouse, black cartoon mouse, round ears, red shorts with white buttons, yellow shoes, white gloves",
+        # Nintendo
+        "mario":           "Mario in red cap with white M logo, blue overalls, red shirt, brown mustache, cheerful jumping pose",
+        "luigi":           "Luigi in green cap with white L logo, blue overalls, green shirt, tall slim build, friendly smile",
+        "link":            "Link in green tunic and pointed green hat, pointy elf ears, blonde hair, holding glowing Master Sword and Hylian Shield",
+        "zelda":           "Princess Zelda in royal gold and white gown, long blonde hair, pointed tiara, Triforce symbol",
+        "pikachu":         "Pikachu, small yellow mouse Pokemon, round red cheek pouches, pointed black-tipped ears, lightning bolt tail",
+        "kirby":           "Kirby, round fluffy pink puffball character, small stubby arms, blue eyes, rosy cheek blushes",
+        # Other
+        "sonic":           "Sonic the Hedgehog, bright blue spiky fur, white gloves, signature red sneakers, speed running pose",
+        "goku":            "Goku in orange martial arts gi with blue undershirt, spiky black hair or golden Super Saiyan hair, muscular",
+        "naruto":          "Naruto in bright orange and black tracksuit, leaf village metal headband, blonde spiky hair, whisker marks on cheeks",
+        "luffy":           "Monkey D. Luffy in red vest, blue shorts, straw hat, black hair, rubber body stretching pose",
+    }
 
-Identify this character and respond with ONLY valid JSON (no markdown, no explanation):
-{{
-  "canonical_name": "<full canonical character name>",
-  "universe": "<franchise/show/movie name, e.g. 'DC Comics', 'Frozen (Disney)', 'Marvel Comics'>",
-  "description": "<1-2 sentence engaging description of who this character is>",
-  "visual_appearance": "<precise visual description: hair color+style, costume/outfit colors and details, any signature features like cape, mask, weapon, etc. Be very specific for image generation.>"
-}}
+    char_lower = char.lower().strip()
+    visual = KNOWN_CHARACTERS.get(char_lower, char)
+    if visual != char:
+        print(f"[analyze-character] Known character: '{char}' → preset visual")
+    else:
+        print(f"[analyze-character] Custom character: '{char}' → using name literally")
 
-If the character is not well-known, make up a reasonable children's story character appearance.
-Reply with only valid JSON."""
+    # ── Clean the visual for portrait prompts ───────────────────────────────────────────────
+    # Strip action/location phrases that cause Recraft to add background scenery:
+    # e.g. "girl with wings that flies in the sky" → "girl with wings"
+    import re as _re
+    visual_clean = visual
+    visual_clean = _re.sub(r'\b(in|on|above|over|through|across|under)\s+the\s+\w+', '', visual_clean, flags=_re.IGNORECASE)
+    visual_clean = _re.sub(r'\b(that|who)\s+\w+s?\b', '', visual_clean, flags=_re.IGNORECASE)
+    visual_clean = ' '.join(visual_clean.split())
+    if visual_clean != visual:
+        print(f"[analyze-character] visual_clean='{visual_clean}'")
 
-        raw = await _call_gemini_text(
-            system="You are a character identification expert. Always respond with valid JSON only.",
-            user=gemini_prompt,
-            temperature=0.1
-        )
-        # Parse the JSON
-        import json, re
-        # Strip markdown if present
-        clean = raw.strip()
-        if "```" in clean:
-            clean = re.sub(r"```(?:json)?", "", clean).strip().rstrip("`").strip()
-        data = json.loads(clean)
-        char_info = {
-            "universe": data.get("universe", "Adventure"),
-            "description": data.get("description", f"{char} — a brave hero"),
-            "visual_appearance": data.get("visual_appearance", char),
-            "canonical_name": data.get("canonical_name", char),
-        }
-        print(f"[analyze-character] Gemini enriched: {char_info}")
-    except Exception as e:
-        print(f"[analyze-character] Gemini enrichment failed (using defaults): {e}")
+    # Key rules for Recraft V3 portraits:
+    # • Character FILLS the frame (LARGE, not tiny floating figure)
+    # • WHITE background repeated multiple times — overrides any location hints in the name
+    # • "No scenery" stated explicitly
+    PORTRAIT_PROMPTS = {
+        "cartoon": (
+            f"Full-body character illustration, character filling the entire frame: {visual_clean}. "
+            f"LARGE centered figure, close-up full body, expressive face, confident heroic pose. "
+            f"PURE SOLID WHITE background only. No sky, no scenery, no ground, no background elements. "
+            f"Bold clean outlines, bright vivid colors, Disney-style 2D cartoon."
+        ),
+        "pixar": (
+            f"Full-body 3D character portrait, character filling the entire frame: {visual_clean}. "
+            f"LARGE centered figure, expressive Pixar-style face, close-up full body. "
+            f"PURE SOLID WHITE background only. No sky, no scenery, no background elements. "
+            f"Pixar CGI style, clay-like texture, soft warm lighting, vibrant colors."
+        ),
+        "cinematic": (
+            f"Full-body cinematic character portrait, character filling the entire frame: {visual_clean}. "
+            f"LARGE centered figure, dramatic heroic stance, sharp photorealistic detail. "
+            f"PURE SOLID WHITE background only. No sky, no scenery, no environment. "
+            f"Film poster lighting, cinematic shadows, ultra-detailed."
+        ),
+        "real": (
+            f"Full-body photorealistic character portrait, character filling the entire frame: {visual_clean}. "
+            f"LARGE centered figure, natural confident pose, sharp detail. "
+            f"PURE SOLID WHITE background only. No sky, no scenery, no background elements. "
+            f"Natural studio lighting, photorealistic textures."
+        ),
+        "comic": (
+            f"Full-body comic book character, character filling the entire frame: {visual_clean}. "
+            f"LARGE centered figure, dynamic action pose, bold thick ink outlines. "
+            f"PURE SOLID WHITE background only. No sky, no scenery, no environment. "
+            f"Marvel/DC comic art style, vivid primary colors."
+        ),
+        "epic": (
+            f"Full-body epic fantasy character portrait, character filling the entire frame: {visual_clean}. "
+            f"LARGE centered figure, triumphant heroic pose, dramatic presence. "
+            f"PURE SOLID WHITE background only. No sky, no scenery, no background. "
+            f"Cinematic fantasy art, detailed and dramatic."
+        ),
+    }
+    image_prompt = PORTRAIT_PROMPTS.get(art_style, PORTRAIT_PROMPTS["cartoon"])
+    print(f"[analyze-character] Recraft V3 portrait prompt: {image_prompt}")
 
-    visual = char_info.get("visual_appearance", char)
-    canonical = char_info.get("canonical_name", char)
-
-    # ── Step 2: Build a high-quality portrait prompt using the real visual description ──
-    image_prompt = (
-        f"MASTERPIECE, 8K, high-quality professional children's book illustration of ONE character: {canonical}. "
-        f"Visual description: {visual}. "
-        f"Single character portrait, HEROIC POSE, clear expressive face, sharp focus, "
-        f"CENTERED, full body visible, character ISOLATED. "
-        f"PURE SOLID WHITE background ONLY. No scenery, no ground, no sky, NO OTHER CHARACTERS, no pets, no shadows. "
-        f"Clean bold line art, bright vivid Disney coloring, HARD black outlines, cel-shaded style, "
-        f"unmistakable iconic likeness, highly detailed costume, "
-        f"kid-friendly sticker art, extremely sharp, high-res PNG, no text, no logos, no grain."
-    )
-
-    # ── Step 3: Generate portrait with FLUX Dev ──
-    raw_url = await _generate_image_nano_banana2(image_prompt)
+    # ── Generate portrait with Recraft V3 using the user's selected style ──────────
+    raw_url = await _generate_image_nano_banana2(image_prompt, art_style=art_style)
     portrait_url = raw_url
 
     if raw_url:
-        # Fetch bytes and remove background → transparent PNG
+        # ── Use fal.ai cloud rembg — handles ANY background type (dark, color, scene) ──
         try:
-            import httpx as _httpx
-            if raw_url.startswith("http"):
-                async with _httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.get(raw_url)
-                    img_bytes = resp.content
-            else:
-                from pathlib import Path
-                img_bytes = Path(raw_url.lstrip("/")).read_bytes()
+            import os as _os, asyncio as _asyncio
+            import fal_client as _fal_client
+            _os.environ["FAL_KEY"] = settings.FAL_AI or _os.environ.get("FAL_AI", "")
 
-            transparent_bytes = await remove_background_from_bytes(img_bytes)
-
-            from app.agents.content_agent import _upload_to_supabase
-            import uuid as _uuid2
-            filename = f"portrait_{_uuid2.uuid4().hex}.png"
-            public_url = await _upload_to_supabase(transparent_bytes, filename)
-            if public_url:
-                portrait_url = public_url
+            print(f"[analyze-character] Calling fal rembg on: {raw_url[:80]}...")
+            rembg_result = await _asyncio.to_thread(
+                _fal_client.subscribe,
+                "fal-ai/imageutils/rembg",
+                arguments={"image_url": raw_url},
+            )
+            transparent_url = (rembg_result or {}).get("image", {}).get("url")
+            if transparent_url:
+                print(f"[analyze-character] fal rembg ✓ transparent: {transparent_url[:80]}")
+                portrait_url = transparent_url
             else:
-                from pathlib import Path as _Path
-                _Path("static/images").mkdir(parents=True, exist_ok=True)
-                _Path(f"static/images/{filename}").write_bytes(transparent_bytes)
-                portrait_url = f"http://localhost:8000/static/images/{filename}"
+                print(f"[analyze-character] fal rembg returned no URL — using raw")
         except Exception as e:
-            print(f"[analyze-character] Background removal failed (using raw): {e}")
+            print(f"[analyze-character] fal rembg failed ({e}) — falling back to local removal")
+            # Local fallback: download + Pillow flood-fill
+            try:
+                import httpx as _httpx
+                if raw_url.startswith("http"):
+                    async with _httpx.AsyncClient(timeout=30) as client:
+                        resp = await client.get(raw_url)
+                        img_bytes = resp.content
+                else:
+                    from pathlib import Path
+                    img_bytes = Path(raw_url.lstrip("/")).read_bytes()
+
+                transparent_bytes = await remove_background_from_bytes(img_bytes)
+                if len(transparent_bytes) > 8000:
+                    from app.agents.content_agent import _upload_to_supabase
+                    import uuid as _uuid2
+                    filename = f"portrait_{_uuid2.uuid4().hex}.png"
+                    public_url = await _upload_to_supabase(transparent_bytes, filename)
+                    if public_url:
+                        portrait_url = public_url
+            except Exception as e2:
+                print(f"[analyze-character] Local bg removal also failed ({e2}) — using raw URL")
 
     print(f"[analyze-character] portrait ready: {portrait_url}")
 
-    return {
-        "character_name": canonical,
-        "universe": char_info["universe"],
-        "description": char_info["description"],
-        "visual_appearance": char_info.get("visual_appearance", ""),
+    response = {
+        "character_name": char,
+        "universe": "Original",
+        "description": f"{char} — ready for an epic adventure!",
+        "visual_appearance": visual,
         "character_image_url": portrait_url,
         "scenes": [],
-
     }
+
+    # ── Save to portrait cache for instant reuse next time ─────────────────────
+    try:
+        async with AsyncSessionLocal() as save_db:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            stmt = pg_insert(CharacterPortrait).values(
+                name=cache_key,
+                portrait_url=portrait_url,
+                art_style=art_style,
+            ).on_conflict_do_nothing(index_elements=["name"])
+            await save_db.execute(stmt)
+            await save_db.commit()
+            print(f"[analyze-character] ✓ Portrait cached: '{char}' → {portrait_url[:60]}...")
+    except Exception as save_err:
+        print(f"[analyze-character] Cache save failed (non-fatal): {save_err}")
+
+    return response
+
+
+@router.get("/status/{story_id}")
+async def get_story_status(
+    story_id: str,
+    db: AsyncSession = Depends(get_session)
+):
+    """
+    Lightweight polling endpoint — returns which page images are ready.
+    App polls this every 3s while reading; shimmers fade to real images as they arrive.
+    No auth required (story_id is effectively a secret token).
+    """
+    try:
+        pages_result = await db.execute(
+            select(StoryPage.page_number, StoryPage.media_url)
+            .where(StoryPage.story_id == story_id)
+            .order_by(StoryPage.page_number)
+        )
+        pages = pages_result.all()
+
+        if not pages:
+            # Story not found or still being created
+            return {"cover_ready": False, "pages": [], "all_ready": False}
+
+        story_result = await db.execute(
+            select(Story.cover_media_url).where(Story.id == story_id)
+        )
+        story_row = story_result.first()
+        cover_ready = bool(story_row and story_row[0])
+
+        page_statuses = [bool(p.media_url) for p in pages]
+        all_ready = cover_ready and all(page_statuses)
+
+        return {
+            "cover_ready": cover_ready,
+            "pages": page_statuses,
+            "all_ready": all_ready,
+        }
+    except Exception as e:
+        print(f"[story_status] Error: {e}")
+        return {"cover_ready": False, "pages": [], "all_ready": False}
 
 
 
 @router.post("/generate")
 async def generate_story(
     req: GenerateRequest,
+    background_tasks: BackgroundTasks,
     x_student_id: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_session)
 ):
-    """Generate an AI story → save to DB → return full story."""
+    """Generate an AI story — Phase 1 (text + cover) returns fast, Phase 2 (page images) runs in background."""
     if not x_student_id:
         x_student_id = "guest"
 
-    # ── Ensure student row exists (FK guard) ─────────────────────────────────
-    # The students table has a FK to parents, and stories FK to students.
-    # On a fresh DB, we auto-create a minimal parent + student row so the
-    # story INSERT doesn't fail with a FK violation.
+    # ── Ensure student row exists & resolve to correct child ID ──────────────
+    # If x_student_id is a student UUID → use as-is.
+    # If x_student_id is a parent UUID → look up their first real child and
+    #   redirect the story to that child (prevents ghost-student accumulation).
+    # Only creates a ghost student as absolute last resort (no children exist).
     try:
         from app.models.student import Student as StudentModel
         from app.models.parent import Parent as ParentModel
-        stu_check = await db.execute(
-            select(StudentModel).where(StudentModel.id == x_student_id)
-        )
-        if not stu_check.scalar_one_or_none():
-            # Create a corresponding parent row first (students FK → parents)
-            par_check = await db.execute(
-                select(ParentModel).where(ParentModel.id == x_student_id)
+        import uuid as _uuid_guard
+
+        try:
+            _uuid_guard.UUID(x_student_id)
+            is_valid_uuid = True
+        except (ValueError, AttributeError):
+            is_valid_uuid = False
+
+        if is_valid_uuid:
+            stu_check = await db.execute(
+                select(StudentModel).where(StudentModel.id == x_student_id)
             )
-            if not par_check.scalar_one_or_none():
-                db.add(ParentModel(id=x_student_id, first_name="User", last_name=""))
-                await db.flush()
-            # Create the student row
-            db.add(StudentModel(
-                id=x_student_id,
-                parent_id=x_student_id,
-                name="Student",
-                grade_level=req.grade,
-            ))
-            await db.flush()
+            if not stu_check.scalar_one_or_none():
+                # x_student_id is not a known student — likely a parent UUID.
+                # Redirect to first real child so story lands under the right account.
+                kids_check = await db.execute(
+                    select(StudentModel).where(StudentModel.parent_id == x_student_id).limit(1)
+                )
+                real_child = kids_check.scalar_one_or_none()
+                if real_child:
+                    print(f"[generate_story] Redirecting story → child {real_child.id} ({real_child.name})")
+                    x_student_id = str(real_child.id)
+                else:
+                    # No children — create ghost as last resort
+                    par_check = await db.execute(
+                        select(ParentModel).where(ParentModel.id == x_student_id)
+                    )
+                    if not par_check.scalar_one_or_none():
+                        db.add(ParentModel(id=x_student_id, first_name="User", last_name=""))
+                        await db.flush()
+                    db.add(StudentModel(
+                        id=x_student_id, parent_id=x_student_id,
+                        name="Student", grade_level=req.grade,
+                    ))
+                    await db.flush()
     except Exception as fk_err:
         print(f"[generate_story] FK guard failed (non-fatal): {fk_err}")
         try:
@@ -318,7 +489,9 @@ async def generate_story(
         if not safe_theme:
             safe_theme = "an exciting magical adventure"
 
-        story_data = await generate_story_with_ai(
+        # ── Phase 1 — FAST: story text + cover only (~20-25s) ─────────────────
+        from app.services.ai_service import generate_story_phase1, generate_page_images_background
+        story_data = await generate_story_phase1(
             grade=req.grade,
             theme=safe_theme,
             character_name=safe_character,
@@ -456,6 +629,29 @@ async def generate_story(
                 "correct_answer": q["correct_answer"],
                 "explanation": q.get("explanation"),
             })())
+
+    # ── Phase 2 — background: page images generate while user watches loader ──
+    # The frontend polls /api/stories/{id} every 2s and shows each image as
+    # it arrives. Navigation to reader is gated until all 5 images are ready.
+    if story_id and db_pages:
+        phase2_pages = [
+            {
+                "page_id": p.id,
+                "page_number": p.page_number,
+                "content": p.content,
+            }
+            for p in db_pages
+        ]
+        background_tasks.add_task(
+            generate_page_images_background,
+            story_id=story_id,
+            pages=phase2_pages,
+            character_visual=story_data.get("character_visual") or safe_character,
+            character_image_url=req.character_image_url or None,
+            art_style=req.art_style or "cartoon",
+            theme=safe_theme,
+        )
+        print(f"[generate_story] ✓ Phase 2 background task queued for {len(phase2_pages)} pages")
 
     return {
         "id": story_id,
@@ -763,19 +959,19 @@ async def follow_creator(req: FollowRequest, db: AsyncSession = Depends(get_sess
     from sqlalchemy import text
     # Check if already following
     existing = (await db.execute(
-        text("SELECT id FROM student_follows WHERE session_key = :sk AND student_id = :sid")
+        text("SELECT id FROM student_follows WHERE session_key = :sk AND student_id = CAST(:sid AS uuid)")
         .bindparams(sk=req.session_key, sid=req.student_id)
     )).fetchone()
 
     if existing:
         await db.execute(
-            text("DELETE FROM student_follows WHERE session_key = :sk AND student_id = :sid")
+            text("DELETE FROM student_follows WHERE session_key = :sk AND student_id = CAST(:sid AS uuid)")
             .bindparams(sk=req.session_key, sid=req.student_id)
         )
         following = False
     else:
         await db.execute(
-            text("INSERT INTO student_follows (session_key, student_id) VALUES (:sk, :sid) ON CONFLICT DO NOTHING")
+            text("INSERT INTO student_follows (session_key, student_id) VALUES (:sk, CAST(:sid AS uuid)) ON CONFLICT DO NOTHING")
             .bindparams(sk=req.session_key, sid=req.student_id)
         )
         following = True
@@ -783,7 +979,7 @@ async def follow_creator(req: FollowRequest, db: AsyncSession = Depends(get_sess
     await db.commit()
 
     count_row = (await db.execute(
-        text("SELECT COUNT(*) FROM student_follows WHERE student_id = :sid")
+        text("SELECT COUNT(*) FROM student_follows WHERE student_id = CAST(:sid AS uuid)")
         .bindparams(sid=req.student_id)
     )).fetchone()
     follower_count = count_row[0] if count_row else 0
@@ -796,7 +992,7 @@ async def get_follow_status(student_id: str, session_key: str = "", db: AsyncSes
     """Get follower count + whether this session is following."""
     from sqlalchemy import text
     count_row = (await db.execute(
-        text("SELECT COUNT(*) FROM student_follows WHERE student_id = :sid")
+        text("SELECT COUNT(*) FROM student_follows WHERE student_id = CAST(:sid AS uuid)")
         .bindparams(sid=student_id)
     )).fetchone()
     follower_count = count_row[0] if count_row else 0
@@ -804,7 +1000,7 @@ async def get_follow_status(student_id: str, session_key: str = "", db: AsyncSes
     following = False
     if session_key:
         row = (await db.execute(
-            text("SELECT id FROM student_follows WHERE session_key = :sk AND student_id = :sid")
+            text("SELECT id FROM student_follows WHERE session_key = :sk AND student_id = CAST(:sid AS uuid)")
             .bindparams(sk=session_key, sid=student_id)
         )).fetchone()
         following = row is not None
@@ -932,54 +1128,72 @@ async def list_stories(x_student_id: Optional[str] = Header(default=None), db: A
     else:
         # ── Case 2: Show All — x_student_id is a parent's Supabase auth UUID ──
         # Aggregate stories for ALL children of this parent.
-        kids_result = await db.execute(
-            select(StudentModel.id).where(StudentModel.parent_id == x_student_id)
-        )
-        kid_ids = [row[0] for row in kids_result.all()]
-        ids_to_query.update(kid_ids)
+        # Guard: only run the parent query if the ID is a valid UUID
+        try:
+            import uuid as _uuid_inner
+            _uuid_inner.UUID(x_student_id)
+            kids_result = await db.execute(
+                select(StudentModel.id).where(StudentModel.parent_id == x_student_id)
+            )
+            kid_ids = [row[0] for row in kids_result.all()]
+            ids_to_query.update(kid_ids)
+        except (ValueError, AttributeError):
+            pass  # non-UUID parent ID — skip parent lookup
 
     result = await db.execute(
-        select(Story).where(Story.student_id.in_(list(ids_to_query)))
+        select(Story)
+        .where(Story.student_id.in_(list(ids_to_query)))
+        .order_by(Story.created_at.desc())
     )
     stories = list(result.scalars().all())
 
-    # Fetch reading_progress for all stories in one query (raw SQL via Supabase client)
-    # Falls back to empty dict if table doesn't exist yet
+    if not stories:
+        return []
+
+    story_ids = [s.id for s in stories]
+
+    # ── BULK: first page image for stories with no cover (1 query, not N) ──────
+    from sqlalchemy import func as _func
+    first_page_rows = await db.execute(
+        select(StoryPage.story_id, StoryPage.media_url)
+        .where(
+            StoryPage.story_id.in_(story_ids),
+            StoryPage.page_number == 1,
+        )
+    )
+    first_page_map: dict = {str(r.story_id): r.media_url for r in first_page_rows.all() if r.media_url}
+
+    # ── BULK: max page number per story for progress % (1 query, not N) ────────
+    page_count_rows = await db.execute(
+        select(StoryPage.story_id, _func.max(StoryPage.page_number).label("max_page"))
+        .where(StoryPage.story_id.in_(story_ids))
+        .group_by(StoryPage.story_id)
+    )
+    page_count_map: dict = {str(r.story_id): (r.max_page or 0) for r in page_count_rows.all()}
+
+    # ── Reading progress (Supabase client — already 1 query) ────────────────────
     progress_map: dict = {}
     try:
         from app.database import supabase_client
         if supabase_client:
-            story_ids = [s.id for s in stories]
             prog_resp = supabase_client.table("reading_progress") \
                 .select("story_id,last_page,completed_at") \
                 .eq("student_id", x_student_id) \
-                .in_("story_id", story_ids) \
+                .in_("story_id", [str(sid) for sid in story_ids]) \
                 .execute()
             for row in (prog_resp.data or []):
                 progress_map[row["story_id"]] = row
     except Exception as e:
-        print(f"[list_stories] progress fetch failed (table may not exist yet): {e}")
+        print(f"[list_stories] progress fetch failed (non-fatal): {e}")
 
-    # For stories missing a cover, try to get first page image
+    # ── Assemble response from pre-fetched maps (no more per-story queries) ─────
     out = []
     for s in stories:
-        cover = s.cover_media_url
-        if not cover:
-            pages_r = await db.execute(
-                select(StoryPage.media_url).where(StoryPage.story_id == s.id).order_by(StoryPage.page_number).limit(1)
-            )
-            first_img = pages_r.scalar_one_or_none()
-            if first_img:
-                cover = first_img
-                s.cover_media_url = first_img
+        sid = str(s.id)
+        cover = s.cover_media_url or first_page_map.get(sid)
+        page_count = page_count_map.get(sid, 0)
 
-        # Get page count for progress calculation
-        page_count_r = await db.execute(
-            select(StoryPage.page_number).where(StoryPage.story_id == s.id).order_by(StoryPage.page_number.desc()).limit(1)
-        )
-        page_count = (page_count_r.scalar_one_or_none() or 0)
-
-        prog = progress_map.get(s.id, {})
+        prog = progress_map.get(sid, {})
         last_page = prog.get("last_page", 0)
         completed_at = prog.get("completed_at")
         progress_pct = round((last_page / page_count) * 100) if page_count > 0 else 0
@@ -1260,6 +1474,140 @@ async def edit_character_portrait(req: EditCharacterRequest):
     except Exception as e:
         print(f"[edit-char] Error: {e}")
         raise HTTPException(500, f"Character edit failed: {str(e)}")
+
+
+class ExpandStoryRequest(BaseModel):
+    seed_text: str          # User's typed prompt / seed idea
+    character_name: str     # Selected character name to weave in
+    grade: int = 3          # Reading level for vocabulary complexity
+
+
+@router.post("/expand-story")
+async def expand_story(req: ExpandStoryRequest):
+    """
+    Use Gemini to expand a short user prompt into a full children's short story.
+    The story stars the selected character and is written for the given grade level.
+    Returns { story: str }
+    """
+    from app.agents.content_agent import _call_gemini_text
+
+    seed = req.seed_text.strip()[:1000]  # cap input
+    char = req.character_name.strip() or "the hero"
+    grade = max(1, min(req.grade, 12))
+
+    # Comprehensive grade-level reading guidance (Lexile-aligned)
+    grade_profiles = {
+        1: {
+            "label": "Grade 1 (Lexile 200–400)",
+            "vocab": "only very simple everyday words (go, run, big, happy, dog, tree, jump)",
+            "sentences": "extremely short sentences of 4–6 words — maximum 1 idea per sentence",
+            "length": "100–140 words",
+            "tone": "very playful and simple, like a picture book",
+            "example": "'The dog ran fast. It jumped over the rock.'",
+        },
+        2: {
+            "label": "Grade 2 (Lexile 400–600)",
+            "vocab": "simple words plus slightly longer words (adventure, excited, discover, forest)",
+            "sentences": "short sentences of 6–10 words — occasionally join two ideas with 'and' or 'but'",
+            "length": "140–200 words",
+            "tone": "friendly, warm, and encouraging",
+            "example": "'The little dragon found a hidden path and wanted to explore.'",
+        },
+        3: {
+            "label": "Grade 3 (Lexile 600–800)",
+            "vocab": "familiar words plus grade-appropriate words (brave, journey, mysterious, problem, discover)",
+            "sentences": "varied sentences of 8–14 words — mix short punchy sentences with longer ones",
+            "length": "200–280 words",
+            "tone": "exciting and imaginative with some descriptive details",
+            "example": "'The mysterious cave sparkled with crystals, and the brave hero stepped inside carefully.'",
+        },
+        4: {
+            "label": "Grade 4 (Lexile 800–980)",
+            "vocab": "richer vocabulary (determined, enormous, glittering, transformed, ancient, victorious)",
+            "sentences": "well-structured sentences of 10–18 words — use descriptive phrases and some dialogue",
+            "length": "260–340 words",
+            "tone": "adventurous and descriptive with vivid imagery",
+            "example": "'\"We must find the ancient scroll,\" said the determined warrior, scanning the enormous horizon.'",
+        },
+        5: {
+            "label": "Grade 5 (Lexile 980–1100)",
+            "vocab": "strong descriptive words (relentless, magnificent, treacherous, astonished, legendary)",
+            "sentences": "confident varied sentences up to 20 words — use metaphors, similes, and natural dialogue",
+            "length": "300–400 words",
+            "tone": "rich and cinematic with emotional depth",
+            "example": "'Like a comet blazing through the sky, the legendary hero charged forward without hesitation.'",
+        },
+        6: {
+            "label": "Grade 6 (Lexile 1100–1200)",
+            "vocab": "sophisticated vocabulary (unyielding, formidable, revelation, perseverance, strategically)",
+            "sentences": "complex and compound-complex sentences — include vivid sensory details and inner monologue",
+            "length": "320–420 words",
+            "tone": "dramatic and layered with character emotion shown through action",
+            "example": "'The formidable challenge seemed insurmountable, yet something within the hero refused to yield.'",
+        },
+        7: {
+            "label": "Grade 7 (Lexile 1200–1300)",
+            "vocab": "mature vocabulary (inevitable, resilience, paradox, sovereign, catalyst)",
+            "sentences": "sophisticated flowing sentences with subordinate clauses and strong narrative voice",
+            "length": "350–450 words",
+            "tone": "nuanced and atmospheric, exploring cause-and-effect and character growth",
+            "example": "'The hero's resilience became the catalyst for an unexpected and hard-won victory.'",
+        },
+    }
+    # Grades 8-12: same advanced profile
+    advanced = {
+        "label": f"Grade {grade} (Lexile 1300+)",
+        "vocab": "advanced literary vocabulary (unequivocal, transcendent, tenacious, unprecedented)",
+        "sentences": "masterful prose with rhetorical devices — parallel structure, varied rhythm, powerful imagery",
+        "length": "380–480 words",
+        "tone": "literary and compelling with thematic depth and a memorable closing line",
+        "example": "'In the face of unprecedented storm, the hero stood unequivocal — a testament to tenacious spirit.'",
+    }
+    profile = grade_profiles.get(grade, advanced)
+
+    system_prompt = (
+        "You are an award-winning children's book author and literacy specialist. "
+        "You write engaging, imaginative stories precisely tuned to specific reading levels. "
+        "Your stories are always safe, positive, and inspiring for children. "
+        "Never include violence, adult themes, or scary content."
+    )
+
+    grad_label = profile['label']
+    user_prompt = (
+        f"Write a children's story for READING LEVEL: {grad_label}.\n\n"
+        f"STORY IDEA: \"{seed}\"\n\n"
+        f"STRICT GRADE-LEVEL RULES:\n"
+        f"- Vocabulary: {profile['vocab']}\n"
+        f"- Sentences: {profile['sentences']}\n"
+        f"- Target length: {profile['length']}\n"
+        f"- Tone: {profile['tone']}\n"
+        f"- Example sentence style: {profile['example']}\n\n"
+        f"STORY RULES:\n"
+        f"- The MAIN CHARACTER must be named {char} — they must be central to the story\n"
+        f"- Clear beginning (set the scene), middle (a challenge or adventure), end (resolution)\n"
+        f"- Write in flowing paragraphs — NO chapter headings, NO bullets, NO lists\n"
+        f"- End with an uplifting, satisfying conclusion\n"
+        f"- Output ONLY the story paragraphs — no title, no labels"
+    )
+
+    try:
+        # Lower temp for early grades (predictable simple words), higher for advanced (richer prose)
+        temp = 0.65 if grade <= 2 else (0.75 if grade <= 4 else 0.85)
+        story_text = await _call_gemini_text(
+            system=system_prompt,
+            user=user_prompt,
+            temperature=temp,
+        )
+        story_text = story_text.strip()
+        if len(story_text) < 50:
+            raise HTTPException(500, "AI returned too short a response")
+        print(f"[expand-story] {profile['label']}: {len(story_text)} chars, temp={temp}")
+        return {"story": story_text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[expand-story] Error: {e}")
+        raise HTTPException(500, f"Story generation failed: {str(e)}")
 
 
 class GenerateBackgroundRequest(BaseModel):

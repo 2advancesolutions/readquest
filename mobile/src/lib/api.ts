@@ -57,19 +57,27 @@ export const studentsApi = {
 
 // ── Stories ────────────────────────────────────────────────────────────────
 export const storiesApi = {
-  analyzeCharacter: (character: string) =>
-    api.post('/stories/analyze-character', { character }),
+  analyzeCharacter: (character: string, artStyle = 'cartoon') =>
+    api.post('/stories/analyze-character', { character, art_style: artStyle }),
   removeBackground: (imageUrl: string) =>
     api.post<{ transparent_url: string }>('/stories/remove-background', { image_url: imageUrl }, { timeout: 60000 }),
-  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = false) =>
+  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = false, character_image_url?: string) =>
     api.post('/stories/generate',
-      { grade, theme, character_name, language, art_style: artStyle, is_public },
+      { grade, theme, character_name, language, art_style: artStyle, is_public, character_image_url: character_image_url ?? null },
       { timeout: 300000 },
     ),
+  // Polling endpoint — returns which page images are ready (Phase 2 progressive loading)
+  getStatus: (storyId: string) =>
+    api.get<{ cover_ready: boolean; pages: boolean[]; all_ready: boolean }>(`/stories/status/${storyId}`),
   generateBackground: (theme: string, characterName?: string, sceneDescription?: string, characterDescription?: string) =>
     api.post('/stories/generate-background',
       { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null, character_description: characterDescription ?? null },
       { timeout: 120000 },
+    ),
+  expandStory: (seedText: string, characterName: string, grade: number) =>
+    api.post<{ story: string }>('/stories/expand-story',
+      { seed_text: seedText, character_name: characterName, grade },
+      { timeout: 45000 },
     ),
   list: () => deduplicate('stories:list', () => api.get('/stories')),
   get:  (id: string) => deduplicate(`stories:${id}`, () => api.get(`/stories/${id}`)),

@@ -1,11 +1,11 @@
 /**
- * Admin Dashboard — mobile version of web AdminDashboard.tsx
- * Platform overview: users, books, test scores with search and tabs.
+ * Admin Dashboard — mobile + web
+ * Custom delete confirmation modal replaces window.confirm / Alert.alert.
  */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Modal, Animated, Pressable,
 } from 'react-native'
 import { Image } from 'expo-image'
 import { router } from 'expo-router'
@@ -61,6 +61,150 @@ function fmtTime(sec: number | null): string {
   return `${m}m ${s}s`
 }
 
+// ─── Delete Confirmation Modal ────────────────────────────────────────────────
+interface DeleteModalProps {
+  visible: boolean
+  book: AdminBook | null
+  deleting: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}
+function DeleteModal({ visible, book, deleting, onCancel, onConfirm }: DeleteModalProps) {
+  const scaleAnim = useRef(new Animated.Value(0.85)).current
+  const opacityAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 8 }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+      ]).start()
+    } else {
+      scaleAnim.setValue(0.85)
+      opacityAnim.setValue(0)
+    }
+  }, [visible])
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onCancel} statusBarTranslucent>
+      {/* Backdrop */}
+      <Pressable
+        onPress={onCancel}
+        style={{ flex: 1, backgroundColor: 'rgba(5,3,20,0.82)', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      >
+        {/* Card — stop propagation so tapping inside doesn't dismiss */}
+        <Animated.View
+          style={{ transform: [{ scale: scaleAnim }], opacity: opacityAnim, width: '100%', maxWidth: 400 }}
+        >
+          <Pressable onPress={e => e.stopPropagation()}>
+            <View style={{
+              backgroundColor: '#13102a',
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: 'rgba(239,68,68,0.3)',
+              overflow: 'hidden',
+              shadowColor: '#ef4444',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.25,
+              shadowRadius: 32,
+              elevation: 20,
+            }}>
+              {/* Red accent bar */}
+              <View style={{ height: 4, backgroundColor: '#ef4444', width: '100%' }} />
+
+              <View style={{ padding: 24 }}>
+                {/* Icon */}
+                <View style={{
+                  width: 56, height: 56, borderRadius: 28,
+                  backgroundColor: 'rgba(239,68,68,0.12)',
+                  borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
+                  alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 16, alignSelf: 'center',
+                }}>
+                  <Text style={{ fontSize: 26 }}>🗑️</Text>
+                </View>
+
+                {/* Title */}
+                <Text style={{
+                  color: '#fff', fontSize: 18, fontWeight: '800',
+                  textAlign: 'center', marginBottom: 8,
+                }}>
+                  Delete Book?
+                </Text>
+
+                {/* Book title */}
+                <Text style={{
+                  color: '#a89cc8', fontSize: 14, textAlign: 'center',
+                  lineHeight: 20, marginBottom: 6,
+                }}>
+                  You're about to permanently delete
+                </Text>
+                <View style={{
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+                  marginBottom: 16,
+                }}>
+                  <Text style={{
+                    color: '#fff', fontSize: 14, fontWeight: '700',
+                    textAlign: 'center', lineHeight: 20,
+                  }} numberOfLines={2}>
+                    "{book?.title}"
+                  </Text>
+                </View>
+                <Text style={{
+                  color: '#ef4444', fontSize: 12, textAlign: 'center',
+                  marginBottom: 24, fontWeight: '600', letterSpacing: 0.3,
+                }}>
+                  ⚠️  This action cannot be undone.
+                </Text>
+
+                {/* Buttons */}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {/* Cancel */}
+                  <TouchableOpacity
+                    onPress={onCancel}
+                    disabled={deleting}
+                    activeOpacity={0.75}
+                    style={{
+                      flex: 1,
+                      backgroundColor: 'rgba(255,255,255,0.07)',
+                      borderRadius: 14, paddingVertical: 13,
+                      borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#c8bfe8', fontSize: 15, fontWeight: '700' }}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  {/* Confirm delete */}
+                  <TouchableOpacity
+                    onPress={onConfirm}
+                    disabled={deleting}
+                    activeOpacity={0.8}
+                    style={{
+                      flex: 1,
+                      backgroundColor: deleting ? 'rgba(239,68,68,0.4)' : '#ef4444',
+                      borderRadius: 14, paddingVertical: 13,
+                      alignItems: 'center', justifyContent: 'center',
+                      flexDirection: 'row', gap: 6,
+                    }}
+                  >
+                    {deleting
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Delete</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  )
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminScreen() {
   const insets = useSafeAreaInsets()
   const [tab, setTab] = useState<Tab>('users')
@@ -72,6 +216,10 @@ export default function AdminScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+
+  // Delete modal state
+  const [deleteTarget, setDeleteTarget] = useState<AdminBook | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchAll = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -99,20 +247,26 @@ export default function AdminScreen() {
 
   useEffect(() => { fetchAll() }, [])
 
-  const handleDeleteBook = (book: AdminBook) => {
-    Alert.alert('Delete Book?', `Are you sure you want to permanently delete "${book.title}"? This cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          try {
-            const res = await fetch(`${API_URL}/api/admin/books/${book.id}`, { method: 'DELETE' })
-            if (res.ok) setBooks(prev => prev.filter(b => b.id !== book.id))
-            else Alert.alert('Error', 'Failed to delete book.')
-          } catch { Alert.alert('Error', 'Request failed.') }
-        }
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`${API_URL}/api/admin/books/${deleteTarget.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setBooks(prev => prev.filter(b => b.id !== deleteTarget.id))
+        setDeleteTarget(null)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        // Keep modal open, show error (simple alert as fallback for error state)
+        setError(body?.detail ?? 'Failed to delete book.')
+        setDeleteTarget(null)
       }
-    ])
+    } catch {
+      setError('Request failed. Please try again.')
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const filteredUsers = useMemo(() =>
@@ -138,6 +292,15 @@ export default function AdminScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0d0d1f', paddingTop: insets.top }}>
+      {/* Delete Modal */}
+      <DeleteModal
+        visible={!!deleteTarget}
+        book={deleteTarget}
+        deleting={deleting}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1a1a35' }}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -258,7 +421,7 @@ export default function AdminScreen() {
                   <Text style={{ color: '#4a4a6a', fontSize: 11 }}>{b.page_count} pages · {fmtDate(b.created_at)}</Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => handleDeleteBook(b)}
+                  onPress={() => setDeleteTarget(b)}
                   style={{ backgroundColor: '#ef444415', borderRadius: 10, borderWidth: 1, borderColor: '#ef444430', padding: 8 }}
                 >
                   <Text style={{ fontSize: 16 }}>🗑️</Text>
@@ -294,7 +457,6 @@ export default function AdminScreen() {
                     </View>
                   </View>
                   <Text style={{ color: '#8a7aaa', fontSize: 12, marginBottom: 6 }}>{s.section_label} · Grade {s.grade_label}</Text>
-                  {/* Score bar */}
                   <View style={{ height: 5, borderRadius: 3, backgroundColor: '#2a2a4a', overflow: 'hidden', marginBottom: 4 }}>
                     <View style={{ height: 5, borderRadius: 3, backgroundColor: color, width: `${s.score_pct}%` as any }} />
                   </View>

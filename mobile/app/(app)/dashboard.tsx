@@ -374,7 +374,7 @@ export default function DashboardScreen() {
     <View style={[styles.root, { paddingTop: isDesktopWeb ? 0 : insets.top }]}>
 
       {/* ── Hero Header ── */}
-      <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
+      <View style={[styles.header, isDesktopWeb && styles.headerDesktop, { zIndex: 50, elevation: 50 }]}>
 
         {/* Row 1: Greeting + Avatar */}
         <View style={styles.headerRow1}>
@@ -397,7 +397,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Row 2: XP chip + Likes chip + Student switcher */}
-        <View style={styles.headerRow2}>
+        <View style={[styles.headerRow2, { zIndex: 60, elevation: 60 }]}>
           <XpChip />
           <LikesChip />
           <View style={{ flex: 1 }} />

@@ -54,6 +54,36 @@ interface Story {
   pages: StoryPage[]; quiz_questions: QuizQuestion[]; cover_media_url?: string
 }
 
+// ── Shimmer placeholder for pending page images ───────────────────────────────
+function ShimmerBox({ height, style }: { height: number; style?: any }) {
+  const shimmer = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [])
+  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.65] })
+  return (
+    <Animated.View style={[{
+      width: '100%', height, borderRadius: 16, overflow: 'hidden',
+      backgroundColor: '#1a1a35', opacity,
+    }, style]}>
+      <View style={{
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        alignItems: 'center', justifyContent: 'center', gap: 8,
+      }}>
+        <Text style={{ fontSize: 28 }}>🎨</Text>
+        <Text style={{ color: '#4a3a6a', fontSize: 12, fontWeight: '600' }}>Painting your scene…</Text>
+      </View>
+    </Animated.View>
+  )
+}
+
 type Phase = 'loading' | 'reading' | 'quiz' | 'comprehension' | 'summary'
 
 const COMP_MC = [
@@ -204,9 +234,19 @@ export default function BookReaderScreen() {
   // ── Page score accumulation ────────────────────────────────────────────────
   const pageScoresRef = useRef<{ correct: number; total: number }[]>([])
   const xpRef = useRef(0)
+  const pageScrollRef = useRef<any>(null)
 
   // ── Progress animations ───────────────────────────────────────────────────
   const progressAnim = useRef(new Animated.Value(0)).current
+
+  // ── Progressive image state (Phase 2 polling) ────────────────────────────
+  // pageImageUrls mirrors story.pages[].media_url but updates live as Phase 2 completes.
+  // null = still generating (show shimmer), string = ready (show image).
+  const [pageImageUrls, setPageImageUrls] = useState<(string | null)[]>([])
+  const [imagesAllReady, setImagesAllReady] = useState(false)
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Fade-in Animated values per page — one per page, populated when story loads
+  const imageFadeAnims = useRef<Animated.Value[]>([])
 
   const lang = LANG_MAP[(story?.language ?? 'english').toLowerCase()] ?? 'en-US'
   const page = story?.pages[currentPage]
@@ -231,8 +271,20 @@ export default function BookReaderScreen() {
       .then(async r => {
         const s = r.data as Story
         setStory(s)
+
+        // Seed progressive image state from what the API already returned
+        const initialUrls = s.pages.map(p => p.media_url ?? null)
+        setPageImageUrls(initialUrls)
+
+        // Pre-build one Animated.Value per page for fade-in
+        imageFadeAnims.current = s.pages.map((p, i) =>
+          new Animated.Value(initialUrls[i] ? 1 : 0)
+        )
+
         const prog = await progressApi.getProgress(storyId)
-        if (prog && prog.lastPage > 0 && prog.lastPage < s.pages.length) {
+        // Only restore page position if the story was partially read (not finished)
+        // lastPage === 0 means just started, lastPage === length-1 means finished — both start at 0
+        if (prog && prog.lastPage > 0 && prog.lastPage < s.pages.length - 1) {
           setCurrentPage(prog.lastPage)
         }
         setLoading(false)
@@ -241,10 +293,62 @@ export default function BookReaderScreen() {
       .catch(() => { setLoadErr('Could not load story. Please go back and try again.'); setLoading(false) })
   }, [storyId])
 
+  // ── Phase 2 polling — stop once all images are ready ─────────────────────
+  useEffect(() => {
+    if (!storyId || imagesAllReady || !story) return
+
+    // If all pages already have images (e.g. viewed after full completion), skip polling
+    const allAlreadyReady = pageImageUrls.length > 0 && pageImageUrls.every(Boolean)
+    if (allAlreadyReady) { setImagesAllReady(true); return }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await storiesApi.getStatus(storyId)
+        const status = res.data
+        if (!status) return
+
+        // Fetch fresh page data if any new images are ready
+        const hasNewImages = status.pages.some((ready: boolean, i: number) => ready && !pageImageUrls[i])
+        if (hasNewImages) {
+          const freshRes = await storiesApi.get(storyId)
+          const fresh = freshRes.data as Story
+          const newUrls = fresh.pages.map((p: StoryPage) => p.media_url ?? null)
+          setPageImageUrls(prev => {
+            newUrls.forEach((url, i) => {
+              if (url && !prev[i]) {
+                // Trigger fade-in for newly arrived image
+                const anim = imageFadeAnims.current[i]
+                if (anim) Animated.timing(anim, { toValue: 1, duration: 600, useNativeDriver: true }).start()
+              }
+            })
+            return newUrls
+          })
+          // Also update pages in story for cover display
+          setStory(fresh)
+        }
+
+        if (status.all_ready) {
+          setImagesAllReady(true)
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+          console.log('[Polling] ✓ All page images ready')
+        }
+      } catch (e) {
+        console.warn('[Polling] Status check failed:', e)
+      }
+    }, 3000)
+
+    return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current) }
+  }, [storyId, story, imagesAllReady])
+
   // ── Progress bar animation ────────────────────────────────────────────────
   useEffect(() => {
     Animated.timing(progressAnim, { toValue: progress, duration: 400, useNativeDriver: false }).start()
   }, [progress])
+
+  // ── Scroll to top on every page change ───────────────────────────────────
+  useEffect(() => {
+    setTimeout(() => pageScrollRef.current?.scrollTo({ y: 0, animated: false }), 50)
+  }, [currentPage])
 
   // ── TTS for page turn ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -995,16 +1099,69 @@ export default function BookReaderScreen() {
           <Text style={{ color: '#6b5d80', fontSize: 11 }}>p.{currentPage + 1}/{story?.pages.length}</Text>
         </View>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={pageScrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
 
-          {/* Page illustration */}
-          {page.media_url && (
-            <Image
-              source={{ uri: page.media_url.startsWith('http') ? page.media_url : `${API_URL}${page.media_url}` }}
-              style={{ width: '100%', height: isTablet ? 360 : 220, borderRadius: 16, marginBottom: 16 }}
-              contentFit="cover"
-            />
-          )}
+          {/* Page illustration — full image visible with page number badge */}
+          {(() => {
+            const imageHeight = isTablet ? 380 : 280
+            const liveUrl = pageImageUrls[currentPage] ?? page.media_url ?? null
+            const coverFallback = resolveCover(story?.cover_media_url)
+            const fadeAnim = imageFadeAnims.current[currentPage] ?? new Animated.Value(liveUrl ? 1 : 0)
+            const displayUrl = liveUrl
+              ? (liveUrl.startsWith('http') ? liveUrl : `${API_URL}${liveUrl}`)
+              : coverFallback
+
+            return (
+              <View style={{ width: '100%', height: imageHeight, borderRadius: 16, marginBottom: 16, overflow: 'hidden', backgroundColor: '#0d0820' }}>
+                {displayUrl ? (
+                  <Animated.View style={{ width: '100%', height: '100%', opacity: liveUrl ? fadeAnim : 1 }}>
+                    <Image
+                      source={{ uri: displayUrl }}
+                      style={{ width: '100%', height: '100%' }}
+                      contentFit="contain"
+                      contentPosition="center"
+                    />
+                    {/* Subtle overlay when showing cover as placeholder */}
+                    {!liveUrl && (
+                      <View style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(8,4,24,0.35)',
+                        alignItems: 'center', justifyContent: 'flex-end',
+                        paddingBottom: 12,
+                      }}>
+                        <View style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          backgroundColor: 'rgba(20,10,50,0.85)',
+                          borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5,
+                          borderWidth: 1, borderColor: 'rgba(178,140,255,0.3)',
+                        }}>
+                          <ActivityIndicator size="small" color="#B28CFF" />
+                          <Text style={{ color: '#B28CFF', fontSize: 11, fontWeight: '700' }}>Painting your scene…</Text>
+                        </View>
+                      </View>
+                    )}
+                  </Animated.View>
+                ) : (
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator size="large" color="#702AE1" />
+                    <Text style={{ color: '#4a3a6a', fontSize: 12, marginTop: 8 }}>Loading…</Text>
+                  </View>
+                )}
+
+                {/* Page number badge — always visible bottom-right */}
+                <View style={{
+                  position: 'absolute', bottom: 10, right: 10,
+                  backgroundColor: 'rgba(10,6,30,0.82)',
+                  borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4,
+                  borderWidth: 1, borderColor: 'rgba(178,140,255,0.25)',
+                }}>
+                  <Text style={{ color: '#B28CFF', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                    Page {currentPage + 1} of {story?.pages.length}
+                  </Text>
+                </View>
+              </View>
+            )
+          })()}
 
           {/* Page content with tappable words */}
           <View style={{ marginBottom: 24 }}>

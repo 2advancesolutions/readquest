@@ -145,23 +145,25 @@ function BookGridCard({ entry, index, onDelete }: { entry: ShelfEntry; index: nu
   const gradeColor = GRADE_COLORS[entry.gradeLevel] ?? accent
   const coverH = Math.round(CARD_W * 1.4)
 
+  const confirmDelete = () => Alert.alert('Remove Book', 'Remove from your library?', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Remove', style: 'destructive', onPress: () => onDelete(entry.storyId) },
+  ])
+
   return (
-    <Animated.View style={{ transform: [{ scale }], margin: 6 }}>
+    // Outer view is NOT a TouchableOpacity — the card and delete button are siblings
+    <Animated.View style={{ transform: [{ scale }], margin: 6, width: CARD_W }}>
+      {/* Tappable card body */}
       <TouchableOpacity
-        activeOpacity={1}
+        activeOpacity={0.92}
         onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start()}
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
-        onPress={() => !entry.completed && entry.completionPct > 0
-          ? router.push(`/(app)/read/${entry.storyId}` as any)
-          : router.push(`/(app)/read/${entry.storyId}` as any)
-        }
+        onPress={() => router.push(`/(app)/read/${entry.storyId}` as any)}
         style={[styles.bookCard, { width: CARD_W, shadowColor: accent }]}
       >
         {/* Cover */}
         <View style={{ width: CARD_W, height: coverH, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}>
           <BookCover coverUrl={resolvedCover} fallbackIdx={index} width={CARD_W} height={coverH} />
-
-          {/* Status badge */}
           <View style={[
             styles.bookBadge,
             { backgroundColor: entry.completed ? '#22c55e22' : '#702AE122', borderColor: entry.completed ? '#22c55e40' : '#702AE140' }
@@ -171,49 +173,38 @@ function BookGridCard({ entry, index, onDelete }: { entry: ShelfEntry; index: nu
             </Text>
           </View>
         </View>
-
-        {/* Progress bar pinned below cover */}
         <View style={styles.bookProgressTrack}>
-          <View style={[
-            styles.bookProgressFill,
-            {
-              width: `${entry.completed ? 100 : entry.completionPct}%`,
-              backgroundColor: entry.completed ? '#22c55e' : accent,
-            }
-          ]} />
+          <View style={[styles.bookProgressFill, {
+            width: `${entry.completed ? 100 : entry.completionPct}%`,
+            backgroundColor: entry.completed ? '#22c55e' : accent,
+          }]} />
         </View>
-
-        {/* Info area */}
-        <View style={styles.bookInfo}>
+        <View style={[styles.bookInfo, { paddingBottom: 8 }]}>
           <Text style={styles.bookTitle} numberOfLines={2}>{entry.title}</Text>
           <Text style={[styles.bookGrade, { color: gradeColor }]}>Grade {entry.gradeLevel}</Text>
-
           {entry.log && <Stars count={entry.log.stars} />}
-
-          {/* Action buttons */}
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-            {!entry.completed && (
-              <TouchableOpacity
-                onPress={() => router.push(`/(app)/read/${entry.storyId}` as any)}
-                style={[styles.bookBtn, { backgroundColor: accent + '22', borderColor: accent + '40' }]}
-              >
-                <Text style={[styles.bookBtnText, { color: accent }]}>
-                  {entry.completionPct > 0 ? '📖 Read' : '🚀 Start'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              onPress={() => Alert.alert('Remove Book', 'Remove from your library?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Remove', style: 'destructive', onPress: () => onDelete(entry.storyId) },
-              ])}
-              style={[styles.bookBtn, { backgroundColor: '#ef444410', borderColor: '#ef444430' }]}
-            >
-              <Text style={[styles.bookBtnText, { color: '#ef4444' }]}>✕</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </TouchableOpacity>
+
+      {/* Action buttons OUTSIDE the card TouchableOpacity — fixes nested-touch issue */}
+      <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, paddingHorizontal: 4 }}>
+        {!entry.completed && (
+          <TouchableOpacity
+            onPress={() => router.push(`/(app)/read/${entry.storyId}` as any)}
+            style={[styles.bookBtn, { backgroundColor: accent + '22', borderColor: accent + '40', flex: 1 }]}
+          >
+            <Text style={[styles.bookBtnText, { color: accent }]}>
+              {entry.completionPct > 0 ? '📖 Read' : '🚀 Start'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={confirmDelete}
+          style={[styles.bookBtn, { backgroundColor: '#ef444415', borderColor: '#ef444435', paddingHorizontal: 14 }]}
+        >
+          <Text style={[styles.bookBtnText, { color: '#ef4444' }]}>✕</Text>
+        </TouchableOpacity>
+      </View>
     </Animated.View>
   )
 }
@@ -382,22 +373,33 @@ export default function LibraryScreen() {
     const user = session?.user
     if (!user) { setChildLoading(false); return }
 
-    fetch(`${API_URL}/api/students/parent/${user.id}`)
-      .then(r => r.json())
-      .then(async (data: Child[]) => {
-        const list = Array.isArray(data) ? data : []
-        setChildren(list)
-        const savedId = await storage.getString('readquest_student_id')
-        const match = list.find(c => c.id === savedId) ?? list[0] ?? null
-        setActiveChild(match)
-      })
-      .catch(() => {})
-      .finally(() => setChildLoading(false))
+    // Load children first so we can validate the stored student ID
+    let resolvedSid: string | null = null
+    try {
+      const data = await fetch(`${API_URL}/api/students/parent/${user.id}`).then(r => r.ok ? r.json() : [])
+      const list: Child[] = Array.isArray(data) ? data : []
+      setChildren(list)
 
-    const sid = await storage.getString('readquest_student_id')
-    setStudentId(sid)
-    if (sid) {
-      storiesApi.listSaved(sid)
+      const savedId = await storage.getString('readquest_student_id')
+      // Validate stored ID against real children — if stale/ghost, use first real child
+      const match = list.find(c => c.id === savedId) ?? list[0] ?? null
+      if (match) {
+        if (match.id !== savedId) {
+          // Stale stored ID — update storage to the real child
+          await storage.setString('readquest_student_id', match.id)
+        }
+        resolvedSid = match.id
+      }
+      setActiveChild(match)
+    } catch {
+      setChildren([])
+    } finally {
+      setChildLoading(false)
+    }
+
+    setStudentId(resolvedSid)
+    if (resolvedSid) {
+      storiesApi.listSaved(resolvedSid)
         .then((r: any) => setSavedBooks(r.books ?? []))
         .catch(() => {})
         .finally(() => setSavedLoading(false))

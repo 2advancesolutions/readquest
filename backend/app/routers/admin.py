@@ -167,20 +167,90 @@ async def get_admin_stats(db: AsyncSession = Depends(get_session)):
     }
 
 
+
 @router.delete("/books/{book_id}")
 async def delete_book(book_id: str, db: AsyncSession = Depends(get_session)):
-    """Admin: permanently delete a book and all its pages/vote logs."""
+    """Admin: permanently delete a book and ALL related rows (FK-safe)."""
+    import logging, traceback
     from fastapi import HTTPException
-    from app.models.story import StoryPage
     from sqlalchemy import text
+
+    logger = logging.getLogger("admin.delete")
 
     story = (await db.execute(select(Story).where(Story.id == book_id))).scalar_one_or_none()
     if not story:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    # Delete pages and vote logs first (FK cascade handles it but be explicit)
-    await db.execute(text("DELETE FROM story_vote_logs WHERE story_id = :sid").bindparams(sid=book_id))
-    await db.execute(text("DELETE FROM story_pages WHERE story_id = :sid").bindparams(sid=book_id))
-    await db.delete(story)
-    await db.commit()
-    return {"deleted": book_id}
+    sid = book_id
+    try:
+        # 1. quiz_attempts first (references quiz_questions)
+        await db.execute(text("""
+            DELETE FROM quiz_attempts
+            WHERE question_id IN (
+                SELECT qq.id FROM quiz_questions qq
+                JOIN story_pages sp ON sp.id = qq.story_page_id
+                WHERE sp.story_id = CAST(:sid AS UUID)
+            )
+        """).bindparams(sid=sid))
+
+        # 2. quiz_questions (references story_pages)
+        await db.execute(text("""
+            DELETE FROM quiz_questions
+            WHERE story_page_id IN (
+                SELECT id FROM story_pages WHERE story_id = CAST(:sid AS UUID)
+            )
+        """).bindparams(sid=sid))
+
+        # 3. word_errors → fluency_sessions
+        await db.execute(text("""
+            DELETE FROM word_errors
+            WHERE session_id IN (
+                SELECT id FROM fluency_sessions WHERE story_id = CAST(:sid AS UUID)
+            )
+        """).bindparams(sid=sid))
+
+        # 4. fluency_sessions
+        await db.execute(text(
+            "DELETE FROM fluency_sessions WHERE story_id = CAST(:sid AS UUID)"
+        ).bindparams(sid=sid))
+
+        # 5. story_pages
+        await db.execute(text(
+            "DELETE FROM story_pages WHERE story_id = CAST(:sid AS UUID)"
+        ).bindparams(sid=sid))
+
+        # 6. vocabulary_bank (nullable FK)
+        await db.execute(text(
+            "DELETE FROM vocabulary_bank WHERE story_id = CAST(:sid AS UUID)"
+        ).bindparams(sid=sid))
+
+        # 7. reading_progress
+        await db.execute(text(
+            "DELETE FROM reading_progress WHERE story_id = CAST(:sid AS UUID)"
+        ).bindparams(sid=sid))
+
+        # 8. assignments — null out source ref only
+        await db.execute(text(
+            "UPDATE assignments SET source_story_id = NULL WHERE source_story_id = CAST(:sid AS UUID)"
+        ).bindparams(sid=sid))
+
+        # 9. story_vote_logs if table exists
+        tbl = (await db.execute(text(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='story_vote_logs')"
+        ))).scalar()
+        if tbl:
+            await db.execute(text(
+                "DELETE FROM story_vote_logs WHERE story_id = CAST(:sid AS UUID)"
+            ).bindparams(sid=sid))
+
+        # 10. Story row itself
+        await db.delete(story)
+        await db.commit()
+
+    except Exception as e:
+        await db.rollback()
+        logger.error("delete_book %s failed:\n%s", sid, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"deleted": sid}
+

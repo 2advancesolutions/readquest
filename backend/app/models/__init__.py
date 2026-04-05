@@ -11,3 +11,4 @@ from app.models.parent_review import ParentReview
 from app.models.spelling import SpellingSession, SpellingAttempt, WordMastery
 from app.models.exam import ReadingExam, ReadingExamQuestion, ReadingExamAttempt
 from app.models.game_progress import GameProgress
+from app.models.character_portrait import CharacterPortrait
