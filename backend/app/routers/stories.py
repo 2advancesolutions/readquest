@@ -1476,6 +1476,319 @@ async def edit_character_portrait(req: EditCharacterRequest):
         raise HTTPException(500, f"Character edit failed: {str(e)}")
 
 
+class StylizeDrawingRequest(BaseModel):
+    image_base64: str           # base64-encoded image from camera roll / file picker
+    art_style: str = "cartoon"  # cartoon | pixar | cinematic | real | comic | epic
+    character_name: str = ""    # optional name the user typed
+
+
+@router.post("/stylize-drawing")
+async def stylize_drawing(req: StylizeDrawingRequest):
+    """
+    Convert a user's uploaded drawing into a polished character portrait.
+    1. Decode base64 → upload raw drawing to Supabase (as reference)
+    2. Run fal-ai/flux-pro/kontext (image-to-image) with a style-transfer prompt
+    3. Remove background (fal rembg)
+    4. Upload final portrait to Supabase → return URL
+    """
+    import asyncio, os, uuid as _uuid, base64 as _b64, httpx
+    from app.config import settings
+    from app.agents.content_agent import _upload_to_supabase, STATIC_DIR
+
+    fal_key = settings.FAL_AI or os.environ.get("FAL_AI", "")
+    if not fal_key:
+        raise HTTPException(500, "FAL_AI key not configured")
+
+    os.environ["FAL_KEY"] = fal_key
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ── 1. Decode base64 → bytes ─────────────────────────────────────────────
+    try:
+        # Strip data URI prefix if present (e.g. "data:image/jpeg;base64,...")
+        raw_b64 = req.image_base64
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        img_bytes = _b64.b64decode(raw_b64)
+    except Exception as decode_err:
+        raise HTTPException(400, f"Invalid base64 image: {decode_err}")
+
+    print(f"[stylize-drawing] Decoded {len(img_bytes)} bytes, art_style={req.art_style}")
+
+    # ── 2. Upload raw bytes to fal.ai storage → guaranteed HTTP URL for kontext ──
+    # This is the CRITICAL fix: fal.ai kontext MUST receive an HTTP URL it can
+    # download. Supabase sometimes fails; fal.ai storage is always accessible.
+    import fal_client as _fal_client
+    os.environ["FAL_KEY"] = fal_key
+
+    fal_image_url: Optional[str] = None
+    try:
+        fal_image_url = await asyncio.to_thread(
+            _fal_client.upload,
+            img_bytes,
+            "image/png",
+        )
+        print(f"[stylize-drawing] fal.ai upload: {fal_image_url[:80]}")
+    except Exception as fal_upload_err:
+        print(f"[stylize-drawing] fal.ai upload failed ({fal_upload_err}), trying Supabase...")
+
+    # Also upload to Supabase as our persistent copy (for story generation later)
+    raw_filename = f"drawing_raw_{_uuid.uuid4().hex}.png"
+    raw_url = await _upload_to_supabase(img_bytes, raw_filename)
+    if not raw_url:
+        (STATIC_DIR / raw_filename).write_bytes(img_bytes)
+        raw_url = f"/static/images/{raw_filename}"
+
+    # Best reference URL for kontext: fal.ai > Supabase > None
+    kontext_image_url = fal_image_url or (raw_url if raw_url.startswith("http") else None)
+    print(f"[stylize-drawing] kontext_image_url = {(kontext_image_url or 'NONE — will fallback to text-only')[:80]}")
+
+    # ── 2b. Gemini Vision: analyze what's in the drawing ──────────────────────
+    # This is CRITICAL: the story generator needs to know if the drawing is a
+    # dinosaur, dragon, robot, cat, superhero, etc. so the story matches.
+    character_type = "character"          # e.g. "dinosaur", "dragon", "robot"
+    character_description = ""            # visual details for image prompts
+    character_name_final = req.character_name.strip()  # will be enriched if blank
+
+    try:
+        import io as _io
+        from google import genai as _genai
+        from google.genai import types as _gtypes
+
+        _vision_client = _genai.Client(api_key=settings.GEMINI_API_KEY)
+
+        vision_prompt = (
+            "You are a professional character artist analyzing a hand-drawn character.\n"
+            "Examine this drawing VERY CAREFULLY and output ONE JSON object — no other text.\n"
+            "Extract exact visual details to recreate this character faithfully in illustration software.\n\n"
+            '{"character_type": "<the KIND of being: anime girl, human boy, dinosaur, dragon, robot, cat, monster, superhero, etc>",'
+            '"hair": "<exact hair color AND style, e.g. \'dark green high ponytail with long flowing tail\'>",'  
+            '"outfit": "<exact outfit description: colors, garments, accessories, belt, mask, sash, etc>",'
+            '"colors": "<list the main colors used: e.g. \'pink top, blue sash, dark purple thigh-high boots\'>",'           
+            '"pose": "<character\'s body pose and stance>",'
+            '"character_description": "<one dense sentence combining all features for image generation. Be very specific about colors>",'
+            '"suggested_name": "<a short fun name fitting this character>"}'
+        )
+
+        vision_response = await asyncio.to_thread(
+            _vision_client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=[
+                _gtypes.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                vision_prompt,
+            ],
+            config=_gtypes.GenerateContentConfig(
+                temperature=0.1,
+                response_modalities=["TEXT"],
+            ),
+        )
+        vision_text = vision_response.candidates[0].content.parts[0].text.strip()
+        print(f"[stylize-drawing] Gemini Vision response: {vision_text[:300]}")
+
+        import re as _re, json as _json
+        fence = _re.search(r'```(?:json)?\s*([\s\S]+?)\s*```', vision_text)
+        json_str = fence.group(1) if fence else vision_text
+        vision_data = _json.loads(json_str)
+
+        character_type = vision_data.get("character_type", "character").strip()
+        character_description = vision_data.get("character_description", "").strip()
+        hair_desc = vision_data.get("hair", "").strip()
+        outfit_desc = vision_data.get("outfit", "").strip()
+        color_desc = vision_data.get("colors", "").strip()
+        pose_desc = vision_data.get("pose", "").strip()
+        suggested_name = vision_data.get("suggested_name", "").strip()
+
+        if not character_name_final and suggested_name:
+            character_name_final = suggested_name
+
+        print(f"[stylize-drawing] Vision: type='{character_type}', hair='{hair_desc}', outfit='{outfit_desc[:60]}'")
+
+    except Exception as vision_err:
+        print(f"[stylize-drawing] Gemini Vision failed ({vision_err}) — continuing without description")
+        character_description = req.character_name or "a hand-drawn character"
+        hair_desc = ""
+        outfit_desc = ""
+        color_desc = ""
+        pose_desc = ""
+
+
+    # Final character label and name
+    char_label = character_name_final or character_type or "the character"
+    if not character_name_final:
+        character_name_final = character_type.title() if character_type else "My Hero"
+
+    # ── 3. Build preservation-first style prompts using Gemini-extracted visual details ──
+    # Leading with EXACT visual details ensures kontext keeps the character faithful
+    # to the original drawing. Style is secondary to identity preservation.
+
+    # Build a rich visual identity string from all extracted details
+    visual_parts = [p for p in [hair_desc, outfit_desc, color_desc, pose_desc] if p]
+    visual_identity = "; ".join(visual_parts) if visual_parts else (character_description or char_label)
+
+    # The core preservation instruction prepended to ALL style prompts
+    PRESERVE_PREFIX = (
+        f"REFERENCE IMAGE: This is the exact character to recreate as {char_label}. "
+        f"STRICTLY PRESERVE these exact features from the reference drawing: "
+        f"{visual_identity}. "
+        f"Do NOT change the hair color, hair style, outfit design, or character build. "
+        f"The face, pose, and proportions must match the reference closely. "
+    )
+
+    creature_context = f"{character_type} — {character_description[:150]}" if character_description else character_type or "character"
+
+    STYLE_PROMPTS = {
+        "cartoon": (
+            f"{PRESERVE_PREFIX}"
+            f"Render in polished Disney/2D cartoon illustration style: "
+            f"clean bold ink outlines, bright vivid colors matching the original, expressive anime-style face. "
+            f"Full-body character centered on pure white background. "
+            f"Professional children's book quality. No background scenery."
+        ),
+        "pixar": (
+            f"{PRESERVE_PREFIX}"
+            f"Render in Pixar/3D animated CGI style: "
+            f"smooth clay-like 3D textures, warm soft lighting, expressive Pixar face. "
+            f"Full-body centered on pure white background. "
+            f"High-quality render. No background scenery."
+        ),
+        "cinematic": (
+            f"{PRESERVE_PREFIX}"
+            f"Render in dramatic cinematic photorealistic style: "
+            f"film-quality detail, dramatic studio lighting, movie poster composition. "
+            f"Full-body centered on pure white background. No background scenery."
+        ),
+        "real": (
+            f"{PRESERVE_PREFIX}"
+            f"Render in gritty photorealistic editorial photography style: "
+            f"natural studio lighting, sharp detail, high dynamic range. "
+            f"Full-body centered on pure white background. No background scenery."
+        ),
+        "comic": (
+            f"{PRESERVE_PREFIX}"
+            f"Render in Marvel/DC comic book style: "
+            f"bold thick ink outlines, dynamic pose, vivid primary colors. "
+            f"Full-body centered on pure white background. No background scenery."
+        ),
+        "epic": (
+            f"{PRESERVE_PREFIX}"
+            f"Render in epic blockbuster movie key art style: "
+            f"dramatic heroic pose, cinematic fantasy art, glowing power aura. "
+            f"Full-body centered on pure white background. No background scenery."
+        ),
+    }
+
+
+    style_prompt = STYLE_PROMPTS.get(req.art_style, STYLE_PROMPTS["cartoon"])
+    print(f"[stylize-drawing] Style prompt ({req.art_style}): {style_prompt[:100]}...")
+
+    # ── 4. Run fal-ai/flux-pro/kontext (image-to-image style transfer) ───────
+    try:
+        import fal_client
+
+        styled_url: Optional[str] = None
+
+        # Attempt 1: kontext (best for style transfer while preserving structure)
+        try:
+            result = await asyncio.to_thread(
+                fal_client.subscribe,
+                "fal-ai/flux-pro/kontext",
+                arguments={
+                    "prompt": style_prompt[:2000],
+                    "image_url": kontext_image_url,
+                    "num_images": 1,
+                    "safety_tolerance": "5",
+                    "output_format": "png",
+                    "guidance_scale": 7.0,  # Higher = more faithful to reference image
+                },
+            )
+            print("[stylize-drawing] Generated with flux-pro/kontext ✓")
+        except Exception as kontext_err:
+            print(f"[stylize-drawing] kontext failed ({kontext_err}), trying kontext/max...")
+            try:
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-pro/kontext/max",
+                    arguments={
+                        "prompt": style_prompt[:2000],
+                        "image_url": kontext_image_url,
+                        "num_images": 1,
+                        "safety_tolerance": "5",
+                        "output_format": "png",
+                        "guidance_scale": 7.0,
+                    },
+                )
+                print("[stylize-drawing] Generated with kontext/max ✓")
+            except Exception as max_err:
+                print(f"[stylize-drawing] kontext/max failed ({max_err}), falling back to text-to-image...")
+                # Fallback: text-only — use rich description from vision so output still matches
+                result = await asyncio.to_thread(
+                    fal_client.subscribe,
+                    "fal-ai/flux-pro/v1.1-ultra",
+                    arguments={
+                        "prompt": style_prompt[:2000],
+                        "aspect_ratio": "1:1",
+                        "num_images": 1,
+                        "safety_tolerance": "5",
+                        "output_format": "png",
+                        "raw": False,
+                    },
+                )
+                print("[stylize-drawing] Fell back to flux-pro/ultra text-to-image ✓")
+
+
+        images = result.get("images", [])
+        if not images:
+            raise HTTPException(500, "No image returned from AI model")
+
+        fal_url = images[0].get("url")
+        if not fal_url:
+            raise HTTPException(500, "No URL in AI response")
+
+        # Download styled image
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(fal_url)
+            if resp.status_code != 200:
+                raise HTTPException(500, "Failed to download styled image")
+            styled_bytes = resp.content
+
+        # ── 5. Remove background (fal rembg) ────────────────────────────────
+        try:
+            rembg_result = await asyncio.to_thread(
+                fal_client.subscribe,
+                "fal-ai/imageutils/rembg",
+                arguments={"image_url": fal_url},
+            )
+            transparent_url = (rembg_result or {}).get("image", {}).get("url")
+            if transparent_url:
+                async with httpx.AsyncClient(timeout=30) as client2:
+                    r2 = await client2.get(transparent_url)
+                    if r2.status_code == 200:
+                        styled_bytes = r2.content
+                        print("[stylize-drawing] Background removed ✓")
+        except Exception as rembg_err:
+            print(f"[stylize-drawing] rembg failed ({rembg_err}) — using styled image with background")
+
+        # ── 6. Upload final portrait to Supabase ────────────────────────────
+        final_filename = f"portrait_{_uuid.uuid4().hex}.png"
+        portrait_url = await _upload_to_supabase(styled_bytes, final_filename)
+        if not portrait_url:
+            (STATIC_DIR / final_filename).write_bytes(styled_bytes)
+            portrait_url = f"/static/images/{final_filename}"
+
+        print(f"[stylize-drawing] ✅ Portrait ready: {portrait_url[:80]}")
+        return {
+            "portrait_url": portrait_url,
+            "character_name": character_name_final,
+            "character_type": character_type,
+            "character_description": character_description,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[stylize-drawing] Error: {e}")
+        raise HTTPException(500, f"Drawing stylization failed: {str(e)}")
+
+
 class ExpandStoryRequest(BaseModel):
     seed_text: str          # User's typed prompt / seed idea
     character_name: str     # Selected character name to weave in

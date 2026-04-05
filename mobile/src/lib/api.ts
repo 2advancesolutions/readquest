@@ -61,9 +61,9 @@ export const storiesApi = {
     api.post('/stories/analyze-character', { character, art_style: artStyle }),
   removeBackground: (imageUrl: string) =>
     api.post<{ transparent_url: string }>('/stories/remove-background', { image_url: imageUrl }, { timeout: 60000 }),
-  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = false, character_image_url?: string) =>
+  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = false, character_image_url?: string, character_description?: string) =>
     api.post('/stories/generate',
-      { grade, theme, character_name, language, art_style: artStyle, is_public, character_image_url: character_image_url ?? null },
+      { grade, theme, character_name, language, art_style: artStyle, is_public, character_image_url: character_image_url ?? null, character_description: character_description ?? null },
       { timeout: 300000 },
     ),
   // Polling endpoint — returns which page images are ready (Phase 2 progressive loading)
@@ -72,6 +72,12 @@ export const storiesApi = {
   generateBackground: (theme: string, characterName?: string, sceneDescription?: string, characterDescription?: string) =>
     api.post('/stories/generate-background',
       { theme, character_name: characterName ?? null, scene_description: sceneDescription ?? null, character_description: characterDescription ?? null },
+      { timeout: 120000 },
+    ),
+  stylizeDrawing: (imageBase64: string, artStyle = 'cartoon', characterName = '') =>
+    api.post<{ portrait_url: string; character_name: string; character_type: string; character_description: string }>(
+      '/stories/stylize-drawing',
+      { image_base64: imageBase64, art_style: artStyle, character_name: characterName },
       { timeout: 120000 },
     ),
   expandStory: (seedText: string, characterName: string, grade: number) =>

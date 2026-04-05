@@ -656,66 +656,92 @@ async def _generate_image_nano_banana2(
         import fal_client
         os.environ["FAL_KEY"] = fal_key
 
-        # ── PRIMARY: Recraft V3 ──────────────────────────────────────────────────
-        # SOTA illustration model with native style presets. The user's art style
-        # selection maps directly to Recraft's built-in styles, producing
-        # dramatically better results than generic text-to-image models.
-        print(f"[fal.ai] PRIMARY: Recraft V3 (style={recraft_config.get('style')}, "
-              f"sub={recraft_config.get('style_id', 'default')}) — prompt ({len(image_prompt)} chars)")
-        print(f"[fal.ai]   prompt: {image_prompt[:140]}...")
+        result = None
 
-        recraft_args: dict = {
-            "prompt": image_prompt,
-            "style": recraft_config["style"],
-            "size": "square_hd",
-            # Request pure white background  — critical for clean background removal
-            "background_color": {"r": 255, "g": 255, "b": 255},
-        }
-        # Add sub-style if specified (e.g., handmade_3d for Pixar)
-        if "style_id" in recraft_config:
-            recraft_args["style_id"] = recraft_config["style_id"]
-
-        try:
-            result = await asyncio.to_thread(
-                fal_client.subscribe,
-                "fal-ai/recraft-v3",
-                arguments=recraft_args,
-            )
-            print(f"[fal.ai] Recraft V3 ✓ success")
-        except Exception as recraft_err:
-            # ── FALLBACK 1: flux/dev ──────────────────────────────────────────
-            print(f"[fal.ai] Recraft V3 failed ('{recraft_err}') — fallback to flux/dev...")
+        # ── PREFER KONTEXT when a reference portrait exists ──────────────────
+        # Kontext does image-to-image: it takes the character portrait + scene prompt
+        # and produces illustrations where the character LOOKS LIKE the reference.
+        # This is the ONLY way to maintain visual consistency with an uploaded drawing.
+        if reference_image_url:
+            print(f"[fal.ai] KONTEXT PATH: reference_image_url present — using character-locked generation")
+            print(f"[fal.ai]   ref: {reference_image_url[:80]}")
+            print(f"[fal.ai]   prompt: {image_prompt[:140]}...")
             try:
                 result = await asyncio.to_thread(
                     fal_client.subscribe,
-                    "fal-ai/flux/dev",
+                    "fal-ai/flux-pro/kontext",
                     arguments={
                         "prompt": image_prompt,
-                        "image_size": "square_hd",
-                        "num_inference_steps": 28,
-                        "guidance_scale": 4.5,
+                        "image_url": reference_image_url,
                         "num_images": 1,
-                        "enable_safety_checker": True,
+                        "safety_tolerance": "5",
                         "output_format": "png",
+                        "guidance_scale": 5.0,  # Balanced: faithful to ref but follows scene prompt
                     },
                 )
-                print(f"[fal.ai] flux/dev ✓ fallback success")
-            except Exception as dev_err:
-                # ── FALLBACK 2: flux-general ──────────────────────────────────
-                print(f"[fal.ai] flux/dev failed ('{dev_err}') — fallback to flux-general...")
+                print(f"[fal.ai] Kontext ✓ character-locked page image generated")
+            except Exception as kontext_err:
+                print(f"[fal.ai] Kontext failed ({kontext_err}) — falling through to Recraft V3 (text-only)")
+                result = None
+
+        # ── PRIMARY: Recraft V3 (when no reference or kontext failed) ────────
+        if result is None:
+            print(f"[fal.ai] PRIMARY: Recraft V3 (style={recraft_config.get('style')}, "
+                  f"sub={recraft_config.get('style_id', 'default')}) — prompt ({len(image_prompt)} chars)")
+            print(f"[fal.ai]   prompt: {image_prompt[:140]}...")
+
+            recraft_args: dict = {
+                "prompt": image_prompt,
+                "style": recraft_config["style"],
+                "size": "square_hd",
+                # Request pure white background  — critical for clean background removal
+                "background_color": {"r": 255, "g": 255, "b": 255},
+            }
+            # Add sub-style if specified (e.g., handmade_3d for Pixar)
+            if "style_id" in recraft_config:
+                recraft_args["style_id"] = recraft_config["style_id"]
+
+            try:
                 result = await asyncio.to_thread(
                     fal_client.subscribe,
-                    "fal-ai/flux-general",
-                    arguments={
-                        "prompt": image_prompt,
-                        "image_size": "square_hd",
-                        "num_inference_steps": 28,
-                        "guidance_scale": 4.5,
-                        "num_images": 1,
-                        "enable_safety_checker": False,
-                        "output_format": "png",
-                    },
+                    "fal-ai/recraft-v3",
+                    arguments=recraft_args,
                 )
+                print(f"[fal.ai] Recraft V3 ✓ success")
+            except Exception as recraft_err:
+                # ── FALLBACK 1: flux/dev ──────────────────────────────────────────
+                print(f"[fal.ai] Recraft V3 failed ('{recraft_err}') — fallback to flux/dev...")
+                try:
+                    result = await asyncio.to_thread(
+                        fal_client.subscribe,
+                        "fal-ai/flux/dev",
+                        arguments={
+                            "prompt": image_prompt,
+                            "image_size": "square_hd",
+                            "num_inference_steps": 28,
+                            "guidance_scale": 4.5,
+                            "num_images": 1,
+                            "enable_safety_checker": True,
+                            "output_format": "png",
+                        },
+                    )
+                    print(f"[fal.ai] flux/dev ✓ fallback success")
+                except Exception as dev_err:
+                    # ── FALLBACK 2: flux-general ──────────────────────────────────
+                    print(f"[fal.ai] flux/dev failed ('{dev_err}') — fallback to flux-general...")
+                    result = await asyncio.to_thread(
+                        fal_client.subscribe,
+                        "fal-ai/flux-general",
+                        arguments={
+                            "prompt": image_prompt,
+                            "image_size": "square_hd",
+                            "num_inference_steps": 28,
+                            "guidance_scale": 4.5,
+                            "num_images": 1,
+                            "enable_safety_checker": False,
+                            "output_format": "png",
+                        },
+                    )
 
         # Extract the image URL from fal.ai response
         images = result.get("images", [])
@@ -1034,9 +1060,9 @@ async def image_prompt_node(state: ContentState) -> ContentState:
         # Build the full style-anchored prompt
         styled_prompt = style_template.format(cv=character_visual, scene=scene_directive)
 
-        # Cap at 900 chars
-        if len(styled_prompt) > 900:
-            styled_prompt = styled_prompt[:900]
+        # Cap at 1500 chars — kontext handles long prompts; Recraft caps internally
+        if len(styled_prompt) > 1500:
+            styled_prompt = styled_prompt[:1500]
 
         prompts.append(styled_prompt)
 

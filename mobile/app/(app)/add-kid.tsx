@@ -1,9 +1,6 @@
 /**
  * Add Kid — mobile version of the web AddKid.tsx
  * Manage children profiles: view, add, edit, and generate AI avatars.
- * Note: The avatar generation uses the backend API + Supabase storage
- * (canvas compositing is not available on mobile, so we save the background
- * and character URLs directly and use the API composite endpoint).
  */
 import { useState, useEffect } from 'react'
 import {
@@ -50,6 +47,8 @@ const GRADE_LABEL_MAP: Record<number, string> = {
   0: 'K', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
 }
 
+const AVATAR_COLORS = ['#702AE1', '#10B981', '#3B82F6', '#EC4899', '#F97316', '#06B6D4', '#8B5CF6', '#EF4444']
+
 export default function AddKidScreen() {
   const insets = useSafeAreaInsets()
   const [children, setChildren] = useState<Child[]>([])
@@ -58,6 +57,11 @@ export default function AddKidScreen() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<AddForm>({ name: '', grade: '1', school: '' })
   const [parentId, setParentId] = useState('')
+
+  // ── Edit state ──
+  const [editChild, setEditChild] = useState<Child | null>(null)
+  const [editForm, setEditForm] = useState<AddForm>({ name: '', grade: '1', school: '' })
+  const [editSaving, setEditSaving] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -69,12 +73,13 @@ export default function AddKidScreen() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setParentId(user.id)
-      const res = await fetch(`${API_URL}/api/students?parent_id=${user.id}`)
+      const res = await fetch(`${API_URL}/api/students/parent/${user.id}`)
       if (res.ok) setChildren(await res.json())
     } catch { /* */ }
     setLoading(false)
   }
 
+  // ── Add child ──
   const handleSave = async () => {
     if (!form.name.trim()) { Alert.alert('Oops', 'Please enter a name.'); return }
     setSaving(true)
@@ -102,6 +107,42 @@ export default function AddKidScreen() {
     setSaving(false)
   }
 
+  // ── Edit child ──
+  const openEdit = (child: Child) => {
+    setEditChild(child)
+    setEditForm({
+      name: child.name,
+      grade: GRADE_LABEL_MAP[child.grade_level] ?? '1',
+      school: child.school ?? '',
+    })
+  }
+
+  const handleEditSave = async () => {
+    if (!editChild || !editForm.name.trim()) { Alert.alert('Oops', 'Name cannot be empty.'); return }
+    setEditSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/students/${editChild.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          grade_level: GRADE_LEVEL_MAP[editForm.grade] ?? editChild.grade_level,
+          school: editForm.school.trim() || null,
+        }),
+      })
+      if (res.ok) {
+        setEditChild(null)
+        await loadData()
+      } else {
+        Alert.alert('Error', 'Failed to update — please try again.')
+      }
+    } catch {
+      Alert.alert('Error', 'Could not connect to server.')
+    }
+    setEditSaving(false)
+  }
+
+  // ── Delete child ──
   const handleDelete = (child: Child) => {
     Alert.alert(
       'Remove Child',
@@ -160,13 +201,13 @@ export default function AddKidScreen() {
             </View>
           ) : (
             <View style={{ gap: 14 }}>
-              {children.map(child => (
+              {children.map((child, i) => (
                 <View key={child.id} style={{ backgroundColor: '#1a1a35', borderRadius: 18, borderWidth: 1, borderColor: '#2a2a4a', padding: 18 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     {child.avatar_url ? (
                       <Image source={{ uri: child.avatar_url }} style={{ width: 64, height: 64, borderRadius: 32, marginRight: 14 }} contentFit="cover" />
                     ) : (
-                      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#702AE1', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: AVATAR_COLORS[i % AVATAR_COLORS.length], alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
                         <Text style={{ color: '#fff', fontSize: 26, fontWeight: '900' }}>{child.name.charAt(0).toUpperCase()}</Text>
                       </View>
                     )}
@@ -182,8 +223,20 @@ export default function AddKidScreen() {
                   {/* Actions */}
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                     <TouchableOpacity
+                      onPress={() => openEdit(child)}
+                      style={{
+                        flex: 1, backgroundColor: 'rgba(112,42,225,0.12)', borderRadius: 12,
+                        borderWidth: 1, borderColor: 'rgba(112,42,225,0.3)', padding: 10, alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#a78bfa', fontWeight: '700', fontSize: 13 }}>✏️ Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       onPress={() => handleDelete(child)}
-                      style={{ flex: 1, backgroundColor: '#ef444415', borderRadius: 12, borderWidth: 1, borderColor: '#ef444430', padding: 10, alignItems: 'center' }}
+                      style={{
+                        flex: 1, backgroundColor: '#ef444415', borderRadius: 12,
+                        borderWidth: 1, borderColor: '#ef444430', padding: 10, alignItems: 'center',
+                      }}
                     >
                       <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 13 }}>🗑️ Remove</Text>
                     </TouchableOpacity>
@@ -195,7 +248,7 @@ export default function AddKidScreen() {
         </ScrollView>
       )}
 
-      {/* Add Child Modal */}
+      {/* ── Add Child Modal ── */}
       <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={() => setShowAddModal(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: '#12122a', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#2a2a4a', padding: 24, paddingBottom: insets.bottom + 24 }}>
@@ -203,17 +256,17 @@ export default function AddKidScreen() {
             <Text style={{ color: '#6b5d80', fontSize: 13, marginBottom: 20 }}>Set up a reading profile for your child.</Text>
 
             {/* Name */}
-            <Text style={{ color: '#8a7aaa', fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Name</Text>
+            <Text style={labelStyle}>Name</Text>
             <TextInput
               value={form.name}
               onChangeText={t => setForm(f => ({ ...f, name: t }))}
               placeholder="Child's name…"
               placeholderTextColor="#3a3a5a"
-              style={{ backgroundColor: '#1a1a35', borderRadius: 12, borderWidth: 1, borderColor: '#2a2a4a', padding: 14, color: '#fff', fontSize: 15, marginBottom: 16 }}
+              style={inputStyle}
             />
 
             {/* Grade */}
-            <Text style={{ color: '#8a7aaa', fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Grade</Text>
+            <Text style={labelStyle}>Grade</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
               {GRADES.map(g => (
                 <TouchableOpacity
@@ -233,13 +286,13 @@ export default function AddKidScreen() {
             </ScrollView>
 
             {/* School (optional) */}
-            <Text style={{ color: '#8a7aaa', fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>School (optional)</Text>
+            <Text style={labelStyle}>School (optional)</Text>
             <TextInput
               value={form.school}
               onChangeText={t => setForm(f => ({ ...f, school: t }))}
               placeholder="School name…"
               placeholderTextColor="#3a3a5a"
-              style={{ backgroundColor: '#1a1a35', borderRadius: 12, borderWidth: 1, borderColor: '#2a2a4a', padding: 14, color: '#fff', fontSize: 15, marginBottom: 20 }}
+              style={{ ...inputStyle, marginBottom: 20 }}
             />
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -263,6 +316,85 @@ export default function AddKidScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Edit Child Modal ── */}
+      <Modal visible={!!editChild} transparent animationType="slide" onRequestClose={() => setEditChild(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#12122a', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#2a2a4a', padding: 24, paddingBottom: insets.bottom + 24 }}>
+            <Text style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>✏️ Edit Child</Text>
+            <Text style={{ color: '#6b5d80', fontSize: 13, marginBottom: 20 }}>Update {editChild?.name ?? 'child'}'s profile.</Text>
+
+            {/* Name */}
+            <Text style={labelStyle}>Name</Text>
+            <TextInput
+              value={editForm.name}
+              onChangeText={t => setEditForm(f => ({ ...f, name: t }))}
+              placeholder="Child's name…"
+              placeholderTextColor="#3a3a5a"
+              style={inputStyle}
+            />
+
+            {/* Grade */}
+            <Text style={labelStyle}>Grade</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
+              {GRADES.map(g => (
+                <TouchableOpacity
+                  key={g.value}
+                  onPress={() => setEditForm(f => ({ ...f, grade: g.value }))}
+                  style={{
+                    backgroundColor: editForm.grade === g.value ? '#702AE1' : '#1a1a35',
+                    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8,
+                    borderWidth: 1, borderColor: editForm.grade === g.value ? '#702AE1' : '#2a2a4a',
+                  }}
+                >
+                  <Text style={{ color: editForm.grade === g.value ? '#fff' : '#8a7aaa', fontWeight: '700', fontSize: 13 }}>
+                    {g.value === 'K' ? 'K' : g.value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* School (optional) */}
+            <Text style={labelStyle}>School (optional)</Text>
+            <TextInput
+              value={editForm.school}
+              onChangeText={t => setEditForm(f => ({ ...f, school: t }))}
+              placeholder="School name…"
+              placeholderTextColor="#3a3a5a"
+              style={{ ...inputStyle, marginBottom: 20 }}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setEditChild(null)}
+                style={{ flex: 1, backgroundColor: '#1a1a35', borderRadius: 14, borderWidth: 1, borderColor: '#2a2a4a', padding: 14, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#8a7aaa', fontWeight: '700' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleEditSave}
+                disabled={editSaving || !editForm.name.trim()}
+                style={{ flex: 2, backgroundColor: editForm.name.trim() ? '#10B981' : '#2a2a4a', borderRadius: 14, padding: 14, alignItems: 'center' }}
+              >
+                {editSaving
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={{ color: editForm.name.trim() ? '#fff' : '#4a4a6a', fontWeight: '800', fontSize: 15 }}>Save Changes ✓</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
+}
+
+const labelStyle = {
+  color: '#8a7aaa', fontSize: 12, fontWeight: '600' as const,
+  marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 1,
+}
+
+const inputStyle = {
+  backgroundColor: '#1a1a35', borderRadius: 12, borderWidth: 1,
+  borderColor: '#2a2a4a', padding: 14, color: '#fff', fontSize: 15, marginBottom: 16,
 }

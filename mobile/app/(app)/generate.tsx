@@ -26,6 +26,7 @@ import { Image } from 'expo-image'
 import { router, useFocusEffect } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
+import * as ImagePicker from 'expo-image-picker'
 import { googleSpeak, googleStop } from '../../src/lib/tts'
 
 import { storage } from '../../src/lib/storage'
@@ -44,6 +45,7 @@ interface CharacterData {
   character_name: string; universe: string; description: string
   visual_appearance: string; character_media_url: string | null
   character_image_url?: string | null   // backend field — mapped to character_media_url
+  character_description?: string | null  // vision-identified creature type (e.g. "dinosaur")
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -376,6 +378,12 @@ export default function GenerateScreen() {
   const [stepOneArt,     setStepOneArt]     = useState('cartoon')  // art style selected on step 1
   const [savedCharacters,setSavedCharacters] = useState<SavedChar[]>([])
 
+  // Drawing upload
+  const [drawingUri,     setDrawingUri]     = useState<string | null>(null)  // local preview URI
+  const [drawingBase64,  setDrawingBase64]  = useState<string | null>(null)  // base64 for upload
+  const [stylizeLoading, setStylizeLoading] = useState(false)
+  const [stylizeError,   setStylizeError]   = useState('')
+
   // Scene / Background
   const [sceneDesc,      setSceneDesc]      = useState('')
   const [shortStory,     setShortStory]     = useState('')
@@ -630,6 +638,7 @@ export default function GenerateScreen() {
         grade, effectiveTheme, charData.character_name,
         selectedLang, effectiveArt, isPublic,
         charData.character_media_url ?? undefined,
+        charData.character_description ?? undefined,
       )
       clearInterval(genInterval.current!)
       setGenStep(STORY_STEPS.length - 1)
@@ -647,6 +656,65 @@ export default function GenerateScreen() {
 
   useEffect(() => () => { if (genInterval.current) clearInterval(genInterval.current) }, [])
 
+  // ── Pick drawing from camera roll ─────────────────────────────────────────────
+  const pickDrawing = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) return
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+      base64: true,
+    })
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0]
+      setDrawingUri(asset.uri)
+      setDrawingBase64(asset.base64 ?? null)
+      setStylizeError('')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    }
+  }, [])
+
+  // ── Stylize uploaded drawing → character portrait ─────────────────────────────
+  const stylizeDrawing = useCallback(async () => {
+    if (!drawingBase64) return
+    const name = charInput.trim() || 'My Hero'
+    setStylizeLoading(true)
+    setStylizeError('')
+    try {
+      const res = await storiesApi.stylizeDrawing(drawingBase64, stepOneArt, name)
+      const { portrait_url, character_name, character_description } = res.data
+      const newChar: CharacterData = {
+        character_name,
+        universe: 'Original',
+        description: `${character_name} — ready for an epic adventure!`,
+        visual_appearance: character_description || character_name,  // use AI description for image prompts
+        character_media_url: portrait_url,
+        character_description: character_description || null,
+      }
+      setCharData(newChar)
+      // Save to gallery
+      if (portrait_url) {
+        const saved: SavedChar = { name: character_name, imageUrl: portrait_url, emoji: '🎨' }
+        setSavedCharacters(prev => {
+          const filtered = prev.filter(c => c.name.toLowerCase() !== character_name.toLowerCase())
+          const updated = [saved, ...filtered]
+          AsyncStorage.setItem(SAVED_CHARS_KEY, JSON.stringify(updated)).catch(() => {})
+          return updated
+        })
+      }
+      setSelectedArt(stepOneArt)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      setStep('scene')
+    } catch (e: any) {
+      setStylizeError(e?.response?.data?.detail ?? 'Could not stylize drawing. Try again.')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+    } finally {
+      setStylizeLoading(false)
+    }
+  }, [drawingBase64, charInput, stepOneArt])
+
   // ── Full reset — clears all state and returns to step 1 ─────────────────────
   const resetAll = useCallback(() => {
     setStep('character')
@@ -654,6 +722,10 @@ export default function GenerateScreen() {
     setCharInput('')
     setSelectedGallery('')
     setStepOneArt('cartoon')
+    setDrawingUri(null)
+    setDrawingBase64(null)
+    setStylizeLoading(false)
+    setStylizeError('')
     setSceneDesc('')
     setShortStory('')
     setShortStoryMode(false)
@@ -834,6 +906,131 @@ export default function GenerateScreen() {
                     : <Text style={{ color:'#fff', fontWeight:'900', fontSize:14 }}>Let's Go!</Text>
                   }
                 </TouchableOpacity>
+              </View>
+
+              {/* ── Upload Drawing Section ── */}
+              <View style={{
+                marginBottom: 14,
+                backgroundColor: 'rgba(178,140,255,0.04)',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: 'rgba(178,140,255,0.15)',
+                padding: 14,
+              }}>
+                {/* Divider */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(178,140,255,0.18)' }} />
+                  <Text style={{ color: '#5a4a7a', fontSize: 11, fontWeight: '700', marginHorizontal: 10 }}>OR UPLOAD A DRAWING</Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(178,140,255,0.18)' }} />
+                </View>
+
+                {/* Upload button row */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <TouchableOpacity
+                    onPress={pickDrawing}
+                    activeOpacity={0.75}
+                    style={{
+                      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                      gap: 8, paddingVertical: 12, borderRadius: 12,
+                      backgroundColor: drawingUri ? 'rgba(178,140,255,0.12)' : '#1a1a35',
+                      borderWidth: 1,
+                      borderColor: drawingUri ? '#B28CFF' : '#2a2a4a',
+                      borderStyle: drawingUri ? 'solid' : 'dashed',
+                    }}
+                  >
+                    <Text style={{ fontSize: 20 }}>{drawingUri ? '✏️' : '📸'}</Text>
+                    <Text style={{
+                      color: drawingUri ? '#B28CFF' : '#7a6a9a',
+                      fontWeight: '700', fontSize: 13,
+                    }}>
+                      {drawingUri ? 'Change Drawing' : 'Upload Your Drawing'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Clear drawing */}
+                  {drawingUri && (
+                    <TouchableOpacity
+                      onPress={() => { setDrawingUri(null); setDrawingBase64(null); setStylizeError('') }}
+                      style={{
+                        width: 40, height: 40, borderRadius: 20,
+                        backgroundColor: 'rgba(239,68,68,0.12)',
+                        borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 16 }}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Preview of uploaded drawing */}
+                {drawingUri && (
+                  <View style={{ marginTop: 12 }}>
+                    <View style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 12,
+                      backgroundColor: '#0d0d1f',
+                      borderRadius: 12, padding: 10,
+                      borderWidth: 1, borderColor: 'rgba(178,140,255,0.2)',
+                    }}>
+                      {/* Drawing preview */}
+                      <View style={{
+                        width: 90, height: 90, borderRadius: 12,
+                        overflow: 'hidden',
+                        borderWidth: 2, borderColor: '#B28CFF',
+                        backgroundColor: '#fff',
+                      }}>
+                        <Image
+                          source={{ uri: drawingUri }}
+                          style={{ width: '100%', height: '100%' }}
+                          contentFit="contain"
+                        />
+                      </View>
+
+                      {/* Info + action */}
+                      <View style={{ flex: 1, gap: 6 }}>
+                        <Text style={{ color: '#B28CFF', fontWeight: '800', fontSize: 13 }}>✨ Drawing Ready!</Text>
+                        <Text style={{ color: '#7a6a9a', fontSize: 11, lineHeight: 16 }}>
+                          Tap below to transform your drawing into a{' '}
+                          <Text style={{ color: '#B28CFF', fontWeight: '700' }}>{ART_STYLES.find(s => s.id === stepOneArt)?.label ?? 'Cartoon'}</Text>
+                          {' '}character!
+                        </Text>
+
+                        {/* Make My Hero button */}
+                        <TouchableOpacity
+                          onPress={stylizeDrawing}
+                          disabled={stylizeLoading}
+                          activeOpacity={0.80}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                            gap: 6, paddingVertical: 10, paddingHorizontal: 14,
+                            borderRadius: 10,
+                            backgroundColor: stylizeLoading ? '#2a2040' : '#702AE1',
+                            opacity: stylizeLoading ? 0.7 : 1,
+                          }}
+                        >
+                          {stylizeLoading
+                            ? <>
+                                <ActivityIndicator size="small" color="#B28CFF" />
+                                <Text style={{ color: '#B28CFF', fontWeight: '800', fontSize: 12 }}>Stylizing…</Text>
+                              </>
+                            : <>
+                                <Text style={{ fontSize: 14 }}>🎨</Text>
+                                <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>Make My Hero!</Text>
+                              </>
+                          }
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Error message */}
+                    {!!stylizeError && (
+                      <Text style={{
+                        color: '#ef4444', fontSize: 12, marginTop: 8,
+                        textAlign: 'center', fontWeight: '600',
+                      }}>{stylizeError}</Text>
+                    )}
+                  </View>
+                )}
               </View>
 
               {/* ── Art Style picker (Step 1) ── */}

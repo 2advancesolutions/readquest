@@ -90,3 +90,29 @@ async def update_student_avatar(student_id: str, req: UpdateAvatarRequest, db: A
     student.avatar_url = req.avatar_url
     await db.commit()
     return {"avatar_url": student.avatar_url}
+
+class UpdateStudentRequest(BaseModel):
+    name: Optional[str] = None
+    grade_level: Optional[int] = None
+    school: Optional[str] = None
+
+@router.patch("/{student_id}", response_model=StudentResponse)
+async def update_student(student_id: str, req: UpdateStudentRequest, db: AsyncSession = Depends(get_session)):
+    """Update a student's name, grade, and/or school."""
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, detail="Student not found")
+    if req.name is not None:
+        student.name = req.name.strip()
+    if req.grade_level is not None:
+        student.grade_level = req.grade_level
+    if req.school is not None:
+        student.school = req.school.strip() or None
+    await db.commit()
+    await db.refresh(student)
+    return StudentResponse(
+        id=student.id, parent_id=student.parent_id, name=student.name,
+        grade_level=student.grade_level, school=student.school,
+        avatar_url=student.avatar_url, created_at=str(student.created_at)
+    )
