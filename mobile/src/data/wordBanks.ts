@@ -14,6 +14,7 @@ export interface RhymePair {
 
 export const RHYME_BANKS: Record<number, RhymePair[]> = {
   0: [
+    // Original entries
     { word:'cat',   rhyme:'hat',  distractors:['dog','sun','big'],      grade:0 },
     { word:'dog',   rhyme:'log',  distractors:['cat','run','top'],      grade:0 },
     { word:'sun',   rhyme:'run',  distractors:['dog','hat','sit'],      grade:0 },
@@ -26,6 +27,15 @@ export const RHYME_BANKS: Record<number, RhymePair[]> = {
     { word:'wet',   rhyme:'net',  distractors:['map','pig','top'],      grade:0 },
     { word:'hot',   rhyme:'pot',  distractors:['wet','big','run'],      grade:0 },
     { word:'bug',   rhyme:'mug',  distractors:['hot','cap','bed'],      grade:0 },
+    // Added from wk201.pdf (Starfall workbook)
+    { word:'ran',   rhyme:'fan',  distractors:['can','pop','bit'],      grade:0 },
+    { word:'rub',   rhyme:'tub',  distractors:['run','mop','big'],      grade:0 },
+    { word:'ink',   rhyme:'think',distractors:['pink','win','tip'],     grade:0 },
+    { word:'mop',   rhyme:'hop',  distractors:['top','map','fun'],      grade:0 },
+    { word:'rod',   rhyme:'nod',  distractors:['rob','rot','rag'],      grade:0 },
+    { word:'hill',  rhyme:'fill', distractors:['hit','hid','hip'],      grade:0 },
+    { word:'bat',   rhyme:'mat',  distractors:['bag','bad','ban'],      grade:0 },
+    { word:'hen',   rhyme:'ten',  distractors:['her','hem','hem'],      grade:0 },
   ],
   1: [
     { word:'night',  rhyme:'light',   distractors:['great','thing','small'],   grade:1 },
@@ -150,13 +160,26 @@ export interface SentenceItem {
 }
 
 export const SENTENCE_BANKS: SentenceItem[] = [
-  // Grade K
+  // Grade K — original
   { words:['The','cat','sat.'],                        grade:0, level:1 },
   { words:['I','can','run.'],                          grade:0, level:1 },
   { words:['See','the','big','dog.'],                  grade:0, level:1 },
   { words:['The','sun','is','hot.'],                   grade:0, level:1 },
   { words:['I','see','a','red','ball.'],               grade:0, level:2 },
   { words:['The','dog','can','hop','up.'],             grade:0, level:2 },
+  // Grade K — from wk201.pdf (Starfall workbook)
+  { words:['Zac','the','rat','ran.'],                  grade:0, level:1 },
+  { words:['The','cat','has','a','nap.'],              grade:0, level:1 },
+  { words:['Zac','sat','on','a','mat.'],               grade:0, level:1 },
+  { words:['The','rat','is','sad.'],                   grade:0, level:1 },
+  { words:['He','naps','on','the','cot.'],             grade:0, level:2 },
+  { words:['The','frog','hops.'],                      grade:0, level:1 },
+  { words:['She','picked','a','red','rose.'],          grade:0, level:2 },
+  { words:['It','is','time','to','go','home.'],        grade:0, level:2 },
+  { words:['It','is','fun','to','play.'],              grade:0, level:1 },
+  { words:['I','love','my','family.'],                 grade:0, level:1 },
+  { words:['Mommy','and','Daddy','love','me.'],        grade:0, level:2 },
+  { words:['The','flag','is','on','the','pole.'],      grade:0, level:2 },
   // Grade 1
   { words:['The','little','bird','flew','away.'],       grade:1, level:1 },
   { words:['She','ran','to','the','big','tree.'],       grade:1, level:1 },
@@ -349,7 +372,7 @@ export interface PhonicsItem {
 }
 
 export const PHONICS_BANKS: PhonicsItem[] = [
-  // Single consonants (K)
+  // Single consonants (K) — from bl-*.pdf / ms-*.pdf
   { prompt:'buh',  answer:'B', choices:['B','D','P','G'],   grade:0, type:'letter' },
   { prompt:'kuh',  answer:'C', choices:['C','G','K','Q'],   grade:0, type:'letter' },
   { prompt:'duh',  answer:'D', choices:['D','B','P','T'],   grade:0, type:'letter' },
@@ -364,23 +387,30 @@ export const PHONICS_BANKS: PhonicsItem[] = [
   { prompt:'ruh',  answer:'R', choices:['R','L','N','W'],   grade:0, type:'letter' },
   { prompt:'sss',  answer:'S', choices:['S','C','Z','X'],   grade:0, type:'letter' },
   { prompt:'tuh',  answer:'T', choices:['T','D','F','P'],   grade:0, type:'letter' },
+  // W, Y, Z — from bl-w/y/z.pdf & ms-w/y/z.pdf
+  { prompt:'wuh — W is for window',  answer:'W', choices:['W','V','M','N'],   grade:0, type:'letter' },
+  { prompt:'yuh — Y is for yo-yo',   answer:'Y', choices:['Y','J','I','G'],   grade:0, type:'letter' },
+  { prompt:'zzz — Z is for zipper',  answer:'Z', choices:['Z','S','X','C'],   grade:0, type:'letter' },
+  // Long Y sounds — from Long-Y-1-*.pdf
+  { prompt:'long i sound as in my',    answer:'Y', choices:['Y','E','I','A'], grade:0, type:'letter' },
+  { prompt:'long e sound as in baby',  answer:'Y', choices:['Y','E','I','A'], grade:0, type:'letter' },
   // Short vowels (Grade 1)
   { prompt:'short a as in cat', answer:'A', choices:['A','E','O','U'], grade:1, type:'letter' },
   { prompt:'short e as in bed', answer:'E', choices:['E','A','I','O'], grade:1, type:'letter' },
   { prompt:'short i as in sit', answer:'I', choices:['I','E','A','U'], grade:1, type:'letter' },
   { prompt:'short o as in top', answer:'O', choices:['O','A','U','E'], grade:1, type:'letter' },
   { prompt:'short u as in bug', answer:'U', choices:['U','O','A','E'], grade:1, type:'letter' },
-  // Blends
+  // Blends — from wk201.pdf
   { prompt:'bl as in blue',     answer:'BL', choices:['BL','CL','FL','GL'], grade:1, type:'blend' },
   { prompt:'cr as in crab',     answer:'CR', choices:['CR','DR','BR','FR'], grade:1, type:'blend' },
   { prompt:'st as in star',     answer:'ST', choices:['ST','SP','SK','SN'], grade:1, type:'blend' },
   { prompt:'tr as in tree',     answer:'TR', choices:['TR','DR','CR','PR'], grade:1, type:'blend' },
   { prompt:'gr as in green',    answer:'GR', choices:['GR','CR','PR','FR'], grade:1, type:'blend' },
-  // Digraphs
-  { prompt:'sh as in ship',     answer:'SH', choices:['SH','CH','TH','WH'], grade:1, type:'digraph' },
-  { prompt:'ch as in chip',     answer:'CH', choices:['CH','SH','TH','WH'], grade:1, type:'digraph' },
-  { prompt:'th as in the',      answer:'TH', choices:['TH','SH','CH','WH'], grade:1, type:'digraph' },
-  { prompt:'wh as in wheel',    answer:'WH', choices:['WH','TH','SH','CH'], grade:1, type:'digraph' },
+  // Digraphs — from wk201.pdf pp.70/75/82
+  { prompt:'ch as in chip / bench',  answer:'CH', choices:['CH','SH','TH','WH'], grade:1, type:'digraph' },
+  { prompt:'sh as in ship / dish',   answer:'SH', choices:['SH','CH','TH','WH'], grade:1, type:'digraph' },
+  { prompt:'th as in the / bath',    answer:'TH', choices:['TH','SH','CH','WH'], grade:1, type:'digraph' },
+  { prompt:'wh as in wheel',         answer:'WH', choices:['WH','TH','SH','CH'], grade:1, type:'digraph' },
   // Vowel teams (Grade 2)
   { prompt:'long a as in rain', answer:'AI', choices:['AI','AY','EE','OA'], grade:2, type:'vowel-team' },
   { prompt:'long e as in keep', answer:'EE', choices:['EE','EA','IE','OE'], grade:2, type:'vowel-team' },
@@ -399,6 +429,11 @@ export interface GrammarItem {
 }
 
 export const GRAMMAR_BANKS: GrammarItem[] = [
+  // Grade K — from SentenceMechanics-2-*.pdf (capital letters & punctuation)
+  { sentence:'the cat sat on the mat.', choices:['The cat sat on the mat.','the Cat sat on the mat.','The Cat Sat On The Mat.','the cat Sat on the mat.'], correct:'The cat sat on the mat.', errorType:'capitalization', grade:0, explanation:'Every sentence starts with a capital letter.' },
+  { sentence:'i can run fast.', choices:['I can run fast.','i Can run fast.','I Can Run Fast.','I can Run fast.'], correct:'I can run fast.', errorType:'capitalization', grade:0, explanation:'The word "I" is always a capital letter.' },
+  { sentence:'see the big dog.', choices:['See the big dog.','see The big dog.','See The Big Dog.','see the big Dog.'], correct:'See the big dog.', errorType:'capitalization', grade:0, explanation:'The first word of a sentence is always capitalized.' },
+  { sentence:'zac the rat ran.', choices:['Zac the rat ran.','zac The Rat ran.','Zac The Rat Ran.','zac the rat Ran.'], correct:'Zac the rat ran.', errorType:'capitalization', grade:0, explanation:'Names and the first word of a sentence start with capital letters.' },
   // Grade 2
   { sentence:'the dog ran to the park.',  choices:['The dog ran to the park.','the Dog ran to the park.','The Dog Ran To The Park.','the dog Ran to the park.'], correct:'The dog ran to the park.', errorType:'capitalization', grade:2, explanation:'Sentences start with a capital letter.' },
   { sentence:'She likes cats, dogs and birds', choices:['She likes cats, dogs, and birds.','She likes cats dogs and birds.','she likes cats, dogs, and birds.','She likes Cats, Dogs and Birds.'], correct:'She likes cats, dogs, and birds.', errorType:'punctuation', grade:2, explanation:'Use a comma before "and" in a list, and end with a period.' },
@@ -538,4 +573,171 @@ export function shuffle<T>(arr: T[]): T[] {
     [a[i], a[j]] = [a[j], a[i]]
   }
   return a
+}
+
+// ── Long Y Sorter ─────────────────────────────────────────────────────────────
+// Source: Long-Y-1-*.pdf (Starfall "My Family" unit)
+export interface LongYItem {
+  word: string
+  sound: 'long-i' | 'long-e'   // long-i = sounds like "eye", long-e = sounds like "ee"
+  grade: number
+}
+
+export const LONG_Y_ITEMS: LongYItem[] = [
+  // Long I (sounds like "eye") — RED words from PDF
+  { word: 'my',     sound: 'long-i', grade: 0 },
+  { word: 'why',    sound: 'long-i', grade: 0 },
+  { word: 'try',    sound: 'long-i', grade: 0 },
+  { word: 'fly',    sound: 'long-i', grade: 0 },
+  { word: 'cry',    sound: 'long-i', grade: 0 },
+  { word: 'dry',    sound: 'long-i', grade: 0 },
+  { word: 'sky',    sound: 'long-i', grade: 0 },
+  { word: 'by',     sound: 'long-i', grade: 0 },
+  // Long E (sounds like "ee") — BLUE words from PDF
+  { word: 'silly',  sound: 'long-e', grade: 0 },
+  { word: 'daddy',  sound: 'long-e', grade: 0 },
+  { word: 'baby',   sound: 'long-e', grade: 0 },
+  { word: 'tiny',   sound: 'long-e', grade: 0 },
+  { word: 'very',   sound: 'long-e', grade: 0 },
+  { word: 'family', sound: 'long-e', grade: 0 },
+  { word: 'pony',   sound: 'long-e', grade: 0 },
+  { word: 'candy',  sound: 'long-e', grade: 0 },
+  { word: 'daisy',  sound: 'long-e', grade: 0 },
+  { word: 'party',  sound: 'long-e', grade: 0 },
+  { word: 'berry',  sound: 'long-e', grade: 0 },
+  { word: 'money',  sound: 'long-e', grade: 0 },
+  { word: 'lady',   sound: 'long-e', grade: 0 },
+]
+
+export function getLongYItems(): LongYItem[] { return LONG_Y_ITEMS }
+
+// ── Compound Word Builder ─────────────────────────────────────────────────────
+// Source: wk201.pdf pp.78/87/94
+export interface CompoundItem {
+  part1: string
+  part2: string
+  combined: string
+  grade: number
+}
+
+export const COMPOUND_BANKS: CompoundItem[] = [
+  { part1: 'snow',  part2: 'man',    combined: 'snowman',   grade: 0 },
+  { part1: 'cup',   part2: 'cake',   combined: 'cupcake',   grade: 0 },
+  { part1: 'foot',  part2: 'ball',   combined: 'football',  grade: 0 },
+  { part1: 'out',   part2: 'side',   combined: 'outside',   grade: 0 },
+  { part1: 'some',  part2: 'thing',  combined: 'something', grade: 0 },
+  { part1: 'cow',   part2: 'boy',    combined: 'cowboy',    grade: 0 },
+  { part1: 'hot',   part2: 'dog',    combined: 'hotdog',    grade: 0 },
+  { part1: 'any',   part2: 'thing',  combined: 'anything',  grade: 0 },
+  { part1: 'with',  part2: 'out',    combined: 'without',   grade: 0 },
+  { part1: 'dragon',part2: 'fly',    combined: 'dragonfly', grade: 0 },
+  { part1: 'her',   part2: 'self',   combined: 'herself',   grade: 0 },
+  { part1: 'some',  part2: 'one',    combined: 'someone',   grade: 0 },
+  { part1: 'sun',   part2: 'shine',  combined: 'sunshine',  grade: 1 },
+  { part1: 'rain',  part2: 'bow',    combined: 'rainbow',   grade: 1 },
+  { part1: 'butter',part2: 'fly',    combined: 'butterfly', grade: 1 },
+  { part1: 'birth', part2: 'day',    combined: 'birthday',  grade: 1 },
+]
+
+export function getCompoundItems(grade: number): CompoundItem[] {
+  return COMPOUND_BANKS.filter(c => c.grade <= grade)
+}
+
+// ── Opposite Finder ───────────────────────────────────────────────────────────
+// Source: wk201.pdf pp.72/92
+export interface OppositeItem {
+  word: string
+  correct: string
+  choices: string[]
+  grade: number
+}
+
+export const OPPOSITE_BANKS: OppositeItem[] = [
+  // Grade K — from wk201.pdf pp.72/92
+  { word: 'open',   correct: 'close',  choices: ['close','beside','play','start'],  grade: 0 },
+  { word: 'hot',    correct: 'cold',   choices: ['cold','nice','soft','happy'],     grade: 0 },
+  { word: 'push',   correct: 'pull',   choices: ['pull','over','fast','go'],        grade: 0 },
+  { word: 'go',     correct: 'stop',   choices: ['stop','close','sad','work'],      grade: 0 },
+  { word: 'happy',  correct: 'sad',    choices: ['sad','nice','play','begin'],      grade: 0 },
+  { word: 'big',    correct: 'small',  choices: ['small','light','front','soft'],   grade: 0 },
+  { word: 'out',    correct: 'in',     choices: ['in','over','begin','from'],       grade: 0 },
+  { word: 'fast',   correct: 'slow',   choices: ['slow','late','fire','cold'],      grade: 0 },
+  { word: 'yes',    correct: 'no',     choices: ['no','boy','from','under'],        grade: 0 },
+  { word: 'pretty', correct: 'ugly',   choices: ['ugly','nice','soft','light'],     grade: 0 },
+  { word: 'begin',  correct: 'end',    choices: ['end','front','over','some'],      grade: 0 },
+  { word: 'over',   correct: 'under',  choices: ['under','into','from','pull'],     grade: 0 },
+  // Grade 1
+  { word: 'day',    correct: 'night',  choices: ['night','dawn','dusk','moon'],     grade: 1 },
+  { word: 'up',     correct: 'down',   choices: ['down','low','under','below'],     grade: 1 },
+  { word: 'light',  correct: 'dark',   choices: ['dark','black','dim','gloomy'],    grade: 1 },
+  { word: 'clean',  correct: 'dirty',  choices: ['dirty','messy','muddy','grimy'],  grade: 1 },
+]
+
+export function getOppositeItems(grade: number): OppositeItem[] {
+  return OPPOSITE_BANKS.filter(o => o.grade <= grade)
+}
+
+// ── Sentence Ender ────────────────────────────────────────────────────────────
+// Source: SentenceMechanics-2-*.pdf + wk201.pdf p.2
+export interface SentenceEnderItem {
+  sentence: string       // without punctuation
+  correct: '.' | '?' | '!'
+  grade: number
+  hint: string
+}
+
+export const SENTENCE_ENDER_BANKS: SentenceEnderItem[] = [
+  // Grade K — from SentenceMechanics-2-*.pdf + wk201.pdf
+  { sentence: 'Zac is a rat',           correct: '.', grade: 0, hint: 'Telling sentence ends with a period.' },
+  { sentence: 'Will Zac fall',           correct: '?', grade: 0, hint: 'Asking sentence ends with a question mark.' },
+  { sentence: 'Here come the ants',      correct: '!', grade: 0, hint: 'Exciting sentence ends with an exclamation mark.' },
+  { sentence: 'The cat has a nap',       correct: '.', grade: 0, hint: 'A telling sentence ends with a period.' },
+  { sentence: 'Can you run fast',        correct: '?', grade: 0, hint: 'A question ends with a question mark.' },
+  { sentence: 'Watch out',              correct: '!', grade: 0, hint: 'An exciting or warning sentence uses an exclamation mark.' },
+  { sentence: 'I love my family',        correct: '!', grade: 0, hint: 'Exciting feelings use an exclamation mark.' },
+  { sentence: 'Where is my dog',         correct: '?', grade: 0, hint: 'A question ends with a question mark.' },
+  { sentence: 'She has a red ball',      correct: '.', grade: 0, hint: 'A telling sentence ends with a period.' },
+  { sentence: 'Please help me',          correct: '.', grade: 0, hint: 'Asking nicely uses a period at the end.' },
+  { sentence: 'Thank you so much',       correct: '!', grade: 0, hint: 'Excitement ends with an exclamation mark.' },
+  { sentence: 'Do you like cats',        correct: '?', grade: 0, hint: 'A question needs a question mark.' },
+  // Grade 1
+  { sentence: 'The bird flew away',      correct: '.', grade: 1, hint: 'A telling sentence ends with a period.' },
+  { sentence: 'How did you get home',    correct: '?', grade: 1, hint: 'A question ends with a question mark.' },
+  { sentence: 'We won the game',         correct: '!', grade: 1, hint: 'An exciting sentence ends with an exclamation mark.' },
+]
+
+export function getSentenceEnderItems(grade: number): SentenceEnderItem[] {
+  return SENTENCE_ENDER_BANKS.filter(s => s.grade <= grade)
+}
+
+// ── Sight Word Fill ───────────────────────────────────────────────────────────
+// Source: wk201.pdf pp.5/20/50/78/94
+export interface SightFillItem {
+  sentence: string         // use ___ for the blank
+  correct: string
+  choices: string[]        // 3-4 options including correct
+  grade: number
+}
+
+export const SIGHT_FILL_BANKS: SightFillItem[] = [
+  // Grade K — directly from wk201.pdf circle-the-word exercises
+  { sentence: 'The ___ has a nap.',      correct: 'cat',  choices: ['cat','mat','has'],       grade: 0 },
+  { sentence: 'Zac sat on a ___.',       correct: 'mat',  choices: ['mat','cat','rat'],       grade: 0 },
+  { sentence: 'The rat is ___.',         correct: 'sad',  choices: ['sad','ran','the'],       grade: 0 },
+  { sentence: 'He naps on the ___.',     correct: 'cot',  choices: ['cot','fox','mop'],       grade: 0 },
+  { sentence: 'The frog ___.',           correct: 'hops', choices: ['hops','mops','has'],     grade: 0 },
+  { sentence: 'The flag is on the ___.',  correct: 'pole', choices: ['pole','mole','rose'],    grade: 0 },
+  { sentence: 'A ___ is in the hole.',   correct: 'mole', choices: ['mole','pole','home'],    grade: 0 },
+  { sentence: 'She picked a red ___.',   correct: 'rose', choices: ['rose','home','pole'],    grade: 0 },
+  { sentence: "It's time to go ___.",   correct: 'home', choices: ['home','hop','hat'],      grade: 0 },
+  { sentence: 'I ___ you!',             correct: 'love', choices: ['love','like','see'],     grade: 0 },
+  { sentence: 'She ___ a new baby.',    correct: 'has',  choices: ['has','saw','was'],       grade: 0 },
+  { sentence: 'Tiny ___ you.',          correct: 'likes',choices: ['likes','sees','is'],     grade: 0 },
+  // Grade 1
+  { sentence: 'She ___ to the big tree.', correct: 'ran', choices: ['ran','has','saw','the'], grade: 1 },
+  { sentence: 'We can play in the ___.',  correct: 'rain',choices: ['rain','run','red','rim'],grade: 1 },
+]
+
+export function getSightFillItems(grade: number): SightFillItem[] {
+  return SIGHT_FILL_BANKS.filter(s => s.grade <= grade)
 }

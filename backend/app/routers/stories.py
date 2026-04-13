@@ -115,7 +115,7 @@ class GenerateRequest(BaseModel):
     character_image_url: Optional[str] = None
     sel_theme: Optional[str] = None
     story_mode: str = "free_play"
-    is_public: bool = False   # if True, show in public book gallery
+    is_public: bool = True    # all new books are public by default (Community Books)
 
 
 
@@ -1196,7 +1196,13 @@ async def list_stories(x_student_id: Optional[str] = Header(default=None), db: A
         prog = progress_map.get(sid, {})
         last_page = prog.get("last_page", 0)
         completed_at = prog.get("completed_at")
-        progress_pct = round((last_page / page_count) * 100) if page_count > 0 else 0
+        # If the book is marked completed, progress is always 100%
+        if completed_at:
+            progress_pct = 100
+        elif page_count > 0:
+            progress_pct = min(round((last_page / page_count) * 100), 100)
+        else:
+            progress_pct = 0
 
         out.append({
             "id": s.id, "title": s.title, "theme": s.theme,
@@ -1319,16 +1325,49 @@ async def mark_story_complete(
         x_student_id = "guest"
     await award_xp(db, x_student_id, 50, "book_complete")
 
-    # Also record completion in reading_progress
+    # Record completion in reading_progress with last_page = total pages
     try:
         from app.database import supabase_client
         if supabase_client:
             from datetime import datetime, timezone
-            supabase_client.table("reading_progress").upsert({
-                "student_id": x_student_id,
-                "story_id": story_id,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="student_id,story_id").execute()
+            from sqlalchemy import func
+            # Get total page count so last_page is accurate
+            page_count_result = await db.execute(
+                select(func.max(StoryPage.page_number)).where(StoryPage.story_id == story_id)
+            )
+            total_pages = page_count_result.scalar() or 0
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            # Check if row exists
+            existing = supabase_client.table("reading_progress") \
+                .select("id") \
+                .eq("student_id", x_student_id) \
+                .eq("story_id", story_id) \
+                .execute()
+
+            if existing.data and len(existing.data) > 0:
+                supabase_client.table("reading_progress") \
+                    .update({
+                        "last_page": total_pages,
+                        "total_pages": total_pages,
+                        "completed": True,
+                        "completed_at": now_iso,
+                    }) \
+                    .eq("student_id", x_student_id) \
+                    .eq("story_id", story_id) \
+                    .execute()
+            else:
+                import uuid
+                supabase_client.table("reading_progress").insert({
+                    "id": str(uuid.uuid4()),
+                    "student_id": x_student_id,
+                    "story_id": story_id,
+                    "last_page": total_pages,
+                    "total_pages": total_pages,
+                    "pages_read": 0,
+                    "completed": True,
+                    "completed_at": now_iso,
+                }).execute()
     except Exception as e:
         print(f"[mark_story_complete] progress update failed: {e}")
 
@@ -1340,18 +1379,45 @@ async def save_reading_progress(
     story_id: str,
     x_student_id: Optional[str] = Header(default=None),
     last_page: int = 0,
+    total_pages: int = 0,
 ):
-    """Upsert last-read page for resume-reading functionality."""
+    """Save last-read page for resume-reading functionality."""
     if not x_student_id:
         return {"ok": False, "reason": "no student id"}
     try:
         from app.database import supabase_client
         if supabase_client:
-            supabase_client.table("reading_progress").upsert({
-                "student_id": x_student_id,
-                "story_id": story_id,
-                "last_page": last_page,
-            }, on_conflict="student_id,story_id").execute()
+            # Check if row already exists
+            existing = supabase_client.table("reading_progress") \
+                .select("id") \
+                .eq("student_id", x_student_id) \
+                .eq("story_id", story_id) \
+                .execute()
+
+            if existing.data and len(existing.data) > 0:
+                # UPDATE existing row
+                update_data = {"last_page": last_page}
+                if total_pages > 0:
+                    update_data["total_pages"] = total_pages
+                supabase_client.table("reading_progress") \
+                    .update(update_data) \
+                    .eq("student_id", x_student_id) \
+                    .eq("story_id", story_id) \
+                    .execute()
+            else:
+                # INSERT new row
+                import uuid
+                row = {
+                    "id": str(uuid.uuid4()),
+                    "student_id": x_student_id,
+                    "story_id": story_id,
+                    "last_page": last_page,
+                    "pages_read": 0,
+                    "completed": False,
+                }
+                if total_pages > 0:
+                    row["total_pages"] = total_pages
+                supabase_client.table("reading_progress").insert(row).execute()
     except Exception as e:
         print(f"[save_progress] failed: {e}")
     return {"ok": True}

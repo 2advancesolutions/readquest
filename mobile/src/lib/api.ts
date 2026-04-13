@@ -61,7 +61,7 @@ export const storiesApi = {
     api.post('/stories/analyze-character', { character, art_style: artStyle }),
   removeBackground: (imageUrl: string) =>
     api.post<{ transparent_url: string }>('/stories/remove-background', { image_url: imageUrl }, { timeout: 60000 }),
-  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = false, character_image_url?: string, character_description?: string) =>
+  generate: (grade: number, theme: string, character_name: string, language = 'english', artStyle = 'cartoon', is_public = true, character_image_url?: string, character_description?: string) =>
     api.post('/stories/generate',
       { grade, theme, character_name, language, art_style: artStyle, is_public, character_image_url: character_image_url ?? null, character_description: character_description ?? null },
       { timeout: 300000 },
@@ -172,9 +172,10 @@ export const progressApi = {
   markBookComplete:(storyId: string) => api.post(`/stories/${storyId}/complete`),
 
   saveProgress: async (storyId: string, lastPage: number, totalPages: number) => {
+    // IMPORTANT: Use selected child ID first (matches X-Student-ID in api interceptor)
     const studentId =
-      (await supabase.auth.getSession()).data.session?.user?.id ||
       await getSelectedStudentId() ||
+      (await supabase.auth.getSession()).data.session?.user?.id ||
       'guest'
 
     // AsyncStorage for instant offline-first persistence
@@ -183,20 +184,17 @@ export const progressApi = {
     const existing = await storage.get<Record<string, unknown>>(key) ?? {}
     await storage.set(key, { ...existing, lastPage, totalPages })
 
-    // Sync to Supabase
+    // Sync to backend (uses service_role key → bypasses RLS)
     try {
-      await supabase.from('reading_progress').upsert(
-        { student_id: studentId, story_id: storyId, last_page: lastPage, total_pages: totalPages },
-        { onConflict: 'student_id,story_id' }
-      )
+      await api.post(`/stories/${storyId}/progress?last_page=${lastPage}&total_pages=${totalPages}`)
     } catch { /* offline — AsyncStorage is the fallback */ }
   },
 
   getProgressBatch: async (storyIds: string[]): Promise<Record<string, { lastPage: number; totalPages: number; completedAt?: string }>> => {
     if (storyIds.length === 0) return {}
     const studentId =
-      (await supabase.auth.getSession()).data.session?.user?.id ||
       await getSelectedStudentId() ||
+      (await supabase.auth.getSession()).data.session?.user?.id ||
       'guest'
     const { storage } = await import('./storage')
     const result: Record<string, { lastPage: number; totalPages: number; completedAt?: string }> = {}
@@ -343,5 +341,121 @@ export interface RoadmapCategoryOut { pct: number; label: string; detail: string
 export interface RoadmapGameItem { id: string; title: string; emoji: string; level: number; max_level: number; pct: number; stars: number }
 export interface SmartSuggestionOut { area: string; emoji: string; pct: number; message: string; action_url: string }
 export interface RoadmapOut { reading: RoadmapCategoryOut; quizzes: RoadmapCategoryOut; comprehension: RoadmapCategoryOut; spelling: RoadmapCategoryOut; exams: RoadmapCategoryOut; games: { overall_pct: number; breakdown: RoadmapGameItem[] }; smart_suggestion: SmartSuggestionOut }
+
+// ── Subscription & Tokens ──────────────────────────────────────────────────
+export const subscriptionApi = {
+  /** Returns the parent's active plan + usage from v_parent_usage view.
+   *  Auto-seeds new users onto the Spark plan so the badge always appears. */
+  getUsage: async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) return null
+
+    const { data } = await supabase
+      .from('v_parent_usage')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (data) return data as ParentUsage
+
+    // ── No active subscription — auto-enroll on Spark (free onboarding) ──
+    const SPARK_PLAN_ID = 'eccc4590-a6d9-431d-8255-055436b42ef1'
+    const now   = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const end   = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
+
+    await supabase.from('user_subscriptions').insert({
+      user_id: userId,
+      plan_id: SPARK_PLAN_ID,
+      status:  'active',
+      current_period_start: start,
+      current_period_end:   end,
+      stories_used_this_period:     0,
+      characters_used_this_period:  0,
+    })
+
+    // Re-query so we return the freshly joined view row
+    const { data: seeded } = await supabase
+      .from('v_parent_usage')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    return seeded as ParentUsage | null
+  },
+  /** List all subscription plans */
+  getPlans: async () => {
+    const { data } = await supabase
+      .from('subscription_plans')
+      .select('*')
+      .order('sort_order')
+    return (data ?? []) as SubscriptionPlan[]
+  },
+  /** Buy tokens — $5 = 6 stories */
+  buyTokens: (packId: string) => api.post('/subscriptions/buy-tokens', { pack_id: packId }),
+
+  /** Switch active plan immediately — updates user_subscriptions directly in Supabase */
+  changePlan: async (planId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const userId = session?.user?.id
+      if (!userId) return { success: false, error: 'Not logged in' }
+
+      // Check if user already has a subscription row
+      const { data: existing } = await supabase
+        .from('user_subscriptions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .single()
+
+      if (existing?.id) {
+        // Update existing subscription — reset period counters
+        const { error } = await supabase
+          .from('user_subscriptions')
+          .update({
+            plan_id: planId,
+            updated_at: new Date().toISOString(),
+            stories_used_this_period: 0,
+            characters_used_this_period: 0,
+            current_period_start: new Date().toISOString(),
+            current_period_end: (() => {
+              const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(1); return d.toISOString()
+            })(),
+          })
+          .eq('id', existing.id)
+        if (error) { console.error('[changePlan] update error:', error); return { success: false, error: error.message } }
+      } else {
+        // Insert new subscription
+        const { error } = await supabase
+          .from('user_subscriptions')
+          .insert({
+            user_id: userId,
+            plan_id: planId,
+            status: 'active',
+            current_period_start: new Date(new Date().setDate(1)).toISOString(),
+            current_period_end: (() => {
+              const d = new Date(); d.setMonth(d.getMonth() + 1, 1); return d.toISOString()
+            })(),
+          })
+        if (error) return { success: false, error: error.message }
+      }
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Unknown error' }
+    }
+  },
+}
+
+export interface ParentUsage {
+  user_id: string; plan_name: string; plan_slug: string; price_cents: number
+  stories_limit: number; stories_used_this_period: number; characters_used_this_period: number
+  stories_remaining: number; token_balance: number; current_period_end: string
+}
+export interface SubscriptionPlan {
+  id: string; name: string; slug: string; price_cents: number
+  tokens_included: number; features: string[]; is_popular: boolean; sort_order: number
+}
 
 export default api

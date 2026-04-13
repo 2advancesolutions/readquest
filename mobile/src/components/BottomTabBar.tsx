@@ -36,8 +36,6 @@ import {
   LayoutDashboard,
   BookMarked,
   Sword,
-  Clapperboard,
-  Wand2,
   Settings,
   LogOut,
   Grid3x3,
@@ -73,8 +71,6 @@ const DRAWER_LINKS: {
   { id: 'parent-dashboard', label: 'Parent Dashboard', Icon: LayoutDashboard,color: '#c084fc', path: '/(app)/parent-dashboard' },
   { id: 'assignments',      label: 'Assignments',      Icon: BookMarked,     color: '#4ade80', path: '/(app)/assignments'      },
   { id: 'quest',            label: 'Quest Mode',       Icon: Sword,          color: '#f87171', path: '/(app)/quest'            },
-  { id: 'movie-studio',     label: 'Movie Studio',     Icon: Clapperboard,   color: '#fbbf24', path: '/(app)/movie-studio'     },
-  { id: 'character-studio', label: 'Character Studio', Icon: Wand2,          color: '#f472b6', path: '/(app)/character-studio' },
   { id: 'admin',            label: 'Admin',            Icon: Settings,       color: '#94a3b8', path: '/(app)/admin'            },
 ]
 

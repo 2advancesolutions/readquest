@@ -282,10 +282,11 @@ export default function BookReaderScreen() {
         )
 
         const prog = await progressApi.getProgress(storyId)
-        // Only restore page position if the story was partially read (not finished)
-        // lastPage === 0 means just started, lastPage === length-1 means finished — both start at 0
-        if (prog && prog.lastPage > 0 && prog.lastPage < s.pages.length - 1) {
-          setCurrentPage(prog.lastPage)
+        // Restore page position: lastPage is 1-indexed from saveProgress,
+        // convert back to 0-indexed. Only restore if partially read (not at start or end).
+        if (prog && prog.lastPage > 1 && prog.lastPage < s.pages.length) {
+          // lastPage=3 means "saw up to page 3" → 0-indexed = page 2
+          setCurrentPage(prog.lastPage - 1)
         }
         setLoading(false)
         setPhase('reading')
@@ -344,6 +345,30 @@ export default function BookReaderScreen() {
   useEffect(() => {
     Animated.timing(progressAnim, { toValue: progress, duration: 400, useNativeDriver: false }).start()
   }, [progress])
+
+  // ── Auto-save progress on page change & unmount ──────────────────────────
+  // Use refs so the cleanup closure always has the latest values
+  const currentPageRef = useRef(currentPage)
+  const storyRef = useRef(story)
+  currentPageRef.current = currentPage
+  storyRef.current = story
+  useEffect(() => {
+    if (!story) return
+    // Don't save on initial mount (page 0) — only save when user actually advances
+    if (currentPage === 0) return
+    const pageNum = currentPage + 1          // 1-indexed "I've seen up to page N"
+    const total = story.pages.length
+    progressApi.saveProgress(story.id, pageNum, total).catch(() => { })
+
+    // On unmount: save final position (only if past page 0)
+    return () => {
+      const s = storyRef.current
+      const p = currentPageRef.current
+      if (s && p > 0) {
+        progressApi.saveProgress(s.id, p + 1, s.pages.length).catch(() => { })
+      }
+    }
+  }, [currentPage, story?.id])
 
   // ── Scroll to top on every page change ───────────────────────────────────
   useEffect(() => {

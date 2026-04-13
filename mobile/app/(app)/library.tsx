@@ -26,8 +26,19 @@ import { useAuth } from '../_layout'
 import { useDeviceLayout } from '../../src/hooks/useDeviceLayout'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000'
-const { width: SCREEN_W } = Dimensions.get('window')
-const CARD_W = (SCREEN_W - 48) / 2  // 2 columns with padding
+// Responsive grid helpers — computed inside components via useDeviceLayout
+function getColumnLayout(screenWidth: number) {
+  const padding = 20    // horizontal scroll‑view padding
+  const gap = 12        // gap between cards
+  let cols: number
+  if (screenWidth >= 1200) cols = 5
+  else if (screenWidth >= 900) cols = 4
+  else if (screenWidth >= 768) cols = 3
+  else cols = 2
+  const cardW = Math.min(200, Math.floor((screenWidth - padding * 2 - gap * (cols - 1)) / cols))
+  const coverH = cols >= 4 ? Math.round(cardW * 1.15) : Math.round(cardW * 1.3)
+  return { cols, cardW, coverH, gap }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Child { id: string; name: string; grade_level: number; avatar_url?: string }
@@ -138,12 +149,14 @@ function StudentPill({ child, isActive, onPress, index }: {
 }
 
 // ── Book Grid Card ─────────────────────────────────────────────────────────
-function BookGridCard({ entry, index, onDelete }: { entry: ShelfEntry; index: number; onDelete: (id: string) => void }) {
+function BookGridCard({ entry, index, onDelete, cardW, coverH }: {
+  entry: ShelfEntry; index: number; onDelete: (id: string) => void; cardW: number; coverH: number
+}) {
   const scale = useRef(new Animated.Value(1)).current
   const resolvedCover = entry.coverUrl?.startsWith('/static') ? `${API_URL}${entry.coverUrl}` : entry.coverUrl
   const accent = COVER_ACCENTS[index % COVER_ACCENTS.length]
   const gradeColor = GRADE_COLORS[entry.gradeLevel] ?? accent
-  const coverH = Math.round(CARD_W * 1.4)
+  const radius = cardW >= 160 ? 16 : 12
 
   const confirmDelete = () => Alert.alert('Remove Book', 'Remove from your library?', [
     { text: 'Cancel', style: 'cancel' },
@@ -151,24 +164,21 @@ function BookGridCard({ entry, index, onDelete }: { entry: ShelfEntry; index: nu
   ])
 
   return (
-    // Outer view is NOT a TouchableOpacity — the card and delete button are siblings
-    <Animated.View style={{ transform: [{ scale }], margin: 6, width: CARD_W }}>
-      {/* Tappable card body */}
+    <Animated.View style={{ transform: [{ scale }], width: cardW }}>
       <TouchableOpacity
         activeOpacity={0.92}
         onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start()}
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
         onPress={() => router.push(`/(app)/read/${entry.storyId}` as any)}
-        style={[styles.bookCard, { width: CARD_W, shadowColor: accent }]}
+        style={[styles.bookCard, { width: cardW, shadowColor: accent, borderRadius: radius }]}
       >
-        {/* Cover */}
-        <View style={{ width: CARD_W, height: coverH, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}>
-          <BookCover coverUrl={resolvedCover} fallbackIdx={index} width={CARD_W} height={coverH} />
+        <View style={{ width: cardW, height: coverH, borderTopLeftRadius: radius, borderTopRightRadius: radius, overflow: 'hidden' }}>
+          <BookCover coverUrl={resolvedCover} fallbackIdx={index} width={cardW} height={coverH} />
           <View style={[
             styles.bookBadge,
             { backgroundColor: entry.completed ? '#22c55e22' : '#702AE122', borderColor: entry.completed ? '#22c55e40' : '#702AE140' }
           ]}>
-            <Text style={{ fontSize: 9, color: entry.completed ? '#22c55e' : '#B28CFF', fontWeight: '800' }}>
+            <Text style={{ fontSize: 8, color: entry.completed ? '#22c55e' : '#B28CFF', fontWeight: '800' }}>
               {entry.completed ? '✅ Done' : entry.completionPct > 0 ? `📖 ${entry.completionPct}%` : '🆕 New'}
             </Text>
           </View>
@@ -179,15 +189,14 @@ function BookGridCard({ entry, index, onDelete }: { entry: ShelfEntry; index: nu
             backgroundColor: entry.completed ? '#22c55e' : accent,
           }]} />
         </View>
-        <View style={[styles.bookInfo, { paddingBottom: 8 }]}>
-          <Text style={styles.bookTitle} numberOfLines={2}>{entry.title}</Text>
-          <Text style={[styles.bookGrade, { color: gradeColor }]}>Grade {entry.gradeLevel}</Text>
+        <View style={[styles.bookInfo, { padding: 8, paddingBottom: 6 }]}>
+          <Text style={[styles.bookTitle, { fontSize: 11 }]} numberOfLines={2}>{entry.title}</Text>
+          <Text style={[styles.bookGrade, { fontSize: 10 }]}>Grade {entry.gradeLevel}</Text>
           {entry.log && <Stars count={entry.log.stars} />}
         </View>
       </TouchableOpacity>
 
-      {/* Action buttons OUTSIDE the card TouchableOpacity — fixes nested-touch issue */}
-      <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, paddingHorizontal: 4 }}>
+      <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, paddingHorizontal: 2 }}>
         {!entry.completed && (
           <TouchableOpacity
             onPress={() => router.push(`/(app)/read/${entry.storyId}` as any)}
@@ -200,7 +209,7 @@ function BookGridCard({ entry, index, onDelete }: { entry: ShelfEntry; index: nu
         )}
         <TouchableOpacity
           onPress={confirmDelete}
-          style={[styles.bookBtn, { backgroundColor: '#ef444415', borderColor: '#ef444435', paddingHorizontal: 14 }]}
+          style={[styles.bookBtn, { backgroundColor: '#ef444415', borderColor: '#ef444435', paddingHorizontal: 10 }]}
         >
           <Text style={[styles.bookBtnText, { color: '#ef4444' }]}>✕</Text>
         </TouchableOpacity>
@@ -242,6 +251,8 @@ function StatsStrip({ entries }: { entries: ShelfEntry[] }) {
 function StudentShelf({ child, onDeleteFromShelf }: { child: Child; onDeleteFromShelf?: (id: string) => void }) {
   const [entries, setEntries] = useState<ShelfEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const { width } = useDeviceLayout()
+  const { cols, cardW, coverH, gap } = getColumnLayout(width)
 
   useEffect(() => {
     setLoading(true)
@@ -326,24 +337,28 @@ function StudentShelf({ child, onDeleteFromShelf }: { child: Child; onDeleteFrom
     )
   }
 
+
+
   return (
     <>
       {entries.filter(e => e.completed).length > 0 && <StatsStrip entries={entries} />}
 
-      {/* 2-column grid via pairs */}
+      {/* Responsive grid */}
       {(() => {
         const rows: ShelfEntry[][] = []
-        for (let i = 0; i < entries.length; i += 2) {
-          rows.push(entries.slice(i, i + 2))
+        for (let i = 0; i < entries.length; i += cols) {
+          rows.push(entries.slice(i, i + cols))
         }
         return rows.map((row, rowIdx) => (
-          <View key={rowIdx} style={{ flexDirection: 'row', justifyContent: 'flex-start' }}>
+          <View key={rowIdx} style={{ flexDirection: 'row', gap, marginBottom: gap }}>
             {row.map((entry, colIdx) => (
               <BookGridCard
                 key={entry.storyId}
                 entry={entry}
-                index={rowIdx * 2 + colIdx}
+                index={rowIdx * cols + colIdx}
                 onDelete={handleDelete}
+                cardW={cardW}
+                coverH={coverH}
               />
             ))}
           </View>
@@ -516,34 +531,35 @@ export default function LibraryScreen() {
               </View>
             ) : (
               (() => {
+                const { cols: cCols, cardW: cCardW, coverH: cCoverH, gap: cGap } = getColumnLayout(Dimensions.get('window').width)
                 const rows: SavedBook[][] = []
-                for (let i = 0; i < savedBooks.length; i += 2) rows.push(savedBooks.slice(i, i + 2))
+                for (let i = 0; i < savedBooks.length; i += cCols) rows.push(savedBooks.slice(i, i + cCols))
                 return rows.map((row, rowIdx) => (
-                  <View key={rowIdx} style={{ flexDirection: 'row' }}>
+                  <View key={rowIdx} style={{ flexDirection: 'row', gap: cGap, marginBottom: cGap }}>
                     {row.map((book, colIdx) => {
                       const coverUrl = book.cover_media_url?.startsWith('/static')
                         ? `${API_URL}${book.cover_media_url}`
                         : book.cover_media_url
-                      const idx = rowIdx * 2 + colIdx
+                      const idx = rowIdx * cCols + colIdx
                       const accent = COVER_ACCENTS[idx % COVER_ACCENTS.length]
-                      const coverH = Math.round(CARD_W * 1.4)
+                      const radius = cCardW >= 160 ? 16 : 12
                       return (
-                        <Animated.View key={book.id} style={{ margin: 6 }}>
+                        <Animated.View key={book.id} style={{ width: cCardW }}>
                           <TouchableOpacity
-                            style={[styles.bookCard, { width: CARD_W, shadowColor: accent }]}
+                            style={[styles.bookCard, { width: cCardW, shadowColor: accent, borderRadius: radius }]}
                             onPress={() => router.push(`/(app)/read/${book.id}` as any)}
                             activeOpacity={0.9}
                           >
-                            <View style={{ width: CARD_W, height: coverH, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}>
-                              <BookCover coverUrl={coverUrl} fallbackIdx={idx} width={CARD_W} height={coverH} />
+                            <View style={{ width: cCardW, height: cCoverH, borderTopLeftRadius: radius, borderTopRightRadius: radius, overflow: 'hidden' }}>
+                              <BookCover coverUrl={coverUrl} fallbackIdx={idx} width={cCardW} height={cCoverH} />
                               <View style={[styles.bookBadge, { backgroundColor: '#2dd4bf22', borderColor: '#2dd4bf40' }]}>
-                                <Text style={{ fontSize: 9, color: '#2dd4bf', fontWeight: '800' }}>🌍 Community</Text>
+                                <Text style={{ fontSize: 8, color: '#2dd4bf', fontWeight: '800' }}>🌍 Community</Text>
                               </View>
                             </View>
-                            <View style={styles.bookInfo}>
-                              <Text style={styles.bookTitle} numberOfLines={2}>{book.title}</Text>
-                              <Text style={styles.bookGrade}>by {book.creator_name}</Text>
-                              <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                            <View style={[styles.bookInfo, { padding: 8 }]}>
+                              <Text style={[styles.bookTitle, { fontSize: 11 }]} numberOfLines={2}>{book.title}</Text>
+                              <Text style={[styles.bookGrade, { fontSize: 10 }]}>by {book.creator_name}</Text>
+                              <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
                                 <TouchableOpacity
                                   style={[styles.bookBtn, { backgroundColor: accent + '22', borderColor: accent + '40' }]}
                                   onPress={() => router.push(`/(app)/read/${book.id}` as any)}
@@ -674,7 +690,6 @@ const styles = StyleSheet.create({
   // ── Book Card ──
   bookCard: {
     backgroundColor: '#1a1a35',
-    borderRadius: 20,
     overflow: 'hidden',
     shadowOpacity: 0.28,
     shadowRadius: 10,

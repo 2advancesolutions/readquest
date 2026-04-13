@@ -93,4 +93,23 @@ async def get_session():
         yield session
 
 
+# ── Supabase REST client (for reading_progress, storage, etc.) ──────────────
 supabase_client = None
+try:
+    from supabase import create_client
+    # Extract project ref from DATABASE_URL (db.<ref>.supabase.co)
+    import re
+    ref_match = re.search(r'db\.([a-z]+)\.supabase\.co', settings.DATABASE_URL)
+    if ref_match and settings.SUPABASE_SERVICE_KEY:
+        supabase_url = f"https://{ref_match.group(1)}.supabase.co"
+        supabase_client = create_client(supabase_url, settings.SUPABASE_SERVICE_KEY)
+        print(f"[database] Supabase client initialized: {supabase_url}")
+    elif settings.SUPABASE_SERVICE_KEY:
+        # Fallback: try SUPABASE_ANON_KEY config pattern
+        print("[database] Could not extract Supabase URL from DATABASE_URL — supabase_client is None")
+    else:
+        print("[database] No SUPABASE_SERVICE_KEY — supabase_client is None")
+except ImportError:
+    print("[database] supabase package not installed — supabase_client is None")
+except Exception as e:
+    print(f"[database] Failed to initialize Supabase client: {e}")

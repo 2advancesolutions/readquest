@@ -27,6 +27,18 @@ import SynonymShowdown from '../../../src/games/SynonymShowdown'
 import GrammarGalaxy from '../../../src/games/GrammarGalaxy'
 import SpeedReader from '../../../src/games/SpeedReader'
 import ContextClues from '../../../src/games/ContextClues'
+// K-grade games (from Starfall PDF curriculum)
+import LongYSorter from '../../../src/games/LongYSorter'
+import CompoundWordBuilder from '../../../src/games/CompoundWordBuilder'
+import OppositeFinder from '../../../src/games/OppositeFinder'
+import SentenceEnder from '../../../src/games/SentenceEnder'
+import SightWordFill from '../../../src/games/SightWordFill'
+import LetterTracerGame from '../../../src/games/LetterTracerGame'
+// 1st Grade games (from MagneticReading + SpringComprehension PDFs)
+import SightWordSpotter from '../../../src/games/SightWordSpotter'
+import PluralMaker from '../../../src/games/PluralMaker'
+import ShortVowelFill from '../../../src/games/ShortVowelFill'
+import StoryQuiz from '../../../src/games/StoryQuiz'
 
 const TOTAL_QUESTIONS = 8
 const MAX_LIVES = 3
@@ -40,6 +52,18 @@ const COLORS: Record<string, { c1: string; c2: string }> = {
   grammar:  { c1: '#A18CD1', c2: '#FBC2EB' },
   speed:    { c1: '#FF9A9E', c2: '#FECFEF' },
   context:  { c1: '#667EEA', c2: '#764BA2' },
+  // K-grade
+  longy:    { c1: '#EF4444', c2: '#3B82F6' },
+  compound: { c1: '#10B981', c2: '#34D399' },
+  opposite: { c1: '#F97316', c2: '#FBBF24' },
+  ender:    { c1: '#06B6D4', c2: '#22D3EE' },
+  sightfill:{ c1: '#8B5CF6', c2: '#A78BFA' },
+  tracer:    { c1: '#FF6B9D', c2: '#FEE140' },
+  // 1st Grade
+  spotter:   { c1: '#F59E0B', c2: '#FCD34D' },
+  plural:    { c1: '#10B981', c2: '#6EE7B7' },
+  vowelfill: { c1: '#EF4444', c2: '#FCA5A5' },
+  storyquiz: { c1: '#8B5CF6', c2: '#C4B5FD' },
 }
 
 const GAME_NAMES: Record<string, string> = {
@@ -51,6 +75,18 @@ const GAME_NAMES: Record<string, string> = {
   grammar:  '🪐 Grammar Galaxy',
   speed:    '⚡ Speed Reader',
   context:  '🔍 Context Clues',
+  // K-grade
+  longy:    '🎨 Long Y Sorter',
+  compound: '🧩 Compound Builder',
+  opposite: '🔄 Opposite Finder',
+  ender:    '❓ Sentence Ender',
+  sightfill:'📝 Sight Word Fill',
+  tracer:    '✏️ Letter Tracer',
+  // 1st Grade
+  spotter:   '⭐ Sight Word Spotter',
+  plural:    '🔢 Plural Maker',
+  vowelfill: '🎯 Short Vowel Fill',
+  storyquiz: '📖 Story Quiz',
 }
 
 type Phase = 'playing' | 'complete' | 'failed'
@@ -101,7 +137,7 @@ export default function GamePlayScreen() {
         setReady(true)
       })
     })
-    storage.get<number>('readquest_xp').then(v => { xpRef.current = v ?? 0 })
+    storage.get<number>('readquest_student_xp').then(v => { xpRef.current = v ?? 0 })
   }, [game])
 
   useEffect(() => {
@@ -131,20 +167,27 @@ export default function GamePlayScreen() {
     setXpEarned(newXp)
     setStreak(s => s + 1)
 
+    // ── Award XP immediately per correct answer ──────────────────────
+    xpRef.current += xp
+    emitXpUpdate(xpRef.current, xp)   // badge animates now, storage saved
+
     const next = qIndex + 1
     if (next >= TOTAL_QUESTIONS) {
       const bonus = calcLevelBonus(level)
-      const total = newXp + bonus
       const stars = mistakes === 0 ? 3 : mistakes <= 2 ? 2 : 1
       setStarsEarned(stars)
-      setXpEarned(total)
+      setXpEarned(newXp + bonus)
       await saveStars(game, grade, level, stars)
       const nextLevel = Math.min(level + 1, 100)
       await saveGameLevel(game, grade, nextLevel)
       storage.getString('readquest_student_id').then(sid => {
         if (sid) gameProgressApi.upsert(sid, game, grade, nextLevel, stars).catch(() => {})
       })
-      emitXpUpdate(xpRef.current + total, total)
+      // Emit level-completion bonus XP
+      if (bonus > 0) {
+        xpRef.current += bonus
+        emitXpUpdate(xpRef.current, bonus)
+      }
       Animated.stagger(180, starAnims.map(a =>
         Animated.spring(a, { toValue: 1, useNativeDriver: true })
       )).start()
@@ -201,6 +244,18 @@ export default function GamePlayScreen() {
       case 'grammar':  return <GrammarGalaxy  {...sharedProps} />
       case 'speed':    return <SpeedReader    {...sharedProps} />
       case 'context':  return <ContextClues   {...sharedProps} />
+      // K-grade games
+      case 'longy':    return <LongYSorter        {...sharedProps} />
+      case 'compound': return <CompoundWordBuilder {...sharedProps} />
+      case 'opposite': return <OppositeFinder      {...sharedProps} />
+      case 'ender':    return <SentenceEnder        {...sharedProps} />
+      case 'sightfill':return <SightWordFill        {...sharedProps} />
+      case 'tracer':   return <LetterTracerGame     {...sharedProps} />
+      // 1st Grade games
+      case 'spotter':  return <SightWordSpotter      {...sharedProps} />
+      case 'plural':   return <PluralMaker            {...sharedProps} />
+      case 'vowelfill':return <ShortVowelFill         {...sharedProps} />
+      case 'storyquiz':return <StoryQuiz              {...sharedProps} />
       default:         return <RhymeTime {...sharedProps} />
     }
   }

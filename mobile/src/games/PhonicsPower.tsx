@@ -4,9 +4,10 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native'
-import { googleSpeak, googleStop } from '../lib/tts'
+import { googleStop } from '../lib/tts'
 import { getPhonicItems, shuffle, type PhonicsItem } from '../data/wordBanks'
 import { sfx, isSfxMuted, playTileSelect, playCorrectChime, playWrongBuzz } from '../lib/gameAudio'
+import TapToHearButton from '../components/TapToHearButton'
 
 interface Props {
   grade: number
@@ -24,9 +25,7 @@ export default function PhonicsPower({ grade, level, onCorrect, onWrong, questio
   const [choices, setChoices] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [revealed, setRevealed] = useState(false)
-  const [playing, setPlaying] = useState(false)
 
-  const speakerScale = useRef(new Animated.Value(1)).current
   const scaleAnims = useRef([0, 1, 2, 3].map(() => new Animated.Value(1))).current
 
   const loadQuestion = useCallback(() => {
@@ -36,37 +35,9 @@ export default function PhonicsPower({ grade, level, onCorrect, onWrong, questio
     setChoices(shuffle(q.choices))
     setSelected(null)
     setRevealed(false)
-    setPlaying(false)
   }, [grade, level, questionIndex])
 
   useEffect(() => { loadQuestion() }, [loadQuestion])
-
-  // Auto-play on load
-  useEffect(() => {
-    if (item) {
-      const t = setTimeout(() => speakPrompt(item.prompt), 600)
-      return () => clearTimeout(t)
-    }
-  }, [item])
-
-  const speakPrompt = async (text: string) => {
-    if (isSfxMuted()) return
-    try {
-      void googleStop()
-      setPlaying(true)
-      // Animate speaker ring
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(speakerScale, { toValue: 1.15, duration: 400, useNativeDriver: true }),
-          Animated.timing(speakerScale, { toValue: 1, duration: 400, useNativeDriver: true }),
-        ]),
-        { iterations: 3 }
-      ).start()
-      await googleSpeak(text, 'word', () => setPlaying(false))
-    } catch {
-      setPlaying(false)
-    }
-  }
 
   const handleChoice = (answer: string, idx: number) => {
     if (revealed || !item) return
@@ -94,16 +65,13 @@ export default function PhonicsPower({ grade, level, onCorrect, onWrong, questio
     <View style={styles.root}>
       <Text style={styles.instruction}>Listen to the sound — tap the matching letters</Text>
 
-      {/* Speaker button */}
-      <Animated.View style={{ transform: [{ scale: speakerScale }] }}>
-        <TouchableOpacity
-          style={[styles.speakerBtn, { backgroundColor: `${colors.c1}22`, borderColor: colors.c1 }]}
-          onPress={() => item && speakPrompt(item.prompt)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.speakerEmoji}>{playing ? '🔊' : '🔉'}</Text>
-        </TouchableOpacity>
-      </Animated.View>
+      {/* Big round sonar speaker button */}
+      <TapToHearButton
+        text={item.prompt}
+        colors={colors}
+        size={110}
+        label="👆 Tap to hear the sound!"
+      />
 
       {/* Word hint */}
       <View style={[styles.wordHint, { borderColor: `${colors.c1}44` }]}>
@@ -135,13 +103,6 @@ export default function PhonicsPower({ grade, level, onCorrect, onWrong, questio
         })}
       </View>
 
-      {/* Hear again button */}
-      <TouchableOpacity
-        onPress={() => item && speakPrompt(item.prompt)}
-        style={styles.hearAgainBtn}
-      >
-        <Text style={styles.hearAgainText}>🔁 Hear Again</Text>
-      </TouchableOpacity>
     </View>
   )
 }
@@ -149,11 +110,6 @@ export default function PhonicsPower({ grade, level, onCorrect, onWrong, questio
 const styles = StyleSheet.create({
   root: { alignItems: 'center', paddingHorizontal: 16, gap: 18 },
   instruction: { color: 'rgba(204,195,216,0.7)', fontSize: 14, fontWeight: '600', textAlign: 'center' },
-  speakerBtn: {
-    width: 90, height: 90, borderRadius: 45, borderWidth: 2,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  speakerEmoji: { fontSize: 38 },
   wordHint: {
     borderWidth: 1, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10,
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -165,9 +121,4 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', minWidth: 70,
   },
   tileText: { fontSize: 22, fontWeight: '800', letterSpacing: 1 },
-  hearAgainBtn: {
-    borderWidth: 1, borderColor: 'rgba(250,112,154,0.3)', borderRadius: 99,
-    paddingHorizontal: 20, paddingVertical: 8,
-  },
-  hearAgainText: { color: 'rgba(204,195,216,0.5)', fontSize: 13 },
 })

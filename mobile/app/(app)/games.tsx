@@ -33,9 +33,21 @@ const GAMES: GameDef[] = [
   { id: 'phonics',  emoji: '🔊', title: 'Phonics Power',       desc: 'Hear a sound — tap the matching letters!',            grades: 'Grades K–2', minGrade: 0, color1: '#FA709A', color2: '#FEE140' },
   { id: 'vocab',    emoji: '🔐', title: 'Vocabulary Vault',    desc: 'Match words to definitions to unlock the vault',      grades: 'Grades 1–8', minGrade: 1, color1: '#43E97B', color2: '#38F9D7' },
   { id: 'synonym',  emoji: '⚔️', title: 'Synonym Showdown',   desc: 'Beat the clock — find synonyms & antonyms!',         grades: 'Grades 2–8', minGrade: 2, color1: '#F093FB', color2: '#F5576C' },
-  { id: 'grammar',  emoji: '🪐', title: 'Grammar Galaxy',      desc: 'Fix sentences to save the galaxy!',                  grades: 'Grades 2–8', minGrade: 2, color1: '#A18CD1', color2: '#FBC2EB' },
+  { id: 'grammar',  emoji: '🪐', title: 'Grammar Galaxy',      desc: 'Fix sentences to save the galaxy!',                  grades: 'Grades K–8', minGrade: 0, color1: '#A18CD1', color2: '#FBC2EB' },
   { id: 'speed',    emoji: '⚡', title: 'Speed Reader',        desc: 'Read fast, answer faster — test your memory!',       grades: 'Grades 3–8', minGrade: 3, color1: '#FF9A9E', color2: '#FECFEF' },
   { id: 'context',  emoji: '🔍', title: 'Context Clues',       desc: 'Crack the mystery word from sentence clues',         grades: 'Grades 3–8', minGrade: 3, color1: '#667EEA', color2: '#764BA2' },
+  // ── New K-grade games (from Starfall PDF curriculum) ────────────────────────
+  { id: 'longy',    emoji: '🎨', title: 'Long Y Sorter',       desc: 'Does Y sound like eye or ee? Sort them!',            grades: 'Grade K',    minGrade: 0, color1: '#EF4444', color2: '#3B82F6' },
+  { id: 'compound', emoji: '🧩', title: 'Compound Builder',    desc: 'Tap two words to build a brand new word!',           grades: 'Grades K–1', minGrade: 0, color1: '#10B981', color2: '#34D399' },
+  { id: 'opposite', emoji: '🔄', title: 'Opposite Finder',     desc: 'Find the opposite of every word!',                   grades: 'Grades K–1', minGrade: 0, color1: '#F97316', color2: '#FBBF24' },
+  { id: 'ender',    emoji: '❓', title: 'Sentence Ender',       desc: 'Pick the right . ? ! to end each sentence',          grades: 'Grade K',    minGrade: 0, color1: '#06B6D4', color2: '#22D3EE' },
+  { id: 'sightfill',emoji: '📝', title: 'Sight Word Fill',     desc: 'Fill the blank — pick the missing word!',            grades: 'Grades K–1', minGrade: 0, color1: '#8B5CF6', color2: '#A78BFA' },
+  { id: 'tracer',   emoji: '✏️', title: 'Letter Tracer',      desc: 'Draw letters with crayons on the canvas!',           grades: 'Grade K',    minGrade: 0, color1: '#FF6B9D', color2: '#FEE140' },
+  // ── 1st Grade games (from MagneticReading + SpringComprehension PDFs) ────────
+  { id: 'spotter',  emoji: '⭐', title: 'Sight Word Spotter', desc: 'Fill in the missing letter of the sight word!',      grades: 'Grade 1',    minGrade: 1, color1: '#F59E0B', color2: '#FCD34D' },
+  { id: 'plural',   emoji: '🔢', title: 'Plural Maker',       desc: 'Add –s to make more than one! bag → bags',          grades: 'Grade 1',    minGrade: 1, color1: '#10B981', color2: '#6EE7B7' },
+  { id: 'vowelfill',emoji: '🎯', title: 'Short Vowel Fill',   desc: 'Pick the short vowel that fits: c_t → cat!',        grades: 'Grades 1–2', minGrade: 1, color1: '#EF4444', color2: '#FCA5A5' },
+  { id: 'storyquiz',emoji: '📖', title: 'Story Quiz',         desc: 'Read the passage then answer 3 questions!',         grades: 'Grades 1–3', minGrade: 1, color1: '#8B5CF6', color2: '#C4B5FD' },
 ]
 
 const GRADE_LABELS = ['K', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th']

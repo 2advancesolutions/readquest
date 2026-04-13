@@ -24,8 +24,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { storage } from '../../src/lib/storage'
 import { spellingApi } from '../../src/lib/api'
 import type { SpellingWordOut, AttemptResultOut } from '../../src/lib/api'
-import { emitXpUpdate } from '../../src/components/XpBadge'
+import { emitXpUpdate, getStoredXp } from '../../src/components/XpBadge'
 import { onMuteChange } from '../../src/components/MuteButton'
+import TapToHearButton from '../../src/components/TapToHearButton'
 
 type Phase    = 'select' | 'game' | 'summary'
 type GameMode = 'bee' | 'blanks' | 'scramble'
@@ -59,19 +60,29 @@ function SpellingBeeMode({ word, onSubmit, disabled }: { word: SpellingWordOut; 
   const ref = useRef<TextInput>(null)
   useEffect(() => { setAnswer(''); setTimeout(() => ref.current?.focus(), 300) }, [word.word])
 
+  // Purple theme matching Spotter
+  const c = { c1: '#B28CFF', c2: '#702AE1' }
+
   return (
-    <View style={{ alignItems:'center', paddingHorizontal:16 }}>
-      <Text style={{ color:'#8a7aaa', fontSize:13, marginBottom:8 }}>Listen and spell the word:</Text>
-      <TouchableOpacity onPress={() => speak(`Spell this word: ${word.word}`)}>
-        <View style={{ backgroundColor:'#702AE120', borderRadius:40, padding:14, marginBottom:12 }}>
-          <Text style={{ color:'#B28CFF', fontSize:28 }}>🔊</Text>
-        </View>
-      </TouchableOpacity>
+    <View style={{ alignItems:'center', paddingHorizontal:16, gap:14 }}>
+      <Text style={{ color:'#8a7aaa', fontSize:13, fontWeight:'600' }}>Listen carefully — then spell it!</Text>
+
+      {/* Big TapToHear button */}
+      <TapToHearButton
+        text={`Spell this word: ${word.word}`}
+        colors={c}
+        size={108}
+        label="👆 Tap to hear the word!"
+        autoPlay
+      />
+
       {word.definition && (
-        <Text style={{ color:'#8a7aaa', fontSize:13, textAlign:'center', marginBottom:10, paddingHorizontal:8 }}>
-          Hint: {word.definition}
-        </Text>
+        <View style={{ backgroundColor:'#1a1232', borderRadius:12, paddingHorizontal:16, paddingVertical:10, borderWidth:1, borderColor:'#2a2a4a', width:'100%' }}>
+          <Text style={{ color:'#8a7aaa', fontSize:12, textAlign:'center' }}>💡 Hint: {word.definition}</Text>
+        </View>
       )}
+
+      {/* Answer input */}
       <TextInput
         ref={ref}
         value={answer}
@@ -84,15 +95,15 @@ function SpellingBeeMode({ word, onSubmit, disabled }: { word: SpellingWordOut; 
         editable={!disabled}
         returnKeyType="done"
         style={{
-          backgroundColor:'#1a1a35', borderRadius:12, borderWidth:1, borderColor:'#702AE1',
+          backgroundColor:'#1a1a35', borderRadius:14, borderWidth:2, borderColor:'#702AE1',
           color:'#fff', fontSize:22, fontWeight:'800', textAlign:'center',
-          padding:14, width:'100%', marginBottom:14, letterSpacing:4,
+          padding:14, width:'100%', letterSpacing:4,
         }}
       />
       <TouchableOpacity
         onPress={() => { if (answer.trim()) { Keyboard.dismiss(); onSubmit(answer.trim().toLowerCase()) } }}
         disabled={disabled || !answer.trim()}
-        style={{ backgroundColor: answer.trim() ? '#702AE1' : '#2a2a4a', borderRadius:14, paddingHorizontal:32, paddingVertical:13 }}
+        style={{ backgroundColor: answer.trim() ? '#702AE1' : '#2a2a4a', borderRadius:14, paddingHorizontal:36, paddingVertical:14, width:'100%', alignItems:'center' }}
       >
         <Text style={{ color:'#fff', fontWeight:'800', fontSize:16 }}>Submit ✓</Text>
       </TouchableOpacity>
@@ -170,6 +181,8 @@ function ScrambleMode({ word, onSubmit, disabled }: { word: SpellingWordOut; onS
   const [selected, setSelected] = useState<string[]>([])
   useEffect(() => { setTiles(scramble(word.word).map(l=>({letter:l,used:false}))); setSelected([]) }, [word.word])
 
+  const c = { c1: '#B28CFF', c2: '#702AE1' }
+
   const addLetter = (idx: number) => {
     if (tiles[idx].used) return
     const next = [...tiles]; next[idx].used = true; setTiles(next)
@@ -180,31 +193,76 @@ function ScrambleMode({ word, onSubmit, disabled }: { word: SpellingWordOut; onS
   const clearAll = () => { setTiles(scramble(word.word).map(l=>({letter:l,used:false}))); setSelected([]) }
 
   return (
-    <View style={{ alignItems:'center', paddingHorizontal:16 }}>
-      <Text style={{ color:'#8a7aaa', fontSize:13, marginBottom:8 }}>Tap letters to spell the word:</Text>
-      {/* Answer row */}
-      <View style={{ flexDirection:'row', marginBottom:20, minHeight:48, gap:6, flexWrap:'wrap', justifyContent:'center' }}>
-        {selected.map((l,i) => (
-          <View key={i} style={{ width:36, height:44, backgroundColor:'#702AE1', borderRadius:8, alignItems:'center', justifyContent:'center' }}>
-            <Text style={{ color:'#fff', fontSize:20, fontWeight:'800' }}>{l}</Text>
-          </View>
-        ))}
-        {selected.length === 0 && <Text style={{ color:'#3a3a5a', fontSize:13, alignSelf:'center' }}>Tap letters below…</Text>}
-      </View>
-      {/* Letter bank */}
-      <View style={{ flexDirection:'row', flexWrap:'wrap', justifyContent:'center', gap:8, marginBottom:16 }}>
-        {tiles.map((t,i) => (
-          <TouchableOpacity key={i} onPress={() => addLetter(i)} disabled={t.used||disabled}>
-            <View style={{ width:44, height:52, backgroundColor: t.used ? '#1a1a35' : '#2a2a4a',
-              borderRadius:10, borderWidth:1, borderColor: t.used ? '#1a1a35' : '#4a4a6a',
-              alignItems:'center', justifyContent:'center', opacity: t.used ? 0.3 : 1 }}>
-              <Text style={{ color:'#fff', fontSize:22, fontWeight:'800' }}>{t.letter}</Text>
+    <View style={{ alignItems:'center', paddingHorizontal:16, gap:14 }}>
+      <Text style={{ color:'#8a7aaa', fontSize:13, fontWeight:'600' }}>Tap letters to spell the word:</Text>
+
+      {/* TapToHear button */}
+      <TapToHearButton
+        text={word.word}
+        colors={c}
+        size={100}
+        label="👆 Tap to hear!"
+        autoPlay
+      />
+
+      {/* Answer row — underlined boxes like SightWordSpotter */}
+      <View style={{
+        flexDirection:'row', gap:6, minHeight:58, flexWrap:'wrap',
+        justifyContent:'center',
+        backgroundColor:'#1a1232', borderRadius:16, borderWidth:2,
+        borderColor:'#702AE150', paddingHorizontal:16, paddingVertical:12,
+        width:'100%',
+      }}>
+        {word.word.split('').map((_, i) => {
+          const letter = selected[i]
+          return (
+            <View key={i} style={{
+              width:38, height:48, alignItems:'center', justifyContent:'flex-end',
+              borderBottomWidth:3,
+              borderBottomColor: letter ? '#B28CFF' : '#2a2a4a',
+              paddingBottom:4,
+            }}>
+              <Text style={{ color:'#fff', fontSize:26, fontWeight:'900' }}>{letter ?? ''}</Text>
             </View>
+          )
+        })}
+        {selected.length === 0 && (
+          <Text style={{ color:'#3a3a5a', fontSize:12, alignSelf:'center', position:'absolute' }}>Tap letters below…</Text>
+        )}
+      </View>
+
+      {/* Letter bank — styled like Spotter's choice tiles */}
+      <View style={{ flexDirection:'row', flexWrap:'wrap', justifyContent:'center', gap:9 }}>
+        {tiles.map((t,i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => addLetter(i)}
+            disabled={t.used || disabled}
+            style={{
+              width:52, height:58,
+              backgroundColor: t.used ? '#12112a' : '#1a1a35',
+              borderRadius:13, borderWidth:2,
+              borderColor: t.used ? '#1e1b36' : '#702AE180',
+              alignItems:'center', justifyContent:'center',
+              opacity: t.used ? 0.25 : 1,
+            }}
+            activeOpacity={0.75}
+          >
+            <Text style={{ color:'#B28CFF', fontSize:24, fontWeight:'900' }}>{t.letter}</Text>
           </TouchableOpacity>
         ))}
       </View>
-      <TouchableOpacity onPress={clearAll} disabled={disabled}>
-        <Text style={{ color:'#6b5d80', fontSize:13, fontWeight:'600' }}>🔄 Reset</Text>
+
+      {/* Reset */}
+      <TouchableOpacity
+        onPress={clearAll}
+        disabled={disabled}
+        style={{
+          borderWidth:1, borderColor:'#702AE150', borderRadius:99,
+          paddingHorizontal:22, paddingVertical:8,
+        }}
+      >
+        <Text style={{ color:'#6b5d80', fontSize:13, fontWeight:'700' }}>🔄 Reset</Text>
       </TouchableOpacity>
     </View>
   )
@@ -237,7 +295,7 @@ export default function SpellingArenaScreen() {
     storage.getString('readquest_student_grade').then(g => {
       if (g) setStudentGrade(parseInt(g, 10))
     })
-    storage.get<number>('readquest_xp').then(v => { xpRef.current = v ?? 0 })
+    getStoredXp().then(v => { xpRef.current = v })
   }, [])
 
   // Stop speech immediately when user taps the global mute button
@@ -430,7 +488,7 @@ export default function SpellingArenaScreen() {
           </View>
 
           {/* Mode label */}
-          <View style={{ alignItems:'center', marginBottom:16 }}>
+          <View style={{ alignItems:'center', marginBottom:8 }}>
             <View style={{ backgroundColor:'#702AE120', borderRadius:20, paddingHorizontal:14, paddingVertical:5 }}>
               <Text style={{ color:'#B28CFF', fontSize:12, fontWeight:'700' }}>
                 {mode === 'bee' ? '🐝 Spelling Bee' : mode === 'blanks' ? '⬜ Fill in Blanks' : '🔀 Word Scramble'}
@@ -442,13 +500,6 @@ export default function SpellingArenaScreen() {
           {mode === 'bee'     && <SpellingBeeMode  word={current} onSubmit={handleAnswer} disabled={submitting} />}
           {mode === 'blanks'  && <FillBlanksMode   word={current} onSubmit={handleAnswer} disabled={submitting} />}
           {mode === 'scramble'&& <ScrambleMode      word={current} onSubmit={handleAnswer} disabled={submitting} />}
-
-          {/* Read aloud */}
-          <View style={{ alignItems:'center', marginTop:16 }}>
-            <TouchableOpacity onPress={() => speak(`The word is: ${current.word}`)}>
-              <Text style={{ color:'#6b5d80', fontSize:13 }}>🔊 Hear the word again</Text>
-            </TouchableOpacity>
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     )

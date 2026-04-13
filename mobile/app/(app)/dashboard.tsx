@@ -25,7 +25,7 @@ import { supabase } from '../../src/lib/supabase'
 import { storage } from '../../src/lib/storage'
 import { storiesApi, rewardsApi, roadmapApi } from '../../src/lib/api'
 import type { RoadmapOut, RoadmapGameItem } from '../../src/lib/api'
-import { emitXpUpdate, XpChip } from '../../src/components/XpBadge'
+import { emitXpUpdate } from '../../src/components/XpBadge'
 import { LikesChip } from '../../src/components/LikesBadge'
 import StudentDropdown from '../../src/components/StudentDropdown'
 import type { Child } from '../../src/components/StudentDropdown'
@@ -308,13 +308,27 @@ export default function DashboardScreen() {
 
   async function enrichWithLocalProgress(list: StoryItem[], studentId: string): Promise<StoryItem[]> {
     return Promise.all(list.map(async s => {
+      // Backend already returns progress_pct and completed_at from reading_progress table.
+      // Completed books from backend should always be 100%.
+      const backendPct = s.progress_pct ?? 0
+      const isCompleted = !!s.completed_at
+
+      // Check local storage for potentially newer progress (offline-first)
       const stored = await storage.get<{ lastPage: number; totalPages: number }>(
         `rq_progress_${studentId}_${s.id}`
       )
-      if (!stored) return s
-      const { lastPage, totalPages } = stored
-      const pct = totalPages > 0 ? Math.round((lastPage / totalPages) * 100) : 0
-      return { ...s, progress_pct: pct, completed_at: pct >= 100 ? s.completed_at || 'completed' : s.completed_at }
+      let localPct = 0
+      if (stored && stored.totalPages > 0) {
+        localPct = Math.min(Math.round((stored.lastPage / stored.totalPages) * 100), 100)
+      }
+
+      // Use whichever is higher — backend or local
+      const finalPct = isCompleted ? 100 : Math.max(backendPct, localPct)
+      return {
+        ...s,
+        progress_pct: finalPct,
+        completed_at: isCompleted ? s.completed_at : (finalPct >= 100 ? 'completed' : s.completed_at),
+      }
     }))
   }
 
@@ -396,14 +410,13 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Row 2: XP chip + Likes chip + Student switcher */}
+        {/* Row 2: Likes chip + Student switcher */}
         <View style={[styles.headerRow2, { zIndex: 60, elevation: 60 }]}>
-          <XpChip />
           <LikesChip />
           <View style={{ flex: 1 }} />
           {!childrenLoading && children.length > 0 && (
             <StudentDropdown
-              children={children}
+              students={children}
               selected={selectedChild}
               onChange={selectChild}
               allowAll={children.length > 1}
@@ -424,8 +437,36 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#702AE1" />}
       >
         {/* ─ Hero Stats Row ─ */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
           <HeroStats rewards={rewards} />
+        </View>
+
+        {/* ─ Generate Story CTA ─ */}
+        <TouchableOpacity
+          style={styles.generateCta}
+          activeOpacity={0.88}
+          onPress={() => router.push('/(app)/generate' as any)}
+        >
+          <View style={styles.generateCtaIcon}>
+            <Text style={{ fontSize: 26 }}>✨</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.generateCtaTitle}>Generate New Story</Text>
+            <Text style={styles.generateCtaSub}>AI creates a personalized adventure for your child</Text>
+          </View>
+          <Text style={{ color: '#fff', fontSize: 18, opacity: 0.6 }}>→</Text>
+        </TouchableOpacity>
+
+        {/* Small secondary actions */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 16, marginBottom: 24, gap: 10 }}>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            activeOpacity={0.85}
+            onPress={() => router.push('/(app)/community' as any)}
+          >
+            <Text style={{ fontSize: 16 }}>🌍</Text>
+            <Text style={styles.secondaryBtnText}>Community Books</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ─ Continue Reading / Featured Books ─ */}
@@ -445,15 +486,6 @@ export default function DashboardScreen() {
               {featuredStories.slice(0, 6).map((story, i) => (
                 <FeaturedBookCard key={story.id} story={story} index={i} />
               ))}
-              {/* "New story" card */}
-              <TouchableOpacity
-                onPress={() => router.push('/(app)/generate' as any)}
-                style={styles.newStoryCard}
-                activeOpacity={0.8}
-              >
-                <Text style={{ fontSize: 36, marginBottom: 8 }}>✨</Text>
-                <Text style={styles.newStoryText}>Generate New Story</Text>
-              </TouchableOpacity>
             </ScrollView>
           ) : (
             <TouchableOpacity
@@ -487,21 +519,6 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         )}
-
-        {/* ─ Quick Create ─ */}
-        <View style={{ marginBottom: 28 }}>
-          <View style={{ paddingHorizontal: 16 }}>
-            <SectionHeader title="✨ Create" />
-          </View>
-          <View style={{ flexDirection: 'row', paddingHorizontal: 11 }}>
-            <QuickCard emoji="✨" title="Story" desc="AI writes your adventure" accent="#702AE1"
-              onPress={() => router.push('/(app)/generate' as any)} />
-            <QuickCard emoji="🎨" title="Character" desc="Design your hero avatar" accent="#EC4899"
-              onPress={() => router.push('/(app)/character-studio' as any)} />
-            <QuickCard emoji="🎬" title="Movie" desc="Animate your stories" accent="#F59E0B"
-              onPress={() => router.push('/(app)/movie-studio' as any)} />
-          </View>
-        </View>
 
         {/* ─ Learning Roadmap ─ */}
         <View style={{ marginBottom: 28 }}>
@@ -962,5 +979,60 @@ const styles = StyleSheet.create({
     color: '#69537B',
     fontSize: 11,
     textAlign: 'center',
+  },
+
+  // ── Generate Story CTA ──
+  generateCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    backgroundColor: '#702AE1',
+    shadowColor: '#702AE1',
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    gap: 14,
+  },
+  generateCtaIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  generateCtaTitle: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    marginBottom: 2,
+  },
+  generateCtaSub: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  secondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#1a1a35',
+    borderWidth: 1,
+    borderColor: '#2a2a50',
+  },
+  secondaryBtnText: {
+    color: '#ADA3B8',
+    fontSize: 12,
+    fontWeight: '700',
   },
 })

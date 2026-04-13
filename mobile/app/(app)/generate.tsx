@@ -19,7 +19,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Animated,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Modal,
+  Linking, Alert,
 } from 'react-native'
 import type { ImageSourcePropType } from 'react-native'
 import { Image } from 'expo-image'
@@ -30,10 +31,11 @@ import * as ImagePicker from 'expo-image-picker'
 import { googleSpeak, googleStop } from '../../src/lib/tts'
 
 import { storage } from '../../src/lib/storage'
-import { storiesApi } from '../../src/lib/api'
+import { storiesApi, subscriptionApi, type ParentUsage } from '../../src/lib/api'
 import { useAuth } from '../_layout'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { onMuteChange } from '../../src/components/MuteButton'
+import { refreshStoriesBadge } from '../../src/components/StoriesBadge'
 import { CHAR_ICONS } from '../../src/data/characterAssets'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -338,6 +340,102 @@ function StepBar({ step }: { step: Step }) {
   )
 }
 
+// ── Out-of-tokens bottom sheet ────────────────────────────────────────────
+function OutOfTokensModal({ visible, usage, onClose }: {
+  visible: boolean; usage: ParentUsage | null; onClose: () => void
+}) {
+  const used  = usage?.stories_used_this_period ?? 0
+  const limit = usage?.stories_limit ?? 6
+  const pct   = Math.min(1, used / Math.max(1, limit))
+
+  const size = 90
+  const strokeWidth = 10
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const strokeDash = circumference * (1 - pct)
+
+  const packs = [
+    { id: 'pack_5',  label: '⚡ Boost',  price: 5,  stories: 6,  desc: '6 more stories' },
+    { id: 'pack_10', label: '🔥 Power',  price: 10, stories: 12, desc: '12 more stories' },
+  ]
+  const upgrades = [
+    { slug: 'grow',  label: '🌿 Grow',  price: 15, stories: 12, badge: '' },
+    { slug: 'read',  label: '📖 Read',  price: 20, stories: 18, badge: '⭐ Popular' },
+    { slug: 'excel', label: '🎓 Excel', price: 25, stories: 25, badge: '' },
+  ]
+
+  const Svg = require('react-native-svg').Svg
+  const Circle = require('react-native-svg').Circle
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: '#0d0d1f', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 44 }}>
+
+          {/* Header */}
+          <View style={{ alignItems: 'center', marginBottom: 18 }}>
+            <Text style={{ color: '#ef4444', fontSize: 17, fontWeight: '900', marginBottom: 2 }}>🔒 Monthly Limit Reached</Text>
+            <Text style={{ color: '#6b5d80', fontSize: 12 }}>You've used all your stories for this month</Text>
+          </View>
+
+          {/* Donut */}
+          <View style={{ alignItems: 'center', marginBottom: 20 }}>
+            <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+              <Svg width={size} height={size}>
+                <Circle cx={size/2} cy={size/2} r={radius} stroke="#1a1a35" strokeWidth={strokeWidth} fill="none" />
+                <Circle cx={size/2} cy={size/2} r={radius} stroke="#ef4444" strokeWidth={strokeWidth} fill="none"
+                  strokeDasharray={`${circumference}`} strokeDashoffset={strokeDash}
+                  strokeLinecap="round" rotation="-90" origin={`${size/2}, ${size/2}`} />
+              </Svg>
+              <View style={{ position: 'absolute', alignItems: 'center' }}>
+                <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: '900', lineHeight: 20 }}>{used}</Text>
+                <Text style={{ color: '#4a4a6a', fontSize: 10 }}>/ {limit}</Text>
+              </View>
+            </View>
+            <Text style={{ color: '#6b5d80', fontSize: 11, marginTop: 6 }}>stories used this month</Text>
+          </View>
+
+          {/* Buy tokens */}
+          <Text style={{ color: '#f59e0b', fontWeight: '800', fontSize: 12, marginBottom: 8 }}>⚡ Buy Extra Stories</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
+            {packs.map(p => (
+              <TouchableOpacity key={p.id}
+                onPress={() => { Linking.openURL(`https://buy.stripe.com/readquest_tokens_${p.id}`).catch(() => Alert.alert('Coming Soon', 'Token purchase coming soon! Email support@readquest.app')); onClose() }}
+                style={{ flex: 1, backgroundColor: '#f59e0b15', borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#f59e0b40' }}
+              >
+                <Text style={{ color: '#f59e0b', fontSize: 18, fontWeight: '900' }}>${p.price}</Text>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, marginTop: 2 }}>{p.label}</Text>
+                <Text style={{ color: '#6b5d80', fontSize: 10, marginTop: 2 }}>{p.desc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Upgrade plans */}
+          <Text style={{ color: '#B28CFF', fontWeight: '800', fontSize: 12, marginBottom: 8 }}>✨ Or Upgrade Your Plan</Text>
+          <View style={{ gap: 8, marginBottom: 16 }}>
+            {upgrades.map(u => (
+              <TouchableOpacity key={u.slug}
+                onPress={() => { router.push('/(app)/subscription'); onClose() }}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#12112a', borderRadius: 14, padding: 13, borderWidth: 1, borderColor: '#2a2a4a' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13, flex: 1 }}>{u.label}</Text>
+                {u.badge ? <View style={{ backgroundColor: '#702AE1', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginRight: 8 }}><Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>{u.badge}</Text></View> : null}
+                <Text style={{ color: '#702AE1', fontWeight: '900', fontSize: 13 }}>${u.price}/mo</Text>
+                <Text style={{ color: '#4a4a6a', fontSize: 10, marginLeft: 4 }}>·</Text>
+                <Text style={{ color: '#6b5d80', fontSize: 10, marginLeft: 4 }}>{u.stories} stories</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity onPress={onClose} style={{ alignItems: 'center', padding: 10 }}>
+            <Text style={{ color: '#4a4a6a', fontWeight: '700', fontSize: 13 }}>Maybe Later</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════
 export default function GenerateScreen() {
   const { session } = useAuth()
@@ -412,6 +510,10 @@ export default function GenerateScreen() {
   const scrollRef   = useRef<any>(null)
 
   // Progressive image slots — fills as each of 5 page images arrives
+  // Usage / token gate
+  const [usage,          setUsage]          = useState<ParentUsage | null>(null)
+  const [showTokenGate,  setShowTokenGate]  = useState(false)
+
   const [pageImageSlots, setPageImageSlots] = useState<(string|null)[]>([null,null,null,null,null])
   const [imagesComplete, setImagesComplete] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval>|null>(null)
@@ -449,6 +551,9 @@ export default function GenerateScreen() {
       genProgressAnim.stopAnimation(); genProgressAnim.setValue(0)
     }
   }, [step, isGenerating])
+
+  // Load usage on mount
+  useEffect(() => { subscriptionApi.getUsage().then(setUsage).catch(() => {}) }, [])
 
   // Derived: grade from selected child
   const grade = selectedChild?.grade_level ?? 3
@@ -617,6 +722,11 @@ export default function GenerateScreen() {
 
   // ── Main generation (full pipeline — all images ready before result card) ──
   const generateStory = useCallback(async () => {
+    // ── Token gate: block if out of stories ───────────────────────────────
+    if (usage && usage.stories_limit < 9999 && usage.stories_used_this_period >= usage.stories_limit) {
+      setShowTokenGate(true)
+      return
+    }
     const effectiveArt = selectedArt ?? stepOneArt ?? 'cartoon'
     if (!charData) return
     setIsGenerating(true); setGenStep(0); setGenError(''); setGenerated(null)
@@ -647,12 +757,15 @@ export default function GenerateScreen() {
       setGenerated({ id: (res.data as any).id, title: (res.data as any).title })
       setGenTitle((res.data as any).title ?? '')
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      // Refresh usage so StoriesBadge increments immediately (DB trigger already updated the count)
+      subscriptionApi.getUsage().then(u => { if (u) setUsage(u) }).catch(() => {})
+      refreshStoriesBadge()
     } catch (e: any) {
       clearInterval(genInterval.current!)
       setGenError(e?.response?.data?.detail ?? 'Generation failed. Try again.')
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
     } finally { setIsGenerating(false) }
-  }, [charData, selectedTheme, selectedArt, stepOneArt, selectedLang, isPublic, grade, shortStoryMode, shortStory, sceneDesc, genProgressAnim])
+  }, [charData, selectedTheme, selectedArt, stepOneArt, selectedLang, isPublic, grade, shortStoryMode, shortStory, sceneDesc, genProgressAnim, usage])
 
   useEffect(() => () => { if (genInterval.current) clearInterval(genInterval.current) }, [])
 
@@ -1911,6 +2024,13 @@ export default function GenerateScreen() {
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Out-of-tokens gate modal */}
+      <OutOfTokensModal
+        visible={showTokenGate}
+        usage={usage}
+        onClose={() => setShowTokenGate(false)}
+      />
     </View>
   )
 }

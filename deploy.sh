@@ -1,52 +1,55 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
-# ReadQuest — Full AWS Deployment Script
+# ReadQuest — Full AWS Deployment Script  (fixed & hardened)
 # Deploys:  Backend  → ECR → App Runner
 #           Frontend → S3  → CloudFront
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
-# ─── Config (edit these if needed) ───────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ─── Config ──────────────────────────────────────────────────────────────────
 AWS_REGION="us-east-1"
 AWS_ACCOUNT_ID="873259176532"
 APP_NAME="readquest"
 ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}-backend"
-S3_BUCKET="${APP_NAME}-frontend-$(echo $AWS_ACCOUNT_ID | tail -c 5)"
+S3_BUCKET="${APP_NAME}-frontend-2532"
 APPRUNNER_SERVICE="${APP_NAME}-backend"
+SVC_ARN="arn:aws:apprunner:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/${APPRUNNER_SERVICE}/8b86fae1121c40dd9b2756fc02f2d722"
+CF_DIST_ID="E320F23VR5I0J0"
+CF_DOMAIN="d204gd0t8zljdt.cloudfront.net"
 
 # ─── Colours ─────────────────────────────────────────────────────────────────
 GREEN="\033[0;32m"; YELLOW="\033[1;33m"; RED="\033[0;31m"; NC="\033[0m"
 info()    { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
+err()     { echo -e "${RED}[ERR ]${NC} $*" >&2; }
 section() { echo -e "\n${GREEN}══════════════════════════════════════${NC}"; echo -e "${GREEN}  $*${NC}"; echo -e "${GREEN}══════════════════════════════════════${NC}"; }
 
-# ─── 1. Check prerequisites ───────────────────────────────────────────────────
-section "Step 1/6 — Checking prerequisites"
+# ─── 1. Prerequisites ─────────────────────────────────────────────────────────
+section "Step 1/5 — Checking prerequisites"
 for cmd in aws docker node npm; do
     if ! command -v "$cmd" &>/dev/null; then
-        echo -e "${RED}[ERROR]${NC} '$cmd' not found. Please install it first."
-        exit 1
+        err "'$cmd' not found. Please install it first."; exit 1
     fi
 done
-info "All prerequisites found ✓"
+aws sts get-caller-identity --query 'Account' --output text >/dev/null
+info "AWS authenticated ✓  |  docker: $(docker --version | cut -d' ' -f3 | tr -d ',')"
 
-# ─── 2. ECR — create repo if needed ──────────────────────────────────────────
-section "Step 2/6 — Setting up ECR repository"
-aws ecr describe-repositories --repository-names "${APP_NAME}-backend" \
-    --region "$AWS_REGION" &>/dev/null || \
-    aws ecr create-repository \
-        --repository-name "${APP_NAME}-backend" \
-        --region "$AWS_REGION" \
-        --image-scanning-configuration scanOnPush=true \
-        --query 'repository.repositoryUri' --output text
-info "ECR repo ready: ${ECR_REPO}"
+# ─── Load .env ────────────────────────────────────────────────────────────────
+ENV_FILE="${SCRIPT_DIR}/backend/.env"
+if [ ! -f "$ENV_FILE" ]; then err "Missing backend/.env"; exit 1; fi
+# Export every non-comment variable
+set -a; source "$ENV_FILE"; set +a
+info "Loaded backend/.env ✓"
 
-# ─── 3. Build & push backend Docker image ────────────────────────────────────
-section "Step 3/6 — Building & pushing backend Docker image"
-cd "$(dirname "$0")/backend"
+BACKEND_URL="https://uman5zjn7q.${AWS_REGION}.awsapprunner.com"
 
-# ECR login
+# ─── 2. Build & push backend Docker image ────────────────────────────────────
+section "Step 2/5 — Building & pushing backend Docker image (linux/amd64)"
+cd "${SCRIPT_DIR}/backend"
+
 aws ecr get-login-password --region "$AWS_REGION" | \
     docker login --username AWS --password-stdin \
     "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -57,236 +60,102 @@ docker tag "${APP_NAME}-backend:${IMAGE_TAG}" "${ECR_REPO}:${IMAGE_TAG}"
 docker tag "${APP_NAME}-backend:${IMAGE_TAG}" "${ECR_REPO}:latest"
 docker push "${ECR_REPO}:${IMAGE_TAG}"
 docker push "${ECR_REPO}:latest"
-info "Image pushed: ${ECR_REPO}:${IMAGE_TAG}"
+info "Image pushed → ${ECR_REPO}:${IMAGE_TAG}"
 
-# ─── 4. Deploy / update App Runner ───────────────────────────────────────────
-section "Step 4/6 — Deploying backend to App Runner"
-cd "$(dirname "$0")"
+# ─── 3. Update App Runner env vars + trigger deployment ──────────────────────
+section "Step 3/5 — Updating App Runner env vars & triggering deployment"
+cd "${SCRIPT_DIR}"
 
-# Check if service already exists
-SVC_ARN=$(aws apprunner list-services --region "$AWS_REGION" \
-    --query "ServiceSummaryList[?ServiceName=='${APPRUNNER_SERVICE}'].ServiceArn" \
-    --output text 2>/dev/null || echo "")
-
-# Load secrets from backend/.env
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/backend/.env"
-
-if [ -z "$SVC_ARN" ]; then
-    info "Creating new App Runner service..."
-
-    # Create ECR access role if it doesn't exist
-    ROLE_NAME="AppRunnerECRAccessRole"
-    ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" \
-        --query 'Role.Arn' --output text 2>/dev/null || echo "")
-
-    if [ -z "$ROLE_ARN" ]; then
-        info "Creating IAM role ${ROLE_NAME}..."
-        ROLE_ARN=$(aws iam create-role --role-name "$ROLE_NAME" \
-            --assume-role-policy-document '{
-              "Version":"2012-10-17",
-              "Statement":[{"Effect":"Allow","Principal":{"Service":"build.apprunner.amazonaws.com"},
-              "Action":"sts:AssumeRole"}]}' \
-            --query 'Role.Arn' --output text)
-        aws iam attach-role-policy --role-name "$ROLE_NAME" \
-            --policy-arn "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
-        sleep 10  # IAM propagation
-    fi
-
-    aws apprunner create-service \
-        --region "$AWS_REGION" \
-        --service-name "$APPRUNNER_SERVICE" \
-        --source-configuration "{
-            \"ImageRepository\": {
-                \"ImageIdentifier\": \"${ECR_REPO}:latest\",
-                \"ImageConfiguration\": {
-                    \"Port\": \"8000\",
-                    \"RuntimeEnvironmentVariables\": {
-                        \"ENVIRONMENT\": \"production\",
-                        \"DATABASE_URL\": \"${DATABASE_URL}\",
-                        \"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\",
-                        \"OPENROUTER_API_KEY\": \"${OPENROUTER_API_KEY}\",
-                        \"SECRET_KEY\": \"${SECRET_KEY}\"
-                    }
-                },
-                \"ImageRepositoryType\": \"ECR\",
-                \"AuthenticationConfiguration\": {
-                    \"AccessRoleArn\": \"${ROLE_ARN}\"
+aws apprunner update-service \
+    --service-arn "$SVC_ARN" \
+    --region "$AWS_REGION" \
+    --source-configuration "{
+        \"ImageRepository\": {
+            \"ImageIdentifier\": \"${ECR_REPO}:latest\",
+            \"ImageConfiguration\": {
+                \"Port\": \"8000\",
+                \"RuntimeEnvironmentVariables\": {
+                    \"ENVIRONMENT\": \"production\",
+                    \"DATABASE_URL\": \"${DATABASE_URL}\",
+                    \"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\",
+                    \"OPENROUTER_API_KEY\": \"${OPENROUTER_API_KEY}\",
+                    \"SECRET_KEY\": \"${SECRET_KEY:-readquest-prod-secret}\",
+                    \"SUPABASE_SERVICE_KEY\": \"${SUPABASE_SERVICE_KEY}\",
+                    \"FAL_AI\": \"${FAL_AI}\",
+                    \"FRONTEND_URL\": \"https://${CF_DOMAIN}\"
                 }
             },
-            \"AutoDeploymentsEnabled\": true
-        }" \
-        --instance-configuration "Cpu=1 vCPU,Memory=2 GB" \
-        --health-check-configuration "Protocol=HTTP,Path=/health,Interval=10,Timeout=5,HealthyThreshold=1,UnhealthyThreshold=3"
+            \"ImageRepositoryType\": \"ECR\"
+        }
+    }" --output json | python3 -c "import sys,json; d=json.load(sys.stdin); print('  Service status:', d['Service']['Status'])"
 
-    # Wait for service to be running
-    info "Waiting for App Runner service to reach RUNNING state..."
-    aws apprunner wait service-running \
-        --service-name "$APPRUNNER_SERVICE" \
-        --region "$AWS_REGION" 2>/dev/null || true
-
-    BACKEND_URL=$(aws apprunner list-services \
-        --region "$AWS_REGION" \
-        --query "ServiceSummaryList[?ServiceName=='${APPRUNNER_SERVICE}'].ServiceUrl" \
-        --output text)
-    BACKEND_URL="https://${BACKEND_URL}"
-    info "App Runner service created: ${BACKEND_URL}"
-else
-    info "Triggering redeployment of existing App Runner service..."
-    aws apprunner start-deployment \
-        --service-arn "$SVC_ARN" \
-        --region "$AWS_REGION"
-
-    BACKEND_URL=$(aws apprunner describe-service \
+info "App Runner update triggered — polling until RUNNING (up to 8 min)..."
+for i in $(seq 1 48); do
+    STATUS=$(aws apprunner describe-service \
         --service-arn "$SVC_ARN" \
         --region "$AWS_REGION" \
-        --query 'Service.ServiceUrl' --output text)
-    BACKEND_URL="https://${BACKEND_URL}"
-    info "Redeployment started: ${BACKEND_URL}"
-fi
+        --query 'Service.Status' --output text)
+    echo -ne "\r  Status: ${STATUS} (${i}/48) ..."
+    if [[ "$STATUS" == "RUNNING" ]]; then
+        echo ""
+        info "App Runner is RUNNING ✓"
+        break
+    elif [[ "$STATUS" == "OPERATION_IN_PROGRESS" ]]; then
+        sleep 10
+    else
+        echo ""
+        warn "Unexpected status: ${STATUS} — continuing anyway"
+        break
+    fi
+done
+echo ""
 
-# ─── 5. Build frontend ────────────────────────────────────────────────────────
-section "Step 5/6 — Building React frontend"
-cd "$(dirname "$0")/frontend"
+# ─── 4. Build frontend ────────────────────────────────────────────────────────
+section "Step 4/5 — Building React frontend"
+cd "${SCRIPT_DIR}/frontend"
 
-# Write production .env
 cat > .env.production << EOF
-VITE_API_URL=${BACKEND_URL}
-VITE_SUPABASE_URL=${VITE_SUPABASE_URL:-https://nspehtlzknfbiwvjswge.supabase.co}
-VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zcGVodGx6a25mYml3dmpzd2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MTQyNzcsImV4cCI6MjA4OTk5MDI3N30.--MQIejpZat94lV61BEkwj3mXHdOFG34HDqiOdydp2I}
+VITE_API_URL=https://uman5zjn7q.us-east-1.awsapprunner.com
+VITE_SUPABASE_URL=https://nspehtlzknfbiwvjswge.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zcGVodGx6a25mYml3dmpzd2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MTQyNzcsImV4cCI6MjA4OTk5MDI3N30.--MQIejpZat94lV61BEkwj3mXHdOFG34HDqiOdydp2I
 EOF
 
-npm ci
-npm run build
-info "Frontend built ✓"
+npm ci --prefer-offline 2>&1 | tail -3
+npm run build 2>&1 | tail -5
+info "Frontend built ✓  ($(du -sh dist | cut -f1) total)"
 
-# ─── 6. Create S3 bucket + CloudFront, deploy frontend ───────────────────────
-section "Step 6/6 — Deploying frontend to S3 + CloudFront"
-cd "$(dirname "$0")"
+# ─── 5. Deploy frontend to S3 + invalidate CloudFront ────────────────────────
+section "Step 5/5 — Syncing frontend to S3 + invalidating CloudFront cache"
+cd "${SCRIPT_DIR}"
 
-# Create S3 bucket if it doesn't exist
-if ! aws s3api head-bucket --bucket "$S3_BUCKET" 2>/dev/null; then
-    info "Creating S3 bucket: ${S3_BUCKET}"
-    if [ "$AWS_REGION" == "us-east-1" ]; then
-        aws s3api create-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION"
-    else
-        aws s3api create-bucket --bucket "$S3_BUCKET" --region "$AWS_REGION" \
-            --create-bucket-configuration LocationConstraint="$AWS_REGION"
-    fi
-fi
-
-# Configure bucket for static website hosting
-aws s3api put-public-access-block --bucket "$S3_BUCKET" \
-    --public-access-block-configuration "BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false"
-
-aws s3api put-bucket-website --bucket "$S3_BUCKET" \
-    --website-configuration '{"IndexDocument":{"Suffix":"index.html"},"ErrorDocument":{"Key":"index.html"}}'
-
-aws s3api put-bucket-policy --bucket "$S3_BUCKET" --policy "{
-    \"Version\":\"2012-10-17\",
-    \"Statement\":[{
-        \"Effect\":\"Allow\",
-        \"Principal\":\"*\",
-        \"Action\":\"s3:GetObject\",
-        \"Resource\":\"arn:aws:s3:::${S3_BUCKET}/*\"
-    }]
-}"
-
-# Sync built assets
+# Sync the full dist directory
 aws s3 sync frontend/dist/ "s3://${S3_BUCKET}/" \
     --delete \
-    --cache-control "public,max-age=31536000" \
-    --exclude "index.html"
+    --cache-control "public,max-age=31536000,immutable" \
+    --quiet
 
+# Override cache for html + root files (no-cache)
 aws s3 cp frontend/dist/index.html "s3://${S3_BUCKET}/index.html" \
     --cache-control "no-cache,no-store,must-revalidate" \
-    --content-type "text/html"
+    --content-type "text/html" \
+    --quiet
 
-# Check for existing CloudFront distribution
-CF_DIST_ID=$(aws cloudfront list-distributions \
-    --query "DistributionList.Items[?Origins.Items[0].DomainName=='${S3_BUCKET}.s3.amazonaws.com'].Id" \
-    --output text 2>/dev/null || echo "")
+info "S3 sync complete ✓"
 
-if [ -z "$CF_DIST_ID" ]; then
-    info "Creating CloudFront distribution..."
-    CF_DIST_ID=$(aws cloudfront create-distribution \
-        --distribution-config "{
-            \"CallerReference\": \"${APP_NAME}-$(date +%s)\",
-            \"Comment\": \"ReadQuest Frontend\",
-            \"DefaultRootObject\": \"index.html\",
-            \"Origins\": {
-                \"Quantity\": 1,
-                \"Items\": [{
-                    \"Id\": \"S3Origin\",
-                    \"DomainName\": \"${S3_BUCKET}.s3.amazonaws.com\",
-                    \"S3OriginConfig\": {\"OriginAccessIdentity\": \"\"}
-                }]
-            },
-            \"DefaultCacheBehavior\": {
-                \"TargetOriginId\": \"S3Origin\",
-                \"ViewerProtocolPolicy\": \"redirect-to-https\",
-                \"CachePolicyId\": \"658327ea-f89d-4fab-a63d-7e88639e58f6\",
-                \"AllowedMethods\": {\"Quantity\": 2, \"Items\": [\"GET\",\"HEAD\"],
-                    \"CachedMethods\": {\"Quantity\": 2, \"Items\": [\"GET\",\"HEAD\"]}},
-                \"Compress\": true
-            },
-            \"CustomErrorResponses\": {
-                \"Quantity\": 1,
-                \"Items\": [{
-                    \"ErrorCode\": 403,
-                    \"ResponsePagePath\": \"/index.html\",
-                    \"ResponseCode\": \"200\",
-                    \"ErrorCachingMinTTL\": 0
-                }]
-            },
-            \"Enabled\": true,
-            \"PriceClass\": \"PriceClass_100\"
-        }" \
-        --query 'Distribution.Id' --output text)
-    info "CloudFront distribution created: ${CF_DIST_ID}"
-else
-    info "Invalidating CloudFront cache..."
-    aws cloudfront create-invalidation \
-        --distribution-id "$CF_DIST_ID" \
-        --paths "/*"
-fi
-
-# Get the final frontend URL
-CF_DOMAIN=$(aws cloudfront get-distribution \
-    --id "$CF_DIST_ID" \
-    --query 'Distribution.DomainName' --output text)
-
-# Update App Runner FRONTEND_URL env var for CORS
-info "Updating App Runner CORS with frontend URL..."
-if [ -n "$SVC_ARN" ]; then
-    aws apprunner update-service \
-        --service-arn "$SVC_ARN" \
-        --region "$AWS_REGION" \
-        --source-configuration "{
-            \"ImageRepository\": {
-                \"ImageIdentifier\": \"${ECR_REPO}:latest\",
-                \"ImageConfiguration\": {
-                    \"Port\": \"8000\",
-                    \"RuntimeEnvironmentVariables\": {
-                        \"ENVIRONMENT\": \"production\",
-                        \"DATABASE_URL\": \"${DATABASE_URL}\",
-                        \"GEMINI_API_KEY\": \"${GEMINI_API_KEY}\",
-                        \"OPENROUTER_API_KEY\": \"${OPENROUTER_API_KEY}\",
-                        \"SECRET_KEY\": \"${SECRET_KEY}\",
-                        \"FRONTEND_URL\": \"https://${CF_DOMAIN}\"
-                    }
-                },
-                \"ImageRepositoryType\": \"ECR\"
-            }
-        }" > /dev/null
-fi
+# Invalidate CloudFront so users get the new build immediately
+INV_ID=$(aws cloudfront create-invalidation \
+    --distribution-id "$CF_DIST_ID" \
+    --paths "/*" \
+    --query 'Invalidation.Id' --output text)
+info "CloudFront invalidation created: ${INV_ID}"
 
 # ─── Done ─────────────────────────────────────────────────────────────────────
 section "🎉  Deployment Complete!"
 echo ""
-echo -e "  ${GREEN}Backend API${NC}    →  ${BACKEND_URL}"
-echo -e "  ${GREEN}Frontend App${NC}   →  ${YELLOW}https://${CF_DOMAIN}${NC}  (CloudFront propagation can take ~15 min)"
-echo -e "  ${GREEN}S3 Bucket${NC}      →  https://${S3_BUCKET}.s3-website-${AWS_REGION}.amazonaws.com"
+echo -e "  ${GREEN}Backend API${NC}   →  ${BACKEND_URL}"
+echo -e "  ${GREEN}Health check${NC}  →  ${BACKEND_URL}/health"
+echo -e "  ${GREEN}Frontend App${NC}  →  ${YELLOW}https://${CF_DOMAIN}${NC}"
 echo ""
-echo -e "  ℹ️  Health check:  ${BACKEND_URL}/health"
+echo -e "  ℹ️  CloudFront propagation takes ~1-5 min."
+echo -e "  ℹ️  App Runner fully running at: ${BACKEND_URL}"
 echo ""

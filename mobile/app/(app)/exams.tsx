@@ -459,21 +459,26 @@ function TestView({ exam, onSubmit, submitting }: {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={() => onSubmit(answers, exam.time_limit_sec-timeLeft, startedAt.current)}
-          disabled={submitting}
-          style={{ backgroundColor:'#22c55e', borderRadius:14, padding:16, alignItems:'center' }}>
-          {submitting
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={{ color:'#fff', fontWeight:'900', fontSize:16 }}>
-                Submit ({answered}/{totalQ} answered)
+        {current === totalQ - 1 && (
+          <>
+            <TouchableOpacity onPress={() => onSubmit(answers, exam.time_limit_sec-timeLeft, startedAt.current)}
+              disabled={submitting}
+              style={{ backgroundColor:'#22c55e', borderRadius:14, padding:16, alignItems:'center', marginBottom: 8 }}>
+              {submitting
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={{ color:'#fff', fontWeight:'900', fontSize:16 }}>
+                    Submit ({answered}/{totalQ} answered)
+                  </Text>
+              }
+            </TouchableOpacity>
+            {answered < totalQ && (
+              <Text style={{ color:'#f59e0b', fontSize:12, textAlign:'center', marginTop:4 }}>
+                ⚠️ {totalQ-answered} question{totalQ-answered!==1?'s':''} unanswered
               </Text>
-          }
-        </TouchableOpacity>
-        {answered < totalQ && (
-          <Text style={{ color:'#f59e0b', fontSize:12, textAlign:'center', marginTop:8 }}>
-            ⚠️ {totalQ-answered} question{totalQ-answered!==1?'s':''} unanswered
-          </Text>
+            )}
+          </>
         )}
+
       </ScrollView>
     </View>
   )

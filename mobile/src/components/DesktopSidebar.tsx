@@ -28,11 +28,9 @@ import {
   Mic2,
   Users,
   LayoutDashboard,
-  Wand2,
   Settings,
   LogOut,
   Sparkles,
-  Clapperboard,
   type LucideIcon,
 } from 'lucide-react-native'
 
@@ -50,7 +48,6 @@ const NAV_LINKS: { label: string; Icon: LucideIcon; color: string; path: string 
   { label: 'Recordings',        Icon: Mic2,            color: '#f472b6', path: '/(app)/recordings'       },
   { label: 'Profile / Kids',    Icon: Users,           color: '#34d399', path: '/(app)/add-kid'          },
   { label: 'Parent Dashboard',  Icon: LayoutDashboard, color: '#c084fc', path: '/(app)/parent-dashboard' },
-  { label: 'Character Studio',  Icon: Wand2,           color: '#f472b6', path: '/(app)/character-studio' },
   { label: 'Admin',             Icon: Settings,        color: '#94a3b8', path: '/(app)/admin'            },
 ]
 
@@ -153,26 +150,6 @@ export default function DesktopSidebar() {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Featured: Movie Studio */}
-        <TouchableOpacity
-          onPress={() => router.push('/(app)/movie-studio' as any)}
-          activeOpacity={0.85}
-          style={styles.featuredWrap}
-        >
-          <LinearGradient
-            colors={['rgba(180,100,0,0.88)', 'rgba(234,179,8,0.75)']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={styles.featuredBtn}
-          >
-            <View style={styles.featuredIconWrap}>
-              <Clapperboard size={16} color="#fff" strokeWidth={2.5} />
-            </View>
-            <View>
-              <Text style={styles.featuredLabel}>Movie Studio</Text>
-              <Text style={styles.featuredSub}>Create your film</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* Bottom — sign out */}

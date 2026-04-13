@@ -24,7 +24,7 @@ export const CHILD_COLORS = [
 ]
 
 interface Props {
-  children: Child[]
+  students: Child[]
   selected: Child | null
   onChange: (child: Child | null) => void
   allowAll?: boolean
@@ -82,7 +82,7 @@ function ChildItem({
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function StudentDropdown({
-  children,
+  students,
   selected,
   onChange,
   allowAll = true,
@@ -90,9 +90,9 @@ export default function StudentDropdown({
 }: Props) {
   const { isTablet } = useDeviceLayout()
   const [open, setOpen] = useState(false)
-  const activeIdx = selected ? children.findIndex(c => c.id === selected.id) : -1
+  const activeIdx = selected ? students.findIndex(c => c.id === selected.id) : -1
 
-  if (children.length === 0) return null
+  if (students.length === 0) return null
 
   const handleSelect = (child: Child | null) => {
     setOpen(false)
@@ -143,7 +143,7 @@ export default function StudentDropdown({
           {selected === null && <Text style={{ color: '#B28CFF' }}>✓</Text>}
         </TouchableOpacity>
       )}
-      {children.map((child, i) => (
+      {students.map((child, i) => (
         <ChildItem
           key={child.id}
           child={child}

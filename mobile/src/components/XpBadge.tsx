@@ -106,24 +106,47 @@ const chip = StyleSheet.create({
   delta: { position: 'absolute', top: -4, right: -4, fontSize: 11, fontWeight: '800', color: '#facc15' },
 })
 
-// ── Default export: floating overlay (kept for non-dashboard screens) ──────
+// \u2500\u2500 Default export: floating overlay \u2014 always top-right on every screen \u2500\u2500\u2500\u2500
 export default function XpBadge() {
   const { isTablet } = useDeviceLayout()
   const insets = useSafeAreaInsets()
   const { xp, delta, deltaAnim } = useXpState()
 
   return (
-    <View style={{ position: 'absolute', top: insets.top + 8, right: 12, zIndex: 9999, alignItems: 'flex-end' }}>
-      <View style={[chip.pill, { paddingHorizontal: 12, paddingVertical: 7 }]}>
-        <Text style={[chip.icon, { fontSize: isTablet ? 14 : 12 }]}>⚡</Text>
-        <Text style={[chip.value, { fontSize: isTablet ? 14 : 12 }]}>{xp.toLocaleString()}</Text>
-        <Text style={[chip.unit, { fontSize: isTablet ? 12 : 10 }]}>XP</Text>
+    <View
+      style={{
+        alignItems: 'flex-end',
+        // @ts-ignore web
+        pointerEvents: 'none',
+      }}
+    >
+      <View style={[
+        chip.pill,
+        {
+          paddingHorizontal: isTablet ? 14 : 11,
+          paddingVertical:   isTablet ? 7  : 6,
+          shadowColor:   '#702AE1',
+          shadowOpacity: 0.6,
+          shadowRadius:  12,
+          shadowOffset:  { width: 0, height: 0 },
+        },
+      ]}>
+        <Text style={[chip.icon,  { fontSize: isTablet ? 14 : 12 }]}>⚡</Text>
+        <Text style={[chip.value, { fontSize: isTablet ? 15 : 13 }]}>{xp.toLocaleString()}</Text>
+        <Text style={[chip.unit,  { fontSize: isTablet ? 11 : 9  }]}> XP</Text>
       </View>
+
       {delta !== null && (
-        <Animated.Text style={[chip.delta, { opacity: deltaAnim, transform: [{ translateY: deltaAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -20] }) }] }]}>
-          +{delta}
+        <Animated.Text
+          style={[chip.delta, {
+            opacity: deltaAnim,
+            transform: [{ translateY: deltaAnim.interpolate({ inputRange: [0, 1], outputRange: [4, -24] }) }],
+          }]}
+        >
+          +{delta} XP
         </Animated.Text>
       )}
     </View>
   )
 }
+

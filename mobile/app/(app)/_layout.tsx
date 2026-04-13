@@ -17,6 +17,7 @@
  */
 import { Redirect, Tabs, usePathname } from 'expo-router'
 import { View, Platform, useWindowDimensions, StyleSheet } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../_layout'
 import { useDeviceLayout } from '../../src/hooks/useDeviceLayout'
 import XpBadge from '../../src/components/XpBadge'
@@ -24,26 +25,33 @@ import LikesBadge from '../../src/components/LikesBadge'
 import MuteButton from '../../src/components/MuteButton'
 import BottomTabBar from '../../src/components/BottomTabBar'
 import DesktopSidebar from '../../src/components/DesktopSidebar'
+import StoriesBadge from '../../src/components/StoriesBadge'
 
 export default function AppLayout() {
   const { session } = useAuth()
   const { isTablet } = useDeviceLayout()
   const { width } = useWindowDimensions()
   const pathname = usePathname()
+  const insets = useSafeAreaInsets()
 
   // Show desktop sidebar on web at >= 1024px width
   const isDesktopWeb = Platform.OS === 'web' && width >= 1024
 
   // Dashboard embeds XP + Likes inline in its header — hide global overlays there
-  const isDashboard = pathname === '/dashboard' || pathname === '/(app)/dashboard'
 
   if (!session) return <Redirect href="/(auth)/login" />
 
   return (
     <View style={layoutStyles.root}>
-      {/* Global overlays — mobile only; desktop uses inline header chips */}
-      {!isDashboard && !isDesktopWeb && <XpBadge />}
-      {!isDashboard && !isDesktopWeb && <LikesBadge />}
+      {/* Global overlays — Stories + XP side-by-side top-right */}
+      <View style={[
+        layoutStyles.badgeRow,
+        { top: insets.top + 6, right: 12 },
+      ]}>
+        <StoriesBadge />
+        <XpBadge />
+      </View>
+      {!isDesktopWeb && <LikesBadge />}
       {!isDesktopWeb && <MuteButton />}
 
 
@@ -80,12 +88,11 @@ export default function AppLayout() {
         <Tabs.Screen name="profile"                    options={{ href: null }} />
         <Tabs.Screen name="add-kid"                    options={{ href: null }} />
         <Tabs.Screen name="parent-dashboard"           options={{ href: null }} />
+        <Tabs.Screen name="subscription"              options={{ href: null }} />
         <Tabs.Screen name="recordings"                 options={{ href: null }} />
         <Tabs.Screen name="recordings/index"           options={{ href: null }} />
         <Tabs.Screen name="recordings/[bookId]/index"  options={{ href: null }} />
         <Tabs.Screen name="recordings/[bookId]/[recordingId]" options={{ href: null }} />
-        <Tabs.Screen name="character-studio"           options={{ href: null }} />
-        <Tabs.Screen name="movie-studio"               options={{ href: null }} />
         <Tabs.Screen name="admin"                      options={{ href: null }} />
         <Tabs.Screen name="games/[gameId]"             options={{ href: null }} />
         <Tabs.Screen name="gameplay/[gameId]"          options={{ href: null }} />
@@ -104,5 +111,15 @@ const layoutStyles = StyleSheet.create({
   content: {
     flex: 1,
     minWidth: 0,
+  },
+  badgeRow: {
+    position:       'absolute',
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            6,
+    zIndex:         99999,
+    elevation:      99,
+    // @ts-ignore web
+    pointerEvents:  'box-none',
   },
 })
